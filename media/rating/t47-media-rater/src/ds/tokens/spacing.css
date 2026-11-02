@@ -1,0 +1,48 @@
+/* Teriak47 — Espacement & géométrie
+   La géométrie descend du logo, pas du web :
+   · PENTE CANONIQUE : 21° — l'inclinaison mesurée sur l'éclair. C'est la SEULE
+     diagonale autorisée dans tout le système (biseaux, tampons, séparateurs).
+   · ZÉRO COURBE : le renard n'a aucun arrondi → --rayon est nul, partout.
+   · COUPE DE COIN : ratio tan(21°) ≈ 0.384 → un coin coupé de 12px en largeur
+     descend de 31px en hauteur. C'est la seule façon de « casser » un angle. */
+
+:root {
+  /* Grille 8 pt */
+  --esp-0: 0; /* @kind spacing */
+  --esp-1: 4px;
+  --esp-2: 8px;
+  --esp-3: 12px;
+  --esp-4: 16px;
+  --esp-5: 24px;
+  --esp-6: 32px;
+  --esp-7: 48px;
+  --esp-8: 64px;
+  --esp-9: 96px;
+  --esp-10: 128px;
+
+  /* Géométrie héritée du logo */
+  --pente: 21deg; /* @kind other */
+  --coupe: 12px;           /* largeur de coupe de coin */
+  --coupe-h: 31px;         /* hauteur correspondante (tan 21°) */
+  --rayon: 0px;            /* aucune courbe, jamais */
+
+  /* Filets */
+  --filet-fin: 1px;        /* @kind spacing */
+  --filet-epais: 2px;      /* @kind spacing */
+  --filet-bloc: 3px;       /* @kind spacing */
+
+  /* Largeurs de contenu */
+  --largeur-texte: 64ch;   /* @kind other */
+  --largeur-page: 1240px;  /* @kind spacing */
+  --largeur-etroite: 720px; /* @kind spacing */
+
+  /* Mouvement — sec, fonctionnel, jamais décoratif */
+  --duree-courte: 90ms; /* @kind other */
+  --duree: 140ms;       /* @kind other */
+  --ease: cubic-bezier(0.2, 0, 0, 1);   /* @kind other */
+
+  /* Ombres — quasi inexistantes ; l'élévation se lit au filet, pas au flou.
+     Une seule ombre nette et basse, sans halo coloré (jamais de glow bleu). */
+  --ombre-aucune: none; /* @kind shadow */
+  --ombre-portee: 0 1px 0 0 var(--bistre-0), 0 2px 12px -6px oklch(0 0 0 / 0.55);
+}

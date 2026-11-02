@@ -1,0 +1,103 @@
+/* Teriak47 — Couleurs
+   Tempérament : sombre d'abord, neutres bistre TIÈDES (hue ~70°, chroma quasi nul) —
+   surtout pas l'empilement charbon neutre standard. Un seul accent, un bleu FROID
+   (hue 228°) construit en oklch : il signale, il ne décore jamais.
+   Une SEULE exception chaude : --avert, un ocre calme et désaturé (hue 80°), réservé
+   à l'état « requiert l'œil » (à vérifier / alerte). Jamais décoratif, jamais le rouge
+   ni le vert, jamais l'ambre criard d'un framework. Hors de l'alerte, tout reste froid. */
+
+:root {
+  /* — Neutres bistre (tièdes, hue 65–82°) — */
+  --bistre-0:  oklch(0.135 0.008 64);   /* fond le plus profond, puits */
+  --bistre-1:  oklch(0.165 0.009 66);   /* fond d'application */
+  --bistre-2:  oklch(0.205 0.011 70);   /* surface, carte */
+  --bistre-3:  oklch(0.245 0.012 72);   /* surface surélevée, encart */
+  --bistre-4:  oklch(0.340 0.012 78);   /* filet discret */
+  --bistre-5:  oklch(0.560 0.014 80);   /* filet appuyé, texte sourd */
+
+  /* — Ivoire / encre (le clair du masque du renard) — */
+  --ivoire-1:  oklch(0.915 0.018 85);
+  --ivoire-2:  oklch(0.805 0.016 82);
+  --encre:     oklch(0.180 0.012 70);   /* texte sombre sur clair / imprimé */
+
+  /* — Texte (sur sombre) — */
+  --txt-1:     oklch(0.885 0.018 85);   /* titres, texte fort */
+  --txt-2:     oklch(0.660 0.014 80);   /* corps */
+  --txt-3:     oklch(0.470 0.012 78);   /* métadonnées, libellés faibles */
+
+  /* — Accent : un seul bleu froid, en oklch (hue 228°) — */
+  --bleu-clair: oklch(0.840 0.090 228);
+  --bleu:       oklch(0.760 0.125 228); /* l'accent canonique */
+  --bleu-fonce: oklch(0.620 0.130 230);
+  --bleu-sourd: oklch(0.430 0.060 230); /* accent presque éteint, fonds */
+
+  /* — Avertissement : l'UNIQUE ton chaud. Ocre calme, désaturé (hue 80°, chroma 0.095).
+     Réservé à l'état « requiert l'œil ». L'opposé d'un ambre de framework. — */
+  --ocre-clair: oklch(0.860 0.080 80);
+  --ocre:       oklch(0.800 0.095 80); /* le ton d'alerte canonique */
+  --ocre-fonce: oklch(0.660 0.100 78);
+
+  /* ——— Alias sémantiques ——— */
+  --surface-app:     var(--bistre-1);
+  --surface-puits:   var(--bistre-0);
+  --surface-carte:   var(--bistre-2);
+  --surface-haute:   var(--bistre-3);
+
+  --texte-fort:      var(--txt-1);
+  --texte:           var(--txt-2);
+  --texte-faible:    var(--txt-3);
+  --texte-sur-accent: var(--encre);
+
+  --filet:           var(--bistre-4);
+  --filet-fort:      var(--bistre-5);
+
+  --accent:          var(--bleu);
+  --accent-fort:     var(--bleu-clair);
+  --accent-sourd:    var(--bleu-sourd);
+
+  /* États. Le vivant porte l'accent FROID ; « à vérifier » porte l'unique ton chaud
+     (--avert), calme et réservé ; « clos/écarté » s'efface dans les neutres.
+     En registre monochrome, --avert n'est pas employé : la forme évidée suffit. */
+  --etat-actif:      var(--bleu);
+  --avert:           var(--ocre);   /* requiert l'œil — à vérifier / alerte */
+  --etat-attente:    var(--bistre-5);
+  --etat-clos:       var(--txt-3);
+}
+
+/* ——— Thème clair / impression (le masque inversé) ——— */
+:root[data-theme="clair"],
+.t47-clair {
+  --surface-app:     var(--ivoire-1);
+  --surface-puits:   oklch(0.96 0.012 85);
+  --surface-carte:   oklch(0.965 0.010 85);
+  --surface-haute:   #ffffff;
+
+  --texte-fort:      var(--encre);
+  --texte:           oklch(0.34 0.012 72);
+  --texte-faible:    oklch(0.52 0.012 74);
+  --texte-sur-accent: var(--ivoire-1);
+
+  --filet:           oklch(0.86 0.010 82);
+  --filet-fort:      oklch(0.70 0.012 80);
+
+  --accent:          var(--bleu-fonce);
+  --accent-fort:     oklch(0.52 0.14 232);
+  --accent-sourd:    oklch(0.86 0.05 228);
+
+  --avert:           oklch(0.58 0.11 72);  /* ocre plus dense sur clair */
+
+  --etat-actif:      var(--bleu-fonce);
+  --etat-attente:    oklch(0.70 0.012 80);
+  --etat-clos:       oklch(0.62 0.012 78);
+}
+
+@media print {
+  :root {
+    --surface-app: #fff; --surface-puits: #fff; --surface-carte: #fff; --surface-haute: #fff;
+    --texte-fort: #161310; --texte: #2d2823; --texte-faible: #5a5249;
+    --filet: #c9c1b4; --filet-fort: #8c8475;
+    --accent: oklch(0.50 0.15 232); --accent-fort: oklch(0.45 0.16 234); --accent-sourd: #d7e3ef;
+    --avert: oklch(0.52 0.11 70);
+    --etat-actif: oklch(0.50 0.15 232); --etat-attente: #8c8475; --etat-clos: #7a7264;
+  }
+}

@@ -1,0 +1,8 @@
+/* Teriak47 — Webfonts
+   Chakra Petch + Fragment Mono.
+   NOTE (substitution à confirmer) : faute de fichiers fournis, les binaires sont
+   ici chargés depuis Google Fonts. Pour la production hors-ligne / l'auto-
+   hébergement, déposer les .woff2 dans assets/fonts/ et remplacer cet @import
+   par des règles @font-face locales. — flag : remplacer par des fontes locales. */
+
+@import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400;1,600&family=Fragment+Mono:ital@0;1&display=swap');
