@@ -1,0 +1,23 @@
+id: t47-web-enumeration-prep
+name: Web Enumeration Prep
+description: Generate filename wordlists and prepare web enumeration commands.
+version: 0.1.0
+author: Teriak47
+classification:
+  family: security
+  category: generation
+  domains:
+    - cybersecurity
+    - web
+technologies:
+  - python
+  - html
+  - javascript
+formats:
+  - text
+  - json
+execution:
+  type: browser
+  entrypoint: app.py
+  dependencies:
+    - Python 3.10+

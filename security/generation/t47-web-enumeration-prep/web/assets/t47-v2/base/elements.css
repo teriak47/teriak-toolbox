@@ -1,0 +1,30 @@
+/* Teriak47 — Socle d'éléments
+   Applique les tokens aux éléments natifs. Sombre d'abord. Zéro courbe. */
+
+.t47-app {
+  background: var(--surface-app);
+  color: var(--texte);
+  font-family: var(--font-sans);
+  font-size: var(--txt-base);
+  line-height: var(--inter-corps);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Sélection : l'accent signale, même ici */
+::selection { background: var(--accent); color: var(--texte-sur-accent); }
+
+/* Barre de défilement sobre, sans arrondi */
+.t47-app ::-webkit-scrollbar { width: 11px; height: 11px; }
+.t47-app ::-webkit-scrollbar-track { background: var(--surface-puits); }
+.t47-app ::-webkit-scrollbar-thumb { background: var(--bistre-4); border: 2px solid var(--surface-puits); }
+.t47-app ::-webkit-scrollbar-thumb:hover { background: var(--bistre-5); }
+
+/* Aucune courbe nulle part — le renard n'en a pas. */
+.t47-app *, .t47-app *::before, .t47-app *::after { border-radius: 0; }
+
+/* Focus : un liseré net à l'accent, jamais de halo flou */
+.t47-app :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+h1, h2, h3, h4, h5, h6 { font-family: var(--font-sans); color: var(--texte-fort); margin: 0; }
+code, kbd, samp, pre { font-family: var(--font-mono); }
