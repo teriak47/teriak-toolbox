@@ -1,7 +1,7 @@
 id: t47-event-inspector
-name: Event Inspector
+name: T47 Event Inspector
 description: Explore, filter, and compare JSON and NDJSON events locally.
-version: 0.1.0
+version: 0.2.0
 author: Teriak47
 classification:
   family: data

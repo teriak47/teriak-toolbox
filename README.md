@@ -8,7 +8,7 @@ Teriak Toolbox is Teriak47's personal collection of small, reusable tools. It is
 
 | Tool | Purpose |
 | --- | --- |
-| [Event Inspector](data/inspection/t47-event-inspector/README.md) | Explore, filter, and compare JSON and NDJSON events locally. |
+| [T47 Event Inspector](data/inspection/t47-event-inspector/README.md) | Explore, filter, and compare JSON and NDJSON events locally. |
 | [Graphax](data/visualization/t47-graphax-board/README.md) — beta | Create local investigation and research graph boards. |
 | [T47 Media Score](media/rating/t47-media-rater/README.md) | Rate media with weighted criteria and export a Markdown note. |
 | [Zircolite SQL Generator](security/forensics/t47-zircolite-sql-generator/README.md) | Prepare SQL queries for the Zircolite Viewer. |

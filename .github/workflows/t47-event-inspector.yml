@@ -1,0 +1,32 @@
+name: Event inspector
+
+on:
+  pull_request:
+    paths:
+      - 'data/inspection/t47-event-inspector/**'
+      - '.github/workflows/t47-event-inspector.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'data/inspection/t47-event-inspector/**'
+      - '.github/workflows/t47-event-inspector.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Event inspector tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: data/inspection/t47-event-inspector
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - run: node --test tests/*.test.cjs
