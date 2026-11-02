@@ -58,11 +58,13 @@ const ScoreDisplay: React.FC<ScoreDisplayProps> = ({ scores, mediaTitle, mediaTy
     setError(null);
     const markdownContent = formatForObsidian(scores, criteria, mediaTitle, mediaType, coverImage);
     downloadMarkdown(sanitizeFilename(mediaTitle), markdownContent);
-    await navigator.clipboard.writeText(markdownContent).catch(() => {
-      // Le téléchargement a réussi ; la copie presse-papiers est un bonus.
-    });
     setExportDone(true);
     setTimeout(() => setExportDone(false), 2500);
+    try {
+      await navigator.clipboard?.writeText(markdownContent);
+    } catch {
+      // Clipboard access is optional; the download has already started.
+    }
   };
 
   return (
