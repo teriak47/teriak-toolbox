@@ -1,0 +1,43 @@
+{
+  "name": "graphax",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Tableau d'enquête et graphe d'analyse interactif local (SurrealDB Embedded + React Flow)",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -k -n API,WEB -c cyan,magenta \"pnpm run dev:server\" \"pnpm run dev:client\"",
+    "dev:server": "node --watch-path=server --watch-path=shared server/index.ts",
+    "dev:client": "vite",
+    "build": "tsc --noEmit && vite build",
+    "start": "node server/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@dagrejs/dagre": "latest",
+    "@hono/node-server": "latest",
+    "@surrealdb/node": "latest",
+    "@surrealdb/node-native": "latest",
+    "@xyflow/react": "latest",
+    "clsx": "latest",
+    "hono": "latest",
+    "lucide-react": "latest",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-markdown": "latest",
+    "remark-gfm": "latest",
+    "surrealdb": "latest",
+    "tailwind-merge": "latest"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.0.0",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "latest",
+    "concurrently": "latest",
+    "tailwindcss": "^4.0.0",
+    "tsx": "latest",
+    "typescript": "^5.7.0",
+    "vite": "^8.0.0"
+  }
+}

@@ -12,10 +12,10 @@ Initial taxonomy:
 
 | Family | Initial categories |
 | --- | --- |
-| `data` | `inspection`, `conversion`, `extraction`, `validation`, `comparison`, `generation` |
+| `data` | `inspection`, `conversion`, `extraction`, `validation`, `comparison`, `generation`, `visualization` |
 | `system` | `monitoring`, `diagnostics`, `management`, `maintenance` |
 | `network` | `diagnostics`, `analysis`, `monitoring`, `testing` |
-| `security` | `detection`, `forensics`, `auditing`, `testing` |
+| `security` | `detection`, `forensics`, `auditing`, `testing`, `generation` |
 | `development` | `debugging`, `testing`, `generation`, `validation` |
 | `automation` | `workflows`, `scheduling`, `integration`, `batch-processing` |
 | `media` | `conversion`, `analysis`, `processing`, `generation`, `rating` |
@@ -31,6 +31,8 @@ For overlapping operations, use these distinctions:
 - `testing`: actively check behaviour against a defined objective.
 - `validation`: check conformity to rules or an expected format.
 - `rating`: evaluate a work or item using a scoring scale and criteria.
+- `visualization`: represent data and their relationships visually.
+- `generation`: produce reusable inputs or artifacts for the family's purpose.
 
 ## Tool contents and metadata
 
