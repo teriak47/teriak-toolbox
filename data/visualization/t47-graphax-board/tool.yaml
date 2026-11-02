@@ -1,0 +1,27 @@
+id: t47-graphax-board
+name: Graphax
+description: Create local interactive graph boards for investigation and research.
+version: 0.1.0
+author: Teriak47
+classification:
+  family: data
+  category: visualization
+  domains:
+    - cybersecurity
+    - forensics
+    - research
+    - storytelling
+technologies:
+  - react
+  - typescript
+  - nodejs
+  - vite
+  - surrealdb
+formats:
+  - json
+execution:
+  type: browser
+  entrypoint: index.html
+  dependencies:
+    - Node.js
+    - pnpm

@@ -1,0 +1,8 @@
+/node_modules/
+/dist/
+/data/
+/D/
+/.private-backup/
+*.log
+.env
+.env.*
