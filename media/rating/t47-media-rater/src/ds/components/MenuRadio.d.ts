@@ -6,12 +6,12 @@ export interface OptionMenuRadio {
 }
 
 export interface MenuRadioProps extends Omit<React.HTMLAttributes<HTMLSpanElement>, 'onChange'> {
-  /** Valeur sélectionnée. */
+  /** Selected value. */
   valeur?: string;
   onChange?: (valeur: string) => void;
-  /** Options : chaînes simples ou { valeur, texte }. */
+  /** Options as strings or { valeur, texte } objects. */
   options?: (string | OptionMenuRadio)[];
 }
 
-/** Menu radio segmenté — segments accolés, actif à l'accent plein. */
+/** Segmented single-choice control. */
 export function MenuRadio(props: MenuRadioProps): JSX.Element;

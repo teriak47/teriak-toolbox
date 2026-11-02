@@ -1,11 +1,6 @@
 import React from 'react';
 
-/**
- * Jauge — barre de mesure (ressource, progression). Piste fine sans arrondi,
- * remplissage net. Registre monochrome : accent froid par défaut ; passe à
- * l'unique ton chaud --avert au-delà du seuil « requiert l'œil ». Valeur mono
- * alignée à droite du libellé.
- */
+/** Measurement bar with an optional warning threshold. */
 export function Jauge({ label, valeur = 0, max = 100, seuil = 80, unite = '%', afficheValeur = true, style, ...rest }) {
   const pct = Math.max(0, Math.min(100, (valeur / max) * 100));
   const alerte = pct >= seuil;

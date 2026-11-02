@@ -4,24 +4,22 @@ const REG = {
   info:    { barre: 'var(--accent)',   texte: 'var(--accent)',    mot: 'NOTE' },
   attente: { barre: 'var(--avert)',    texte: 'var(--avert)',     mot: 'À VÉRIFIER' },
   neutre:  { barre: 'var(--filet-fort)', texte: 'var(--texte-faible)', mot: 'INFO' },
+  succes:  { barre: 'var(--succes)', texte: 'var(--succes)', mot: 'VALIDÉ' },
+  attention: { barre: 'var(--attention)', texte: 'var(--attention)', mot: 'ATTENTION' },
+  erreur:  { barre: 'var(--erreur)', texte: 'var(--erreur)', mot: 'ERREUR' },
 };
 
-/**
- * Alerte — bandeau de message contextuel (en ligne). Filet d'accent à gauche,
- * fente d'œil + libellé mono, corps du message. Trois registres seulement :
- * info (accent froid), « à vérifier » (unique ton chaud --avert), neutre.
- * Jamais de rouge ni de vert — l'alerte reste monochrome.
- */
+/** Inline contextual alert with label and semantic colors. */
 export function Alerte({ registre = 'info', titre, onFermer, children, style, ...rest }) {
   const r = REG[registre] || REG.info;
   return (
     <div
-      role="status"
+      role={registre === 'erreur' ? 'alert' : 'status'}
       style={{
         display: 'flex', alignItems: 'flex-start', gap: '14px',
-        background: 'var(--surface-carte)',
-        borderLeft: `var(--filet-epais) solid ${r.barre}`,
+        background: `color-mix(in oklch, ${r.barre} 8%, var(--surface-carte))`,
         border: 'var(--filet-fin) solid var(--filet)',
+        borderLeftColor: r.barre,
         borderLeftWidth: 'var(--filet-epais)',
         padding: '14px 16px', ...style,
       }}

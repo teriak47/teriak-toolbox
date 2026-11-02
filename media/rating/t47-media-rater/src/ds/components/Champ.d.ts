@@ -1,22 +1,18 @@
 import * as React from 'react';
 
-/**
- * Props du champ de saisie.
- */
+/** Text field props. */
 export interface ChampProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange'> {
-  /** Libellé en capitales mono. */
+  /** Uppercase label. */
   label?: React.ReactNode;
-  /** Valeur contrôlée. */
+  /** Controlled value. */
   valeur?: string;
   onChange?: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => void;
   placeholder?: string;
-  /** Petite cote alignée à droite du libellé. */
+  /** Identifier aligned to the right of the label. */
   cote?: React.ReactNode;
-  /** Zone de texte multiligne. */
+  /** Multiline text area. */
   multiligne?: boolean;
 }
 
-/**
- * Champ de saisie — filet net, focus à l'accent ; pas de boîte arrondie.
- */
+/** Text field with an accent focus border. */
 export function Champ(props: ChampProps): JSX.Element;

@@ -1,11 +1,11 @@
 import * as React from 'react';
 
 export interface CoteProps extends React.HTMLAttributes<HTMLSpanElement> {
-  /** Le texte de la cote, ex. "T47/INC‑2026‑014". */
+  /** Archive identifier text. */
   children: React.ReactNode;
-  /** Variante effacée (neutre) plutôt qu'accent. */
+  /** Use a muted neutral variant. */
   dim?: boolean;
 }
 
-/** Cote de classement mono — la signature documentaire de chaque artefact. */
+/** Monospace archive identifier. */
 export function Cote(props: CoteProps): JSX.Element;

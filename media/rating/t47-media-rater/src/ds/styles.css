@@ -1,5 +1,4 @@
-/* Teriak47 — point d'entrée CSS global.
-   Uniquement des @import ; les règles vivent dans tokens/ et base/. */
+/* SECTION 21 CSS entry point. */
 @import "tokens/colors.css";
 @import "tokens/typography.css";
 @import "tokens/spacing.css";

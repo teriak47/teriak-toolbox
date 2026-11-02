@@ -1,11 +1,11 @@
 import * as React from 'react';
 
 export interface EtatProps extends React.HTMLAttributes<HTMLSpanElement> {
-  /** L'état documentaire. Monochrome par principe — aucun vert/ambre/rouge. */
+  /** Document status. */
   valeur?: 'actif' | 'retenu' | 'attente' | 'clos' | 'ecarte';
-  /** Libellé personnalisé (remplace le mot par défaut). */
+  /** Custom label replacing the default. */
   enfant?: React.ReactNode;
 }
 
-/** Indicateur d'état — fente d'œil + libellé ; accent froid pour le vivant, ocre calme (--avert) pour l'alerte « à vérifier », neutres pour le clos. */
+/** Status indicator with an eye slit and label. */
 export function Etat(props: EtatProps): JSX.Element;

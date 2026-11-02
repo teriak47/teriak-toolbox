@@ -1,16 +1,12 @@
 import React from 'react';
 
-/**
- * Bouton — action Teriak47. Angles francs (aucune courbe), un coin peut être
- * coupé à 21°. L'état actif/primaire porte l'accent ; le survol fonce le filet
- * ou éclaircit le fond, sans halo ni déplacement.
- */
+/** Action button with an optional cut corner and restrained hover states. */
 export function Bouton({
   children,
   variante = 'normal',   // 'normal' | 'primaire' | 'rempli' | 'fantome'
   taille = 'md',         // 'sm' | 'md'
-  coupe = false,         // coin supérieur droit coupé à 21°
-  icone = null,          // ex. '▸'
+  coupe = false,         // top-right corner cut at 21 degrees
+  icone = null,          // e.g. '▸'
   disabled = false,
   onClick,
   style,
@@ -37,9 +33,9 @@ export function Bouton({
   const bg = hover && !disabled ? palette.bgH : palette.bg;
   const fg = hover && !disabled ? palette.fgH : palette.fg;
 
-  // Chamfer : coin supérieur droit coupé à 21°. On clippe à la même découpe
-  // l'enveloppe (couleur du filet) et le fond inséré d'un filet, pour que le
-  // bord se prolonge sans rupture le long de la coupe.
+  // Chamfer: clip both the border and the inset surface
+  // to the same top-right cut so the border
+  // continues along the chamfer.
   const decoupe = 'polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 0 100%)';
 
   const base = {
@@ -75,7 +71,7 @@ export function Bouton({
       {coupe ? (
         <span aria-hidden="true" style={{
           position: 'absolute', inset: 'var(--filet-fin)',
-          background: bg, clipPath: decoupe, pointerEvents: 'none',
+          background: bg === 'transparent' ? 'var(--surface-app)' : bg, clipPath: decoupe, pointerEvents: 'none',
           transition: 'background var(--duree-courte) var(--ease)',
         }} />
       ) : null}

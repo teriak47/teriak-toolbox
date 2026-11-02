@@ -1,44 +1,39 @@
-/* Teriak47 — Dispositifs de marque (utilitaires)
-   Tous dérivés du logo : la pente de l'éclair (21°), les éclats de fourrure,
-   la fente d'œil, les coins coupés. Classes autonomes, réutilisables partout.
-   AUCUNE n'introduit de courbe. */
+/* Brand utilities use the 21-degree angle and square corners. */
 
-/* ——— Éclats de fourrure — l'ornement signature (3 traits décroissants à 21°).
-   Trois emplois codifiés UNIQUEMENT : tête de section, séparateur d'index,
-   signature de pied. Ne pas semer ailleurs. ——— */
-.t47-shards { display: inline-flex; gap: 5px; align-items: flex-start; }
-.t47-shards i { display: block; width: var(--filet-bloc); background: var(--filet-fort); transform: rotate(var(--pente)); }
-.t47-shards i:nth-child(1) { height: 17px; }
-.t47-shards i:nth-child(2) { height: 11px; margin-top: 3px; }
-.t47-shards i:nth-child(3) { height: 6px;  margin-top: 6px; }
-.t47-shards.t47-shards--accent i { background: var(--accent); }
-.t47-shards.t47-shards--flip { transform: scaleX(-1); }
+/* Fur shards are reserved for headings, index separators and footer signatures. */
+.s21-shards { display: inline-flex; gap: 5px; align-items: flex-start; }
+.s21-shards i { display: block; width: var(--filet-bloc); background: var(--filet-fort); transform: rotate(var(--pente)); }
+.s21-shards i:nth-child(1) { height: 17px; }
+.s21-shards i:nth-child(2) { height: 11px; margin-top: 3px; }
+.s21-shards i:nth-child(3) { height: 6px;  margin-top: 6px; }
+.s21-shards.s21-shards--accent i { background: var(--accent); }
+.s21-shards.s21-shards--flip { transform: scaleX(-1); }
 
-/* ——— Fente d'œil — remplace TOUT point/pastille d'état (jamais de cercle). ——— */
-.t47-slit { display: inline-block; width: 16px; height: 5px; background: var(--accent); transform: skewX(calc(-1 * var(--pente))); }
-.t47-slit--dim { background: var(--etat-clos); }
-.t47-slit--attente { background: var(--avert); }
+/* Eye slit replaces circular status markers. */
+.s21-slit { display: inline-block; width: 16px; height: 5px; background: var(--accent); transform: skewX(calc(-1 * var(--pente))); }
+.s21-slit--dim { background: var(--etat-clos); }
+.s21-slit--attente { background: var(--avert); }
 
-/* ——— Filet : le seul trait de séparation. Net, pas d'ombre. ——— */
-.t47-filet { border: 0; border-top: var(--filet-fin) solid var(--filet); height: 0; margin: 0; }
-.t47-filet--fort { border-top-color: var(--filet-fort); }
-.t47-filet--accent { border-top-color: var(--accent); }
+/* Crisp separator rule. */
+.s21-filet { border: 0; border-top: var(--filet-fin) solid var(--filet); height: 0; margin: 0; }
+.s21-filet--fort { border-top-color: var(--filet-fort); }
+.s21-filet--accent { border-top-color: var(--accent); }
 
-/* ——— Séparateur en éclats (pour les index / listes) ——— */
-.t47-sep-eclats { display: flex; gap: 5px; }
-.t47-sep-eclats i { display: block; width: var(--filet-bloc); height: 12px; background: var(--filet); transform: rotate(var(--pente)); }
+/* Shard separator for indexes and lists. */
+.s21-sep-eclats { display: flex; gap: 5px; }
+.s21-sep-eclats i { display: block; width: var(--filet-bloc); height: 12px; background: var(--filet); transform: rotate(var(--pente)); }
 
-/* ——— Coupes de coin (ratio tan 21°) — la seule façon de casser un angle ——— */
-.t47-coupe-tr { clip-path: polygon(0 0, calc(100% - var(--coupe)) 0, 100% var(--coupe-h), 100% 100%, 0 100%); }
-.t47-coupe-bl { clip-path: polygon(0 0, 100% 0, 100% 100%, var(--coupe) 100%, 0 calc(100% - var(--coupe-h))); }
-.t47-coupe-2  { clip-path: polygon(0 0, calc(100% - var(--coupe)) 0, 100% var(--coupe-h), 100% 100%, var(--coupe) 100%, 0 calc(100% - var(--coupe-h))); }
+/* Cut corners follow the tangent of 21 degrees. */
+.s21-coupe-tr { clip-path: polygon(0 0, calc(100% - var(--coupe)) 0, 100% var(--coupe-h), 100% 100%, 0 100%); }
+.s21-coupe-bl { clip-path: polygon(0 0, 100% 0, 100% 100%, var(--coupe) 100%, 0 calc(100% - var(--coupe-h))); }
+.s21-coupe-2  { clip-path: polygon(0 0, calc(100% - var(--coupe)) 0, 100% var(--coupe-h), 100% 100%, var(--coupe) 100%, 0 calc(100% - var(--coupe-h))); }
 
-/* ——— Cote de classement — l'identifiant mono qui marque chaque artefact ——— */
-.t47-cote { font: var(--type-cote); letter-spacing: var(--ls-meta); color: var(--accent); }
-.t47-cote--dim { color: var(--texte-faible); }
+/* Monospace archive identifier. */
+.s21-cote { font: var(--type-cote); letter-spacing: var(--ls-meta); color: var(--accent); }
+.s21-cote--dim { color: var(--texte-faible); }
 
-/* ——— Tampon — entaillé d'un seul trait net à 21° (pas de rotation bancale) ——— */
-.t47-tampon { position: relative; display: inline-block; font-family: var(--font-sans); font-weight: var(--poids-demi); font-size: var(--txt-sm); letter-spacing: var(--ls-libelle); color: var(--accent); padding: 4px 0; white-space: nowrap; }
-.t47-tampon::after { content: ''; position: absolute; left: -8px; right: -2px; top: 54%; height: 2px; background: var(--accent); transform: rotate(calc(-1 * var(--pente) / 2)); }
-.t47-tampon--clos { color: var(--etat-clos); }
-.t47-tampon--clos::after { background: var(--etat-clos); }
+/* Stamp with a 21-degree cut. */
+.s21-tampon { position: relative; display: inline-block; font-family: var(--font-sans); font-weight: var(--poids-demi); font-size: var(--txt-sm); letter-spacing: var(--ls-libelle); color: var(--accent); padding: 4px 0; white-space: nowrap; }
+.s21-tampon::after { content: ''; position: absolute; left: -8px; right: -2px; top: 54%; height: 2px; background: var(--accent); transform: rotate(calc(-1 * var(--pente) / 2)); }
+.s21-tampon--clos { color: var(--etat-clos); }
+.s21-tampon--clos::after { background: var(--etat-clos); }

@@ -10,8 +10,8 @@ export interface RatingCriterion {
   id: string;
   label: string;
   description?: string;
-  score: number; // 0 pour non noté, 1-7 pour noté
-  weight: number; // ex. 0.5, 1, 1.5, 2
+  score: number; // 0 for unrated, 1-7 for rated
+  weight: number; // e.g. 0.5, 1, 1.5, 2
 }
 
 export interface Scores {

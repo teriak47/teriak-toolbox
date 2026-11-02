@@ -1,10 +1,6 @@
 import React from 'react';
 
-/**
- * MenuRadio — contrôle segmenté (choix unique). Segments accolés dans un cadre
- * à filet ; le segment actif porte l'accent plein. Angles francs. Remplace le
- * groupe radio classique pour 2 à 5 options courtes.
- */
+/** Segmented single-choice control. */
 export function MenuRadio({ valeur, onChange, options = [], style, ...rest }) {
   const items = options.map((o) => (typeof o === 'string' ? { valeur: o, texte: o } : o));
   return (

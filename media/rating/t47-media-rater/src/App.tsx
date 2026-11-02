@@ -26,7 +26,7 @@ const App: React.FC = () => {
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
             <img src={logoWhite} alt="Teriak47" style={{ width: '44px', height: '44px', flex: 'none' }} />
             <div>
-              <h1 style={{ font: 'var(--type-titre)', letterSpacing: 'var(--ls-titre)' }}>7-Point Rater</h1>
+              <h1 style={{ font: 'var(--type-titre)', letterSpacing: 'var(--ls-titre)' }}>T47 Media Score</h1>
               <p style={{ font: 'var(--type-corps-sm)', color: 'var(--texte)', margin: '6px 0 0' }}>
                 Sept points, pondérés. Je note, je convertis, j'archive.
               </p>
@@ -58,7 +58,7 @@ const App: React.FC = () => {
       <footer style={{ marginTop: '48px', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '16px' }}>
         <span style={{ font: 'var(--type-cote)', color: 'var(--texte-faible)' }}>Teriak47 — outil d'archive personnelle</span>
         <a
-          href="https://github.com"
+          href="https://github.com/teriak47/teriak-toolbox/tree/main/media/rating/t47-media-rater"
           target="_blank"
           rel="noopener noreferrer"
           style={{ font: 'var(--type-cote)', color: 'var(--texte-faible)', textDecoration: 'none' }}
