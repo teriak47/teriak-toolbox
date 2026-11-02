@@ -8,6 +8,7 @@ Teriak Toolbox est la collection personnelle de petits outils réutilisables de 
 
 | Outil | Utilité |
 | --- | --- |
+| [Event Inspector](data/inspection/t47-event-inspector/README.md) | Explorer, filtrer et comparer localement des événements JSON et NDJSON. |
 | [7-Point Media Rater](media/rating/t47-media-rater/README.md) | Noter des médias avec des critères pondérés et exporter une note Markdown. |
 
 ## Documentation du projet
