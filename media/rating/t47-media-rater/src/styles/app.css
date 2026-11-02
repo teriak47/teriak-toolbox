@@ -1,15 +1,11 @@
-/* 7-Point Rater — styles applicatifs.
-   Tout le reste vient des tokens Teriak47 (src/ds/). Zéro courbe, pente 21°,
-   élévation au filet. */
+/* Application-specific styles use the SECTION 21 tokens in src/ds. */
 
 body {
   margin: 0;
   min-height: 100vh;
 }
 
-/* — Échelle de notation 1–7 : registre monochrome.
-     Sélection = accent plein ; valeurs inférieures = accent sourd ;
-     le reste s'efface dans les neutres. Jamais de rouge ni de vert. — */
+/* The rating scale highlights the selection and lower values. */
 .note-echelle {
   display: flex;
   gap: var(--filet-fin);
@@ -50,7 +46,7 @@ body {
   color: var(--texte-sur-accent);
 }
 
-/* — Bouton de poids : libellé mono à filet, accent quand le poids diffère de 1 — */
+/* Emphasize non-default weights with the accent color. */
 .poids-btn {
   border: var(--filet-fin) solid var(--filet-fort);
   background: transparent;
@@ -74,7 +70,7 @@ body {
   background: color-mix(in oklch, var(--accent) 10%, transparent);
 }
 
-/* — Infobulle de critère : encadré net à filet, aucun arrondi, mouvement sec — */
+/* Criterion information uses a bordered, square tooltip. */
 .info-btn {
   border: var(--filet-fin) solid var(--filet);
   background: transparent;
@@ -119,7 +115,7 @@ body {
   .info-bulle { animation: none; }
 }
 
-/* — Rangée de critère — */
+/* Criterion row. */
 .critere {
   display: grid;
   grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);

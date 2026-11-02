@@ -1,4 +1,4 @@
-# 7-Point Media Rater
+# T47 Media Score
 
 Rate films, series, anime, books, and music on a seven-point scale with optional per-criterion weights. The application converts the weighted score to scales of 10 and 5 and can export an Obsidian-compatible Markdown note. The interface is in French.
 

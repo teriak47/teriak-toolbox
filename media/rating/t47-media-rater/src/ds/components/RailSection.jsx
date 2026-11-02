@@ -1,10 +1,6 @@
 import React from 'react';
 
-/**
- * RailSection — l'en-tête de section signature : un rail qui porte les éclats
- * de fourrure, le numéro mono et l'intitulé en capitales. C'est ici, et nulle
- * part ailleurs, que les éclats marquent une tête de section.
- */
+/** Section heading with shards, number and title. */
 export function RailSection({ numero, titre, children, largeurRail = 132, style, ...rest }) {
   return (
     <section style={{ display: 'grid', gridTemplateColumns: `${largeurRail}px 1fr`, gap: '32px', ...style }} {...rest}>

@@ -1,15 +1,12 @@
 import React from 'react';
 
-/**
- * Champ — saisie de texte. Filet net sous le champ (pas de boîte fermée
- * superflue), libellé mono en capitales, focus marqué par un filet d'accent.
- */
+/** Text field with a label and accent focus border. */
 export function Champ({
   label,
   valeur,
   onChange,
   placeholder,
-  cote,                 // petite cote alignée à droite du libellé
+  cote,                 // small identifier aligned to the right of the label
   multiligne = false,
   style,
   ...rest

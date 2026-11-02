@@ -1,23 +1,19 @@
 import * as React from 'react';
 
-/**
- * Props du bouton d'action Teriak47.
- */
+/** Action button props. */
 export interface BoutonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  /** Contenu du bouton (texte). */
+  /** Button content. */
   children: React.ReactNode;
-  /** Style : contour neutre, accent en contour, accent rempli, ou texte seul. */
+  /** Neutral outline, accent outline, filled accent or text-only style. */
   variante?: 'normal' | 'primaire' | 'rempli' | 'fantome';
-  /** Taille. */
+  /** Button size. */
   taille?: 'sm' | 'md';
-  /** Coin supérieur droit coupé à 21° (géométrie de l'éclair). */
+  /** Top-right corner cut at 21 degrees. */
   coupe?: boolean;
-  /** Glyphe d'icône optionnel (ex. '▸'), rendu en mono à l'accent. */
+  /** Optional icon glyph. */
   icone?: React.ReactNode;
   disabled?: boolean;
 }
 
-/**
- * Bouton d'action Teriak47 — angles francs, aucun halo, aucun déplacement au survol.
- */
+/** SECTION 21 action button. */
 export function Bouton(props: BoutonProps): JSX.Element;

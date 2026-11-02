@@ -1,18 +1,14 @@
 import React from 'react';
 import { Cote } from './Cote.jsx';
 
-/**
- * Carte — surface d'archive. Pas d'ombre ni d'arrondi : l'élévation se lit
- * au filet. Un coin peut être coupé à 21°. En-tête optionnel portant une cote
- * et une mention à droite.
- */
+/** Archive surface with an optional cut corner and header. */
 export function Carte({
   children,
-  cote,                 // string — affiche un en-tête avec la cote
-  mention,              // ReactNode — coin droit de l'en-tête (ex. <Etat/>)
-  coupe = false,        // coin supérieur droit coupé
-  haute = false,        // surface surélevée
-  accent = false,       // liseré d'accent à gauche (rare — pour signaler)
+  cote,                 // string: show a header with the identifier
+  mention,              // ReactNode shown at the right of the header, e.g. <Etat/>
+  coupe = false,        // cut top-right corner
+  haute = false,        // raised surface
+  accent = false,       // left accent border for highlighted items
   style,
   ...rest
 }) {
@@ -34,8 +30,8 @@ export function Carte({
     </React.Fragment>
   );
 
-  // Chamfer : on enveloppe la surface d'un calque couleur-filet, lui aussi
-  // découpé, pour que le bord se prolonge le long de la coupe (1 filet partout).
+  // Chamfer: wrap the surface in a matching border layer
+  // so the border continues along the cut.
   if (coupe) {
     return (
       <div

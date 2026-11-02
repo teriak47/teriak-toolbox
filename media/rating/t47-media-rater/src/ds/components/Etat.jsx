@@ -8,11 +8,7 @@ const MAP = {
   ecarte:  { mot: 'ÉCARTÉE',  couleur: 'var(--etat-clos)',     variante: 'dim' },
 };
 
-/**
- * État — indicateur d'état. Le vivant porte l'accent FROID (« en cours / retenu ») ;
- * « à vérifier » porte l'unique ton chaud calme (--avert), jamais le rouge ni le vert ;
- * le clos s'efface dans les neutres. La pastille est une FENTE D'ŒIL (jamais un cercle).
- */
+/** Status indicator with an eye slit and label. */
 export function Etat({ valeur = 'actif', enfant, style, ...rest }) {
   const e = MAP[valeur] || MAP.actif;
   const barre = valeur === 'actif' || valeur === 'retenu'

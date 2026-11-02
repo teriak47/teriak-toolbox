@@ -1,19 +1,19 @@
 import * as React from 'react';
 
 export interface JaugeProps extends React.HTMLAttributes<HTMLDivElement> {
-  /** Libellé mono en capitales. */
+  /** Uppercase label. */
   label?: React.ReactNode;
-  /** Valeur courante. */
+  /** Current value. */
   valeur?: number;
-  /** Valeur maximale. Défaut 100. */
+  /** Maximum value; defaults to 100. */
   max?: number;
-  /** Seuil (en %) au-delà duquel la jauge passe au ton --avert. Défaut 80. */
+  /** Percentage threshold for warning color; defaults to 80. */
   seuil?: number;
-  /** Unité affichée après la valeur. Défaut « % ». */
+  /** Displayed unit; defaults to percent. */
   unite?: string;
-  /** Affiche la valeur numérique à droite du libellé. Défaut true. */
+  /** Show numeric value; defaults to true. */
   afficheValeur?: boolean;
 }
 
-/** Jauge — barre de mesure monochrome, accent froid, --avert au-delà du seuil. */
+/** Measurement bar with warning threshold. */
 export function Jauge(props: JaugeProps): JSX.Element;
