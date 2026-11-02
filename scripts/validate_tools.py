@@ -8,7 +8,7 @@ from pathlib import Path, PurePosixPath, PureWindowsPath
 import yaml
 
 TAXONOMY = {
-    "data": {"inspection", "conversion", "extraction", "validation", "comparison", "generation"},
+    "data": {"inspection", "conversion", "extraction", "validation", "comparison", "generation", "visualization"},
     "system": {"monitoring", "diagnostics", "management", "maintenance"},
     "network": {"diagnostics", "analysis", "monitoring", "testing"},
     "security": {"detection", "forensics", "auditing", "testing"},
