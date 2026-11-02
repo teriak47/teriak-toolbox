@@ -19,11 +19,21 @@ const source = [
   between('  function encodeValueAtom(', '  function resolveComparisonSideIndices('),
   between('  function getUnionColumnLabels(', '  function refreshCompareSelectors('),
   between('  function makeFallbackColumnDescriptor(', '  async function executeComparison('),
-  'globalThis.testApi = { RawNumber, parseJsonPreservingPrecision, formatJson, compareExactNumeric, encodeValueAtom, createSchemaBuilder, getFieldValue, getUnionColumnLabels, makeFallbackColumnDescriptor };'
+  'globalThis.testApi = { RawNumber, parseJsonPreservingPrecision, formatJson, compareExactNumeric, encodeValueAtom, createSchemaBuilder, detectDefaultTemporalField, getFieldValue, getUnionColumnLabels, makeFallbackColumnDescriptor };'
 ].join('\n');
 const context = vm.createContext({});
 vm.runInContext(source, context);
 const api = context.testApi;
+
+test('timestamp detection uses the original field path rather than its display label', () => {
+  const columns = [
+    { id: '["date"]', path: ['date'], label: 'date', sampleChecked: 1, sampleTimeHits: 1 },
+    { id: '["@timestamp"]', path: ['@timestamp'], label: '["@timestamp"]', sampleChecked: 1, sampleTimeHits: 1 },
+    { id: '["nested","timestamp"]', path: ['nested', 'timestamp'], label: 'nested.timestamp', sampleChecked: 1, sampleTimeHits: 1 },
+  ];
+  assert.equal(api.detectDefaultTemporalField(columns.slice(0, 2)), columns[1].id);
+  assert.equal(api.detectDefaultTemporalField(columns), columns[2].id);
+});
 
 test('tiny nonzero numbers survive JSON import and output', () => {
   for (const raw of ['1e-400', '-1e-9999', '1e-324', '9e-324', '0.' + '0'.repeat(323) + '1']) {

@@ -2542,10 +2542,10 @@
       if (c.sampleChecked === 0 || c.sampleTimeHits === 0) continue;
       const ratio = c.sampleTimeHits / c.sampleChecked;
       if (ratio < 0.6) continue;
-      const lower = c.label.toLowerCase();
+      const lower = c.path[c.path.length - 1].toLowerCase();
       let score = ratio * 10;
       for (let p = 0; p < priorityNames.length; p++) {
-        if (lower === priorityNames[p] || lower.endsWith('.' + priorityNames[p])) {
+        if (lower === priorityNames[p]) {
           score += 50 - p;
           break;
         }
