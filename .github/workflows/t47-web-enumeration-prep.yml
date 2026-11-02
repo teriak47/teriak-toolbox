@@ -1,0 +1,32 @@
+name: Web enumeration prep
+
+on:
+  pull_request:
+    paths:
+      - 'security/generation/t47-web-enumeration-prep/**'
+      - '.github/workflows/t47-web-enumeration-prep.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'security/generation/t47-web-enumeration-prep/**'
+      - '.github/workflows/t47-web-enumeration-prep.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Web enumeration tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: security/generation/t47-web-enumeration-prep
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - run: python -m unittest discover -s tests -v

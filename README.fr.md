@@ -12,6 +12,7 @@ Teriak Toolbox est la collection personnelle de petits outils réutilisables de 
 | [Graphax](data/visualization/t47-graphax-board/README.fr.md) — bêta | Créer localement des tableaux d’enquête et de recherche sous forme de graphes. |
 | [7-Point Media Rater](media/rating/t47-media-rater/README.md) | Noter des médias avec des critères pondérés et exporter une note Markdown. |
 | [Zircolite SQL Generator](security/forensics/t47-zircolite-sql-generator/README.fr.md) | Préparer des requêtes SQL pour le Viewer de Zircolite. |
+| [Web Enumeration Prep](security/generation/t47-web-enumeration-prep/README.fr.md) | Générer des listes de noms et préparer des commandes d’énumération web. |
 
 ## Documentation du projet
 
