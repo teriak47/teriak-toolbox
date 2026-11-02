@@ -1,0 +1,19 @@
+id: t47-zircolite-sql-generator
+name: Zircolite SQL Generator
+description: Generate SQL queries for investigating events in Zircolite Viewer.
+version: 0.1.0
+author: Teriak47
+classification:
+  family: security
+  category: forensics
+  domains:
+    - cybersecurity
+    - incident-response
+technologies:
+  - html
+  - javascript
+formats:
+  - sql
+execution:
+  type: browser
+  entrypoint: index.html
