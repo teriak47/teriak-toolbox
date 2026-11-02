@@ -14,7 +14,7 @@ TAXONOMY = {
     "security": {"detection", "forensics", "auditing", "testing"},
     "development": {"debugging", "testing", "generation", "validation"},
     "automation": {"workflows", "scheduling", "integration", "batch-processing"},
-    "media": {"conversion", "analysis", "processing", "generation"},
+    "media": {"conversion", "analysis", "processing", "generation", "rating"},
 }
 ID = re.compile(r"t47-[a-z0-9]+(?:-[a-z0-9]+)*\Z")
 VERSION = re.compile(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\Z")

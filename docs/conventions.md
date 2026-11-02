@@ -1,6 +1,6 @@
 # Project conventions
 
-These conventions describe the agreed initial framework. Repository validation is prepared locally; GitHub checks only run after publication. Targeted tool tests, branch protection, and release automation remain to be configured.
+These conventions describe the agreed initial framework. Repository validation and branch protection are configured on GitHub. Tools can provide targeted checks; release automation remains to be configured.
 
 ## Identity and structure
 
@@ -18,7 +18,7 @@ Initial taxonomy:
 | `security` | `detection`, `forensics`, `auditing`, `testing` |
 | `development` | `debugging`, `testing`, `generation`, `validation` |
 | `automation` | `workflows`, `scheduling`, `integration`, `batch-processing` |
-| `media` | `conversion`, `analysis`, `processing`, `generation` |
+| `media` | `conversion`, `analysis`, `processing`, `generation`, `rating` |
 
 `data` covers generic manipulation or understanding of data; `system` covers system operation, state, or administration; `network` covers communications; and `security` covers a primary security purpose such as detection, auditing, or investigation. For example, a generic log analyser belongs in `data`, whereas a log-based indicator-of-compromise detector belongs in `security`.
 
@@ -30,6 +30,7 @@ For overlapping operations, use these distinctions:
 - `monitoring`: observe state or measurements over time.
 - `testing`: actively check behaviour against a defined objective.
 - `validation`: check conformity to rules or an expected format.
+- `rating`: evaluate a work or item using a scoring scale and criteria.
 
 ## Tool contents and metadata
 

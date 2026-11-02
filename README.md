@@ -6,7 +6,9 @@ Teriak Toolbox is Teriak47's personal collection of small, reusable tools. It is
 
 ## Tool catalogue
 
-No tools have been integrated yet. Each tool will be reviewed before it is added, with its own documentation, metadata, and version.
+| Tool | Purpose |
+| --- | --- |
+| [7-Point Media Rater](media/rating/t47-media-rater/README.md) | Rate media with weighted criteria and export a Markdown note. |
 
 ## Project documentation
 

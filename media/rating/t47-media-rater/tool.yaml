@@ -1,0 +1,19 @@
+id: t47-media-rater
+name: 7-Point Media Rater
+description: Rate media with weighted criteria and export a Markdown note.
+version: 1.0.0
+author: Teriak47
+classification:
+  family: media
+  category: rating
+  domains:
+    - entertainment
+technologies:
+  - react
+  - typescript
+  - vite
+formats:
+  - markdown
+execution:
+  type: browser
+  entrypoint: index.html

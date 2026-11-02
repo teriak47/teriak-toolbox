@@ -1,0 +1,141 @@
+/* 7-Point Rater — styles applicatifs.
+   Tout le reste vient des tokens Teriak47 (src/ds/). Zéro courbe, pente 21°,
+   élévation au filet. */
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+/* — Échelle de notation 1–7 : registre monochrome.
+     Sélection = accent plein ; valeurs inférieures = accent sourd ;
+     le reste s'efface dans les neutres. Jamais de rouge ni de vert. — */
+.note-echelle {
+  display: flex;
+  gap: var(--filet-fin);
+  border: var(--filet-fin) solid var(--filet);
+  background: var(--filet);
+}
+
+.note-btn {
+  flex: 1;
+  min-width: 0;
+  height: 42px;
+  border: none;
+  background: var(--surface-puits);
+  color: var(--texte-faible);
+  font: var(--poids-demi) var(--txt-sm)/1 var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: background var(--duree-courte) var(--ease), color var(--duree-courte) var(--ease);
+}
+
+.note-btn:hover {
+  background: var(--surface-haute);
+  color: var(--accent);
+}
+
+.note-btn[data-niveau='sous'] {
+  background: var(--accent-sourd);
+  color: var(--texte-sur-accent);
+}
+
+.note-btn[data-niveau='choisi'] {
+  background: var(--accent);
+  color: var(--texte-sur-accent);
+}
+
+.note-btn[data-niveau='choisi']:hover {
+  background: var(--accent-fort);
+  color: var(--texte-sur-accent);
+}
+
+/* — Bouton de poids : libellé mono à filet, accent quand le poids diffère de 1 — */
+.poids-btn {
+  border: var(--filet-fin) solid var(--filet-fort);
+  background: transparent;
+  color: var(--texte-faible);
+  font: var(--poids-normal) var(--txt-2xs)/1 var(--font-mono);
+  letter-spacing: var(--ls-meta);
+  padding: 5px 9px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color var(--duree-courte) var(--ease), color var(--duree-courte) var(--ease);
+}
+
+.poids-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.poids-btn[data-actif='true'] {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: color-mix(in oklch, var(--accent) 10%, transparent);
+}
+
+/* — Infobulle de critère : encadré net à filet, aucun arrondi, mouvement sec — */
+.info-btn {
+  border: var(--filet-fin) solid var(--filet);
+  background: transparent;
+  color: var(--texte-faible);
+  font: var(--poids-normal) var(--txt-2xs)/1 var(--font-mono);
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  cursor: pointer;
+  flex: none;
+  transition: border-color var(--duree-courte) var(--ease), color var(--duree-courte) var(--ease);
+}
+
+.info-btn:hover,
+.info-btn[data-ouvert='true'] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.info-bulle {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 8px);
+  z-index: 10;
+  width: 260px;
+  max-width: 70vw;
+  background: var(--surface-haute);
+  border: var(--filet-fin) solid var(--filet-fort);
+  padding: 10px 12px;
+  font: var(--poids-normal) var(--txt-xs)/1.55 var(--font-sans);
+  color: var(--texte);
+  box-shadow: var(--ombre-portee);
+  animation: bulle-entree var(--duree) var(--ease) forwards;
+}
+
+@keyframes bulle-entree {
+  from { opacity: 0; transform: translateY(3px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .info-bulle { animation: none; }
+}
+
+/* — Rangée de critère — */
+.critere {
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  gap: 16px;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: var(--filet-fin) solid var(--filet);
+}
+
+.critere:last-child {
+  border-bottom: none;
+}
+
+@media (max-width: 640px) {
+  .critere {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+}
