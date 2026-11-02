@@ -4,6 +4,8 @@
 
 **Bêta :** l'application est en développement et n'a pas encore fait l'objet d'une revue complète de sécurité et de fonctionnement. Conservez des sauvegardes indépendantes de vos projets importants.
 
+La revue a relevé une perte possible des dernières modifications d'un lien lorsqu'il est inversé rapidement, ainsi qu'un état « enregistré » trompeur si l'enregistrement d'un élément échoue. Vérifiez les changements importants et conservez des exports de sauvegarde jusqu'à la correction de ces problèmes.
+
 Application locale d'investigation, d'OSINT/Cyber, d'analyse de lore et de recherche complexe conçue pour dépasser les limites des graphes flottants classiques.
 
 ## Architecture Technique

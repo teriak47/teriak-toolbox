@@ -6,6 +6,8 @@ Graphax is a local interactive graph board for investigations, research, and sto
 
 **Beta:** the application is under development and has not yet received a complete security and functionality review. Keep independent backups of important projects.
 
+Review identified possible loss of recent relationship edits when reversing a link quickly, and a misleading saved state if saving a node fails. Check important changes and keep exported backups until these issues are resolved.
+
 ## Run locally
 
 Requires Node.js 22.18 or later and pnpm. The transfer was built with Node.js 22 and pnpm 12. From this directory:
