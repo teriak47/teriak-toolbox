@@ -8,7 +8,7 @@ const TYPE_MAPPING: { [key in MediaType]: string } = {
   [MediaType.ANIME]: 'Animé',
 };
 
-/** Barre de progression textuelle sur 7 crans (rendu net dans Obsidian). */
+/** Seven-step text progress bar for Obsidian. */
 const scoreBar = (score: number): string => '█'.repeat(score) + '░'.repeat(7 - score);
 
 export const formatForObsidian = (

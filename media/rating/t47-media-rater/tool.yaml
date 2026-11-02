@@ -1,7 +1,7 @@
 id: t47-media-rater
-name: 7-Point Media Rater
+name: T47 Media Score
 description: Rate media with weighted criteria and export a Markdown note.
-version: 1.0.0
+version: 1.1.0
 author: Teriak47
 classification:
   family: media

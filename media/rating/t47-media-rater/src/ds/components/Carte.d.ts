@@ -1,23 +1,19 @@
 import * as React from 'react';
 
-/**
- * Props de la surface d'archive.
- */
+/** Archive surface props. */
 export interface CarteProps extends React.HTMLAttributes<HTMLDivElement> {
   children: React.ReactNode;
-  /** Cote affichée dans l'en-tête (active l'en-tête). */
+  /** Identifier shown in the optional header. */
   cote?: string;
-  /** Élément du coin droit de l'en-tête, ex. un <Etat/>. */
+  /** Element shown at the right of the header. */
   mention?: React.ReactNode;
-  /** Coin supérieur droit coupé à 21°. */
+  /** Top-right corner cut at 21 degrees. */
   coupe?: boolean;
-  /** Surface surélevée (un cran plus clair). */
+  /** Raised surface. */
   haute?: boolean;
-  /** Liseré d'accent à gauche — rare, pour signaler une pièce active. */
+  /** Left accent border for a highlighted item. */
   accent?: boolean;
 }
 
-/**
- * Surface d'archive — élévation au filet, pas d'ombre ni d'arrondi.
- */
+/** Archive surface with border-based elevation. */
 export function Carte(props: CarteProps): JSX.Element;

@@ -1,16 +1,16 @@
 import * as React from 'react';
 
-export type RegistreAlerte = 'info' | 'attente' | 'neutre';
+export type RegistreAlerte = 'info' | 'attente' | 'neutre' | 'succes' | 'attention' | 'erreur';
 
 export interface AlerteProps extends React.HTMLAttributes<HTMLDivElement> {
-  /** Registre : info (accent), attente (--avert), neutre. */
+  /** Semantic color: info, succes, attention, erreur, attente or neutre. */
   registre?: RegistreAlerte;
-  /** Libellé mono en capitales (défaut selon le registre). */
+  /** Uppercase label with a default per register. */
   titre?: React.ReactNode;
-  /** Si fourni, affiche une croix de fermeture. */
+  /** Shows a close control when provided. */
   onFermer?: () => void;
   children?: React.ReactNode;
 }
 
-/** Alerte — bandeau contextuel monochrome, filet d'accent à gauche, fente d'œil. */
+/** Contextual alert with semantic color and label. */
 export function Alerte(props: AlerteProps): JSX.Element;

@@ -1,20 +1,16 @@
 import * as React from 'react';
 
-/**
- * Props de l'en-tête de section signature.
- */
+/** Section heading props. */
 export interface RailSectionProps extends React.HTMLAttributes<HTMLElement> {
-  /** Numéro de section (ex. "01"), affiché en mono accent. */
+  /** Monospace section number. */
   numero?: React.ReactNode;
-  /** Intitulé en capitales. */
+  /** Uppercase title. */
   titre: React.ReactNode;
-  /** Contenu de la section. */
+  /** Section content. */
   children: React.ReactNode;
-  /** Largeur du rail gauche en px (défaut 132). */
+  /** Left rail width in pixels; defaults to 132. */
   largeurRail?: number;
 }
 
-/**
- * En-tête de section signature — rail gauche : éclats + numéro + intitulé.
- */
+/** Section heading with shards, number and title. */
 export function RailSection(props: RailSectionProps): JSX.Element;

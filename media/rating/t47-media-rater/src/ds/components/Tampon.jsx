@@ -1,10 +1,6 @@
 import React from 'react';
 
-/**
- * Tampon — mention de statut entaillée d'un seul trait net à 21°.
- * Sobre, jamais en rotation bancale. Réservé aux mentions fortes
- * (EN COURS, CLASSÉ, CONFIDENTIEL).
- */
+/** Status stamp with a 21-degree cut. */
 export function Tampon({ children, clos = false, style, ...rest }) {
   const couleur = clos ? 'var(--etat-clos)' : 'var(--accent)';
   return (
