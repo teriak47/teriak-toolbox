@@ -67,6 +67,8 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
   const inFlightSavesRef = useRef(0);
   const failedSavesRef = useRef(new Map<string, () => Promise<unknown>>());
   const nodePatchesRef = useRef(new Map<string, Record<string, unknown>>());
+  // Unsaved field edits per link; a retry always sends the latest merged values
+  const edgePatchesRef = useRef(new Map<string, Record<string, unknown>>());
   const edgeQueueRef = useRef<Promise<unknown>>(Promise.resolve());
   const edgeAliasRef = useRef(new Map<string, string>());
 
@@ -392,23 +394,49 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
   );
 
   // Commit inline edge label
+  // Sends the merged unsaved field edits of a link. Overlapping edits supersede each other,
+  // so replaying a failed save can never restore an older value.
+  const saveEdgeFields = useCallback(
+    (edgeId: string) =>
+      runSave(
+        () =>
+          enqueueEdgeOp(async () => {
+            const currentId = resolveEdgeId(edgeId);
+            const patch = edgePatchesRef.current.get(currentId);
+            if (!patch) return;
+            const { edge } = await api.updateEdge(currentId, patch);
+            if (edgePatchesRef.current.get(currentId) === patch) {
+              edgePatchesRef.current.delete(currentId);
+            }
+            setRelations((prev) => prev.map((e) => (e.id === currentId ? edge : e)));
+          }),
+        { retryKey: `edge:${resolveEdgeId(edgeId)}` }
+      ),
+    [runSave, enqueueEdgeOp, resolveEdgeId]
+  );
+
+  const queueEdgeFields = useCallback(
+    (edgeId: string, fields: Record<string, unknown>) => {
+      const currentId = resolveEdgeId(edgeId);
+      edgePatchesRef.current.set(currentId, {
+        ...(edgePatchesRef.current.get(currentId) ?? {}),
+        ...fields,
+      });
+      return saveEdgeFields(currentId);
+    },
+    [resolveEdgeId, saveEdgeFields]
+  );
+
+  // Commit inline edge label
   const handleCommitEdgeLabel = useCallback(
     async (edgeId: string, newLabel: string) => {
       setAutoEditEdgeId((curr) => (curr === edgeId ? null : curr));
       setRelations((prev) =>
         prev.map((e) => (e.id === edgeId ? { ...e, label: newLabel } : e))
       );
-      await runSave(
-        () =>
-          enqueueEdgeOp(async () => {
-            const currentId = resolveEdgeId(edgeId);
-            const { edge } = await api.updateEdge(currentId, { label: newLabel });
-            setRelations((prev) => prev.map((e) => (e.id === currentId ? edge : e)));
-          }),
-        { retryKey: `edge:${edgeId}:label` }
-      );
+      await queueEdgeFields(edgeId, { label: newLabel });
     },
-    [runSave, enqueueEdgeOp, resolveEdgeId]
+    [queueEdgeFields]
   );
 
   // Node updates from Inspector
@@ -462,33 +490,51 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
         reverse: boolean;
       }>
     ) => {
-      if (!patch.reverse) {
+      const { reverse, ...fields } = patch;
+      const hasFields = Object.keys(fields).length > 0;
+
+      if (!reverse) {
         setRelations((prev) =>
-          prev.map((e) => (e.id === edgeId ? { ...e, ...patch } : e))
+          prev.map((e) => (e.id === edgeId ? { ...e, ...fields } : e))
         );
+        await queueEdgeFields(edgeId, fields);
+        return;
       }
-      await runSave(
-        () =>
-          enqueueEdgeOp(async () => {
-            const currentId = resolveEdgeId(edgeId);
-            const { edge, replacedId } = await api.updateEdge(currentId, patch);
-            if (replacedId) {
-              edgeAliasRef.current.set(replacedId, edge.id);
-              setRelations((prev) => prev.map((e) => (e.id === replacedId ? edge : e)));
-              setSelectedEdgeId((curr) => (curr === replacedId ? edge.id : curr));
-            } else {
-              setRelations((prev) => prev.map((e) => (e.id === currentId ? edge : e)));
-            }
-          }),
-        {
-          // A reversal is not replayed: it would flip the link a second time
-          retryKey: patch.reverse
-            ? undefined
-            : `edge:${edgeId}:${Object.keys(patch).sort().join(',')}`,
-        }
+
+      // The unsaved fields travel with the reversal and stay queued if it fails
+      const startId = resolveEdgeId(edgeId);
+      if (hasFields) {
+        edgePatchesRef.current.set(startId, {
+          ...(edgePatchesRef.current.get(startId) ?? {}),
+          ...fields,
+        });
+      }
+      const reversed = await runSave(() =>
+        enqueueEdgeOp(async () => {
+          const currentId = resolveEdgeId(edgeId);
+          const pending = edgePatchesRef.current.get(currentId);
+          const { edge, replacedId } = await api.updateEdge(currentId, {
+            ...(pending ?? {}),
+            reverse: true,
+          });
+          if (pending && edgePatchesRef.current.get(currentId) === pending) {
+            edgePatchesRef.current.delete(currentId);
+          }
+          if (replacedId) {
+            edgeAliasRef.current.set(replacedId, edge.id);
+            setRelations((prev) => prev.map((e) => (e.id === replacedId ? edge : e)));
+            setSelectedEdgeId((curr) => (curr === replacedId ? edge.id : curr));
+          }
+          return true as const;
+        })
       );
+      // A reversal is not replayed (it would flip the link twice), but its fields are
+      if (!reversed && edgePatchesRef.current.has(startId)) {
+        failedSavesRef.current.set(`edge:${startId}`, () => saveEdgeFields(startId));
+        setSaveState('error');
+      }
     },
-    [runSave, enqueueEdgeOp, resolveEdgeId]
+    [runSave, enqueueEdgeOp, resolveEdgeId, queueEdgeFields, saveEdgeFields]
   );
 
   const handleDeleteEdge = useCallback(async (edgeId: string) => {
