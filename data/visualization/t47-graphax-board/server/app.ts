@@ -1,9 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { Hono } from 'hono';
-import { cors } from 'hono/cors';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { getDb } from './db.ts';
+import { localOnlyGuard } from './security.ts';
 import { projectsRouter } from './routes/projects.ts';
 import { categoriesRouter } from './routes/categories.ts';
 import { nodesRouter } from './routes/nodes.ts';
@@ -11,7 +11,7 @@ import { edgesRouter } from './routes/edges.ts';
 
 export const app = new Hono();
 
-app.use('/api/*', cors());
+app.use('*', localOnlyGuard);
 
 app.onError((err, c) => {
   console.error('[Graphax API Error]', err);
@@ -33,9 +33,9 @@ app.route('/api', categoriesRouter);
 app.route('/api', nodesRouter);
 app.route('/api', edgesRouter);
 
-const distDir = path.resolve(process.cwd(), 'dist');
+const distDir = path.resolve(import.meta.dirname, '..', 'dist');
 if (fs.existsSync(distDir)) {
-  app.use('/*', serveStatic({ root: './dist' }));
+  app.use('/*', serveStatic({ root: path.relative(process.cwd(), distDir) || '.' }));
   app.get('*', (c) => {
     const indexHtml = fs.readFileSync(path.join(distDir, 'index.html'), 'utf-8');
     return c.html(indexHtml);

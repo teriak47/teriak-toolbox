@@ -4,7 +4,7 @@
 
 **Bêta :** l'application est en développement et n'a pas encore fait l'objet d'une revue complète de sécurité et de fonctionnement. Conservez des sauvegardes indépendantes de vos projets importants.
 
-La revue a relevé une perte possible des dernières modifications d'un lien lorsqu'il est inversé rapidement, ainsi qu'un état « enregistré » trompeur si l'enregistrement d'un élément échoue. Vérifiez les changements importants et conservez des exports de sauvegarde jusqu'à la correction de ces problèmes.
+L'inversion d'un lien conserve désormais les modifications en attente, et un enregistrement échoué est signalé avec une action « Réessayer » au lieu d'afficher « Sauvegardé ». Les autres points de la revue (voir le suivi des issues du dépôt) restent ouverts : conservez des exports de sauvegarde de vos projets importants.
 
 Application locale d'investigation, d'OSINT/Cyber, d'analyse de lore et de recherche complexe conçue pour dépasser les limites des graphes flottants classiques.
 
@@ -25,6 +25,9 @@ pnpm install --frozen-lockfile
 # Mode développement (lance l'API SurrealDB locale + l'interface Vite sur http://localhost:5173)
 pnpm dev
 
+# Tests automatisés de l'API (base temporaire, données fictives)
+pnpm test
+
 # Build de production + lancement serveur unifié (http://127.0.0.1:3456)
 pnpm build
 pnpm start
@@ -40,11 +43,15 @@ pnpm start
 - **`Ctrl + K` :** Recherche instantanée avec centrage automatique de la caméra sur l'indice sélectionné.
 - **`Suppr` (`Delete`) :** Supprime le nœud ou le lien sélectionné.
 
-## Limite de sécurité actuelle
+## Protection de l'API locale
 
-L'API écoute en local, mais accepte actuellement les requêtes d'autres origines sans authentification applicative. Un site malveillant ouvert dans le même navigateur pourrait accéder aux données de Graphax ou les modifier pendant son fonctionnement. Ce point doit être revu avant d'y confier des données sensibles. Les adresses de la démonstration sont fictives.
+L'API n'écoute que sur `127.0.0.1`, n'envoie aucun en-tête CORS et refuse les requêtes dont l'en-tête `Host` ou `Origin` n'est pas l'application elle-même ou le serveur de développement Vite (`localhost:5173`). Les autres sites ne peuvent donc ni lire ni modifier les données locales, y compris par DNS rebinding. D'autres origines peuvent être autorisées avec `GRAPHAX_ALLOWED_ORIGINS` (séparées par des virgules). Il n'y a pas d'authentification utilisateur : toute personne ayant accès à votre session locale peut utiliser l'API. Les adresses de la démonstration sont fictives.
 
-Les données locales du dossier `data/` sont exclues de Git et ne doivent pas être publiées. Exportez et sauvegardez vos projets séparément au besoin.
+## Données locales
+
+Les données sont stockées dans `data/` à la racine de l'outil, quel que soit le dossier depuis lequel le serveur est lancé ; `GRAPHAX_DATA_DIR` permet de choisir un autre emplacement. Ce dossier est exclu de Git et ne doit pas être publié. Exportez et sauvegardez vos projets séparément au besoin.
+
+Sous Windows, d'anciennes versions créaient la base dans un dossier imbriqué du type `<dossier de lancement>/D/…/data/graphax.db`. Si aucune base n'existe à l'emplacement attendu, Graphax copie celle qu'il y trouve et l'indique dans le journal ; l'original n'est pas modifié.
 
 ## Licence
 

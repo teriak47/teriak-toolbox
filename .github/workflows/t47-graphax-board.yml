@@ -32,3 +32,4 @@ jobs:
       - run: npm install --global pnpm@12.6.0
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
+      - run: pnpm test
