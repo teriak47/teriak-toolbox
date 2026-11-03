@@ -69,6 +69,11 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
   const nodePatchesRef = useRef(new Map<string, Record<string, unknown>>());
   // Unsaved field edits per link; a retry always sends the latest merged values
   const edgePatchesRef = useRef(new Map<string, Record<string, unknown>>());
+  // Unsaved node positions: single drags and batch layouts share one latest-value map
+  const pendingPositionsRef = useRef(
+    new Map<string, { id: string; positionX: number; positionY: number }>()
+  );
+  const positionQueueRef = useRef<Promise<unknown>>(Promise.resolve());
   const edgeQueueRef = useRef<Promise<unknown>>(Promise.resolve());
   const edgeAliasRef = useRef(new Map<string, string>());
 
@@ -362,17 +367,40 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
     [projectId, categories, hiddenCategoryIds, edgeFilter, runSave]
   );
 
+  // Persists the latest unsaved positions. Single drags and batches write into the same map,
+  // so a retry can never replay coordinates older than a later successful save.
+  const savePositions = useCallback(
+    () =>
+      runSave(
+        () => {
+          const next = positionQueueRef.current.then(async () => {
+            const sent = [...pendingPositionsRef.current.values()];
+            if (sent.length === 0) return;
+            await api.updateBatchPositions(projectId, sent);
+            for (const p of sent) {
+              if (pendingPositionsRef.current.get(p.id) === p) {
+                pendingPositionsRef.current.delete(p.id);
+              }
+            }
+          });
+          positionQueueRef.current = next.catch(() => undefined);
+          return next;
+        },
+        { retryKey: `positions:${projectId}` }
+      ),
+    [projectId, runSave]
+  );
+
   // Persist single node position
   const handleUpdateNodePosition = useCallback(
     async (nodeId: string, posX: number, posY: number) => {
       setEntities((prev) =>
         prev.map((n) => (n.id === nodeId ? { ...n, positionX: posX, positionY: posY } : n))
       );
-      await runSave(() => api.updateNodePosition(nodeId, posX, posY), {
-        retryKey: `position:${nodeId}`,
-      });
+      pendingPositionsRef.current.set(nodeId, { id: nodeId, positionX: posX, positionY: posY });
+      await savePositions();
     },
-    [runSave]
+    [savePositions]
   );
 
   // Persist batch node positions (from live physics or layout)
@@ -386,33 +414,34 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
           return p ? { ...n, positionX: p.positionX, positionY: p.positionY } : n;
         })
       );
-      await runSave(() => api.updateBatchPositions(projectId, positions), {
-        retryKey: `positions:${projectId}`,
-      });
+      for (const p of positions) pendingPositionsRef.current.set(p.id, { ...p });
+      await savePositions();
     },
-    [projectId, runSave]
+    [savePositions]
   );
 
-  // Commit inline edge label
   // Sends the merged unsaved field edits of a link. Overlapping edits supersede each other,
   // so replaying a failed save can never restore an older value.
+  // Throws on failure, so callers (runSave, retryFailedSaves) see the real outcome
+  const edgeFieldsOp = useCallback(
+    (edgeId: string) =>
+      enqueueEdgeOp(async () => {
+        const currentId = resolveEdgeId(edgeId);
+        const patch = edgePatchesRef.current.get(currentId);
+        if (!patch) return;
+        const { edge } = await api.updateEdge(currentId, patch);
+        if (edgePatchesRef.current.get(currentId) === patch) {
+          edgePatchesRef.current.delete(currentId);
+        }
+        setRelations((prev) => prev.map((e) => (e.id === currentId ? edge : e)));
+      }),
+    [enqueueEdgeOp, resolveEdgeId]
+  );
+
   const saveEdgeFields = useCallback(
     (edgeId: string) =>
-      runSave(
-        () =>
-          enqueueEdgeOp(async () => {
-            const currentId = resolveEdgeId(edgeId);
-            const patch = edgePatchesRef.current.get(currentId);
-            if (!patch) return;
-            const { edge } = await api.updateEdge(currentId, patch);
-            if (edgePatchesRef.current.get(currentId) === patch) {
-              edgePatchesRef.current.delete(currentId);
-            }
-            setRelations((prev) => prev.map((e) => (e.id === currentId ? edge : e)));
-          }),
-        { retryKey: `edge:${resolveEdgeId(edgeId)}` }
-      ),
-    [runSave, enqueueEdgeOp, resolveEdgeId]
+      runSave(() => edgeFieldsOp(edgeId), { retryKey: `edge:${resolveEdgeId(edgeId)}` }),
+    [runSave, edgeFieldsOp, resolveEdgeId]
   );
 
   const queueEdgeFields = useCallback(
@@ -522,6 +551,15 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
           }
           if (replacedId) {
             edgeAliasRef.current.set(replacedId, edge.id);
+            // Edits queued during the request were stored under the old id
+            const newer = edgePatchesRef.current.get(replacedId);
+            if (newer) {
+              edgePatchesRef.current.delete(replacedId);
+              edgePatchesRef.current.set(edge.id, {
+                ...newer,
+                ...(edgePatchesRef.current.get(edge.id) ?? {}),
+              });
+            }
             setRelations((prev) => prev.map((e) => (e.id === replacedId ? edge : e)));
             setSelectedEdgeId((curr) => (curr === replacedId ? edge.id : curr));
           }
@@ -530,11 +568,11 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
       );
       // A reversal is not replayed (it would flip the link twice), but its fields are
       if (!reversed && edgePatchesRef.current.has(startId)) {
-        failedSavesRef.current.set(`edge:${startId}`, () => saveEdgeFields(startId));
+        failedSavesRef.current.set(`edge:${startId}`, () => edgeFieldsOp(startId));
         setSaveState('error');
       }
     },
-    [runSave, enqueueEdgeOp, resolveEdgeId, queueEdgeFields, saveEdgeFields]
+    [runSave, enqueueEdgeOp, resolveEdgeId, queueEdgeFields, edgeFieldsOp]
   );
 
   const handleDeleteEdge = useCallback(async (edgeId: string) => {
