@@ -200,6 +200,19 @@ export function InspectorSidebar({
     }, 350);
   };
 
+  // Send the not-yet-saved label/notes together with the reversal: the reversal replaces
+  // the link (new id), so a separate delayed save would target a link that no longer exists
+  const reverseSelectedEdge = (edgeId: string) => {
+    if (edgeTimerRef.current) {
+      clearTimeout(edgeTimerRef.current);
+      edgeTimerRef.current = null;
+    }
+    const pending =
+      pendingEdgeFlushRef.current?.edgeId === edgeId ? pendingEdgeFlushRef.current.patch : {};
+    pendingEdgeFlushRef.current = null;
+    void onUpdateEdge(edgeId, { ...pending, reverse: true });
+  };
+
   const rowsToMetadata = (
     rows: Array<{ id: string; key: string; value: string }>
   ): NodeMetadata => {
@@ -223,20 +236,21 @@ export function InspectorSidebar({
     const activeCat = categories.find((c) => c.id === categoryId) ?? null;
 
     return (
-      <aside className="w-[390px] shrink-0 h-full bg-zinc-900/95 border-l border-zinc-800 flex flex-col overflow-hidden z-20">
+      <aside className="w-[390px] shrink-0 h-full bg-zinc-900/95 border-l border-filet flex flex-col overflow-hidden z-20">
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800 bg-zinc-950/50">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-filet bg-zinc-950/50">
           <div className="flex items-center gap-2 min-w-0">
             <span
-              className="w-2.5 h-2.5 rounded-full shrink-0"
-              style={{ backgroundColor: activeCat?.color ?? '#71717a' }}
+              className="s21-slit shrink-0"
+              aria-hidden="true"
+              style={{ background: activeCat?.color ?? 'var(--etat-clos)' }}
             />
             <span className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
               Inspection du Nœud
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-[10.5px] font-mono text-zinc-500">
+            <span className="text-xs font-mono text-zinc-500">
               X:{Math.round(selectedNode.positionX)} Y:{Math.round(selectedNode.positionY)}
             </span>
             <button
@@ -254,7 +268,7 @@ export function InspectorSidebar({
         <div className="flex-1 overflow-y-auto p-4 space-y-5">
           {/* Title */}
           <div>
-            <label className="block text-[11px] font-medium uppercase tracking-wider text-zinc-400 mb-1.5">
+            <label className="block text-xs font-medium uppercase tracking-wider text-zinc-400 mb-1.5">
               Titre de l'entité / indice
             </label>
             <input
@@ -265,20 +279,20 @@ export function InspectorSidebar({
                 scheduleNodePatch(selectedNode.id, { title: e.target.value });
               }}
               placeholder="Nom du personnage, IP, preuve, lieu…"
-              className="w-full px-3 py-2 text-sm font-medium rounded-lg bg-zinc-950 border border-zinc-800 text-zinc-100 focus:border-cyan-500 focus:outline-none"
+              className="w-full px-3 py-2 text-sm font-medium rounded-lg bg-zinc-950 border border-filet text-zinc-100 focus:border-cyan-500 focus:outline-none"
             />
           </div>
 
           {/* Category */}
           <div>
             <div className="flex items-center justify-between mb-1.5">
-              <label className="text-[11px] font-medium uppercase tracking-wider text-zinc-400">
+              <label className="text-xs font-medium uppercase tracking-wider text-zinc-400">
                 Catégorie
               </label>
               <button
                 type="button"
                 onClick={onOpenNewCategory}
-                className="text-[11px] text-cyan-400 hover:text-cyan-300 font-medium"
+                className="text-xs text-cyan-400 hover:text-cyan-300 font-medium"
               >
                 + Créer catégorie
               </button>
@@ -290,7 +304,7 @@ export function InspectorSidebar({
                 setCategoryId(nextCat);
                 void onUpdateNode(selectedNode.id, { categoryId: nextCat });
               }}
-              className="w-full px-3 py-2 text-sm rounded-lg bg-zinc-950 border border-zinc-800 text-zinc-100 focus:border-cyan-500 focus:outline-none"
+              className="w-full px-3 py-2 text-sm rounded-lg bg-zinc-950 border border-filet text-zinc-100 focus:border-cyan-500 focus:outline-none"
             >
               <option value="">— Non classé —</option>
               {categories.map((cat) => (
@@ -304,7 +318,7 @@ export function InspectorSidebar({
           {/* Metadata Free Attributes */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <label className="text-[11px] font-medium uppercase tracking-wider text-zinc-400">
+              <label className="text-xs font-medium uppercase tracking-wider text-zinc-400">
                 Métadonnées & Attributs
               </label>
               <button
@@ -315,7 +329,7 @@ export function InspectorSidebar({
                     { id: `${Date.now()}`, key: '', value: '' },
                   ])
                 }
-                className="inline-flex items-center gap-1 text-[11px] text-cyan-400 hover:text-cyan-300 font-medium"
+                className="inline-flex items-center gap-1 text-xs text-cyan-400 hover:text-cyan-300 font-medium"
               >
                 <Plus className="w-3 h-3" />
                 <span>Attribut</span>
@@ -340,7 +354,7 @@ export function InspectorSidebar({
                       },
                     ])
                   }
-                  className="px-2 py-0.5 rounded-md bg-zinc-950 border border-zinc-800 hover:border-zinc-700 text-[10.5px] text-zinc-400 hover:text-zinc-200 transition-colors"
+                  className="px-2 py-0.5 rounded-md bg-zinc-950 border border-filet hover:border-filet-fort text-xs text-zinc-400 hover:text-zinc-200 transition-colors"
                 >
                   + {preset.key}
                 </button>
@@ -364,7 +378,7 @@ export function InspectorSidebar({
                         updateMetaRows(copy);
                       }}
                       placeholder="Clé"
-                      className="w-[38%] px-2.5 py-1.5 text-xs font-mono rounded-md bg-zinc-950 border border-zinc-800 text-zinc-300 focus:border-cyan-500 focus:outline-none"
+                      className="w-[38%] px-2.5 py-1.5 text-xs font-mono rounded-md bg-zinc-950 border border-filet text-zinc-300 focus:border-cyan-500 focus:outline-none"
                     />
                     <input
                       type="text"
@@ -375,7 +389,7 @@ export function InspectorSidebar({
                         updateMetaRows(copy);
                       }}
                       placeholder="Valeur"
-                      className="flex-1 px-2.5 py-1.5 text-xs font-mono rounded-md bg-zinc-950 border border-zinc-800 text-zinc-100 focus:border-cyan-500 focus:outline-none"
+                      className="flex-1 px-2.5 py-1.5 text-xs font-mono rounded-md bg-zinc-950 border border-filet text-zinc-100 focus:border-cyan-500 focus:outline-none"
                     />
                     <button
                       type="button"
@@ -396,15 +410,15 @@ export function InspectorSidebar({
           {/* Rich Markdown Notes */}
           <div className="space-y-2 flex-1 flex flex-col">
             <div className="flex items-center justify-between">
-              <label className="text-[11px] font-medium uppercase tracking-wider text-zinc-400">
+              <label className="text-xs font-medium uppercase tracking-wider text-zinc-400">
                 Notes détaillées (Markdown)
               </label>
-              <div className="inline-flex rounded-lg bg-zinc-950 border border-zinc-800 p-0.5">
+              <div className="inline-flex rounded-lg bg-zinc-950 border border-filet p-0.5">
                 <button
                   type="button"
                   onClick={() => setNoteTab('write')}
                   className={cn(
-                    'inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors',
+                    'inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium transition-colors',
                     noteTab === 'write'
                       ? 'bg-zinc-800 text-zinc-100'
                       : 'text-zinc-400 hover:text-zinc-200'
@@ -417,7 +431,7 @@ export function InspectorSidebar({
                   type="button"
                   onClick={() => setNoteTab('preview')}
                   className={cn(
-                    'inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors',
+                    'inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium transition-colors',
                     noteTab === 'preview'
                       ? 'bg-zinc-800 text-zinc-100'
                       : 'text-zinc-400 hover:text-zinc-200'
@@ -440,10 +454,10 @@ export function InspectorSidebar({
                 placeholder={
                   'Rédigez vos notes d’enquête ou de lore en Markdown…\n\n### Indices\n- Élément 1\n- `192.0.2.42`\n- **Conclusion provisoire**'
                 }
-                className="w-full min-h-[240px] px-3 py-2.5 text-xs font-mono leading-relaxed rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-200 placeholder-zinc-600 focus:border-cyan-500 focus:outline-none resize-y"
+                className="w-full min-h-[240px] px-3 py-2.5 text-xs font-mono leading-relaxed rounded-xl bg-zinc-950 border border-filet text-zinc-200 placeholder-zinc-600 focus:border-cyan-500 focus:outline-none resize-y"
               />
             ) : (
-              <div className="w-full min-h-[240px] px-3.5 py-3 rounded-xl bg-zinc-950 border border-zinc-800 overflow-y-auto">
+              <div className="w-full min-h-[240px] px-3.5 py-3 rounded-xl bg-zinc-950 border border-filet overflow-y-auto">
                 {content.trim() ? (
                   <div className="markdown-preview">
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
@@ -459,7 +473,7 @@ export function InspectorSidebar({
         </div>
 
         {/* Footer Delete Node */}
-        <div className="px-4 py-3 border-t border-zinc-800 bg-zinc-950/60 flex items-center justify-between">
+        <div className="px-4 py-3 border-t border-filet bg-zinc-950/60 flex items-center justify-between">
           <button
             type="button"
             onClick={() => {
@@ -500,9 +514,9 @@ export function InspectorSidebar({
     const targetNode = allNodes.find((n) => n.id === selectedEdge.targetNodeId);
 
     return (
-      <aside className="w-[370px] shrink-0 h-full bg-zinc-900/95 border-l border-zinc-800 flex flex-col overflow-hidden z-20">
+      <aside className="w-[370px] shrink-0 h-full bg-zinc-900/95 border-l border-filet flex flex-col overflow-hidden z-20">
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800 bg-zinc-950/50">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-filet bg-zinc-950/50">
           <span className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
             Inspection de la Relation
           </span>
@@ -517,9 +531,9 @@ export function InspectorSidebar({
 
         <div className="flex-1 overflow-y-auto p-4 space-y-5">
           {/* Endpoints Summary + Reverse Button */}
-          <div className="p-3 rounded-xl bg-zinc-950 border border-zinc-800 space-y-2.5">
+          <div className="p-3 rounded-xl bg-zinc-950 border border-filet space-y-2.5">
             <div className="flex items-center justify-between gap-2 text-xs">
-              <div className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 truncate font-medium text-zinc-200">
+              <div className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-filet truncate font-medium text-zinc-200">
                 {sourceNode?.title ?? 'Source'}
               </div>
               <span className="text-zinc-500 shrink-0">
@@ -529,7 +543,7 @@ export function InspectorSidebar({
                   <Minus className="w-4 h-4 text-zinc-400" />
                 )}
               </span>
-              <div className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 truncate font-medium text-zinc-200">
+              <div className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-filet truncate font-medium text-zinc-200">
                 {targetNode?.title ?? 'Cible'}
               </div>
             </div>
@@ -537,8 +551,8 @@ export function InspectorSidebar({
             {selectedEdge.directed && (
               <button
                 type="button"
-                onClick={() => void onUpdateEdge(selectedEdge.id, { reverse: true })}
-                className="w-full inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs text-zinc-300 transition-colors"
+                onClick={() => reverseSelectedEdge(selectedEdge.id)}
+                className="w-full inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-filet text-xs text-zinc-300 transition-colors"
               >
                 <ArrowLeftRight className="w-3.5 h-3.5 text-cyan-400" />
                 <span>Inverser le sens de la flèche</span>
@@ -548,7 +562,7 @@ export function InspectorSidebar({
 
           {/* Label */}
           <div className="space-y-2">
-            <label className="block text-[11px] font-medium uppercase tracking-wider text-zinc-400">
+            <label className="block text-xs font-medium uppercase tracking-wider text-zinc-400">
               Label sur la flèche
             </label>
             <input
@@ -559,7 +573,7 @@ export function InspectorSidebar({
                 scheduleEdgePatch(selectedEdge.id, { label: e.target.value });
               }}
               placeholder="Ex: a trahi, communique avec, confirme…"
-              className="w-full px-3 py-2 text-sm rounded-lg bg-zinc-950 border border-zinc-800 text-zinc-100 focus:border-cyan-500 focus:outline-none"
+              className="w-full px-3 py-2 text-sm rounded-lg bg-zinc-950 border border-filet text-zinc-100 focus:border-cyan-500 focus:outline-none"
             />
             <div className="flex flex-wrap gap-1">
               {EDGE_LABEL_SUGGESTIONS.map((sug) => (
@@ -570,7 +584,7 @@ export function InspectorSidebar({
                     setEdgeLabel(sug);
                     void onUpdateEdge(selectedEdge.id, { label: sug });
                   }}
-                  className="px-2 py-0.5 rounded-md bg-zinc-950 border border-zinc-800 hover:border-zinc-700 text-[10.5px] text-zinc-400 hover:text-zinc-200 transition-colors"
+                  className="px-2 py-0.5 rounded-md bg-zinc-950 border border-filet hover:border-filet-fort text-xs text-zinc-400 hover:text-zinc-200 transition-colors"
                 >
                   {sug}
                 </button>
@@ -580,7 +594,7 @@ export function InspectorSidebar({
 
           {/* Style: Proven (Solid) vs Hypothesis (Dashed) */}
           <div className="space-y-2">
-            <label className="block text-[11px] font-medium uppercase tracking-wider text-zinc-400">
+            <label className="block text-xs font-medium uppercase tracking-wider text-zinc-400">
               Nature du lien (Certitude)
             </label>
             <div className="grid grid-cols-2 gap-2">
@@ -591,11 +605,11 @@ export function InspectorSidebar({
                   'flex flex-col items-start gap-1 p-2.5 rounded-xl border text-left transition-all',
                   selectedEdge.style === 'solid'
                     ? 'bg-cyan-500/10 border-cyan-400 text-cyan-200'
-                    : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700'
+                    : 'bg-zinc-950 border-filet text-zinc-400 hover:border-filet-fort'
                 )}
               >
                 <span className="text-xs font-semibold">━━ Fait prouvé</span>
-                <span className="text-[10.5px] opacity-80">Trait plein confirmé</span>
+                <span className="text-xs opacity-80">Trait plein confirmé</span>
               </button>
 
               <button
@@ -605,21 +619,21 @@ export function InspectorSidebar({
                   'flex flex-col items-start gap-1 p-2.5 rounded-xl border text-left transition-all',
                   selectedEdge.style === 'dashed'
                     ? 'bg-amber-500/10 border-amber-400 text-amber-200'
-                    : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700'
+                    : 'bg-zinc-950 border-filet text-zinc-400 hover:border-filet-fort'
                 )}
               >
                 <span className="inline-flex items-center gap-1 text-xs font-semibold">
                   <Sparkles className="w-3 h-3" />
                   <span>Hypothèse</span>
                 </span>
-                <span className="text-[10.5px] opacity-80">Pointillés / Théorie</span>
+                <span className="text-xs opacity-80">Pointillés / Théorie</span>
               </button>
             </div>
           </div>
 
           {/* Directed vs Undirected */}
           <div className="space-y-2">
-            <label className="block text-[11px] font-medium uppercase tracking-wider text-zinc-400">
+            <label className="block text-xs font-medium uppercase tracking-wider text-zinc-400">
               Orientation
             </label>
             <div className="grid grid-cols-2 gap-2">
@@ -630,7 +644,7 @@ export function InspectorSidebar({
                   'flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg border text-xs font-medium transition-colors',
                   selectedEdge.directed
                     ? 'bg-zinc-800 border-cyan-400 text-zinc-100'
-                    : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700'
+                    : 'bg-zinc-950 border-filet text-zinc-400 hover:border-filet-fort'
                 )}
               >
                 <ArrowRight className="w-3.5 h-3.5" />
@@ -643,7 +657,7 @@ export function InspectorSidebar({
                   'flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg border text-xs font-medium transition-colors',
                   !selectedEdge.directed
                     ? 'bg-zinc-800 border-cyan-400 text-zinc-100'
-                    : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700'
+                    : 'bg-zinc-950 border-filet text-zinc-400 hover:border-filet-fort'
                 )}
               >
                 <Minus className="w-3.5 h-3.5" />
@@ -654,7 +668,7 @@ export function InspectorSidebar({
 
           {/* Edge Context Notes */}
           <div className="space-y-1.5">
-            <label className="block text-[11px] font-medium uppercase tracking-wider text-zinc-400">
+            <label className="block text-xs font-medium uppercase tracking-wider text-zinc-400">
               Notes / Justification du lien
             </label>
             <textarea
@@ -665,13 +679,13 @@ export function InspectorSidebar({
               }}
               rows={5}
               placeholder="Précisez la preuve, la chronologie ou la source justifiant cette relation…"
-              className="w-full px-3 py-2 text-xs leading-relaxed rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-200 placeholder-zinc-600 focus:border-cyan-500 focus:outline-none resize-y"
+              className="w-full px-3 py-2 text-xs leading-relaxed rounded-xl bg-zinc-950 border border-filet text-zinc-200 placeholder-zinc-600 focus:border-cyan-500 focus:outline-none resize-y"
             />
           </div>
         </div>
 
         {/* Footer Delete Edge */}
-        <div className="px-4 py-3 border-t border-zinc-800 bg-zinc-950/60 flex items-center justify-between">
+        <div className="px-4 py-3 border-t border-filet bg-zinc-950/60 flex items-center justify-between">
           <button
             type="button"
             onClick={() => {

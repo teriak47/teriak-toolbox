@@ -1,0 +1,41 @@
+/* Spacing and geometry follow the logo: 21-degree cuts and no rounded corners. */
+
+:root {
+  /* Eight-point grid. */
+  --esp-0: 0; /* @kind spacing */
+  --esp-1: 4px;
+  --esp-2: 8px;
+  --esp-3: 12px;
+  --esp-4: 16px;
+  --esp-5: 24px;
+  --esp-6: 32px;
+  --esp-7: 48px;
+  --esp-8: 64px;
+  --esp-9: 96px;
+  --esp-10: 128px;
+
+  /* Logo-derived geometry. */
+  --pente: 21deg; /* @kind other */
+  --coupe: 12px;           /* Corner cut width. */
+  --coupe-h: 31px;         /* Corresponding height at 21 degrees. */
+  --rayon: 0px;            /* No rounded corners. */
+
+  /* Border widths. */
+  --filet-fin: 1px;        /* @kind spacing */
+  --filet-epais: 2px;      /* @kind spacing */
+  --filet-bloc: 3px;       /* @kind spacing */
+
+  /* Content widths. */
+  --largeur-texte: 64ch;   /* @kind other */
+  --largeur-page: 1240px;  /* @kind spacing */
+  --largeur-etroite: 720px; /* @kind spacing */
+
+  /* Short functional motion. */
+  --duree-courte: 90ms; /* @kind other */
+  --duree: 140ms;       /* @kind other */
+  --ease: cubic-bezier(0.2, 0, 0, 1);   /* @kind other */
+
+  /* Minimal shadows; elevation uses borders. */
+  --ombre-aucune: none; /* @kind shadow */
+  --ombre-portee: 0 1px 0 0 var(--bistre-0), 0 2px 12px -6px oklch(0 0 0 / 0.55);
+}

@@ -1,0 +1,37 @@
+/* SECTION 21 native elements: dark first, no curves. */
+
+.s21-app {
+  background: var(--surface-app);
+  color: var(--texte);
+  font-family: var(--font-sans);
+  font-size: var(--txt-base);
+  line-height: var(--inter-corps);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Selection uses the accent. */
+::selection { background: var(--accent); color: var(--texte-sur-accent); }
+
+/* Square scrollbars. */
+.s21-app ::-webkit-scrollbar { width: 11px; height: 11px; }
+.s21-app ::-webkit-scrollbar-track { background: var(--surface-puits); }
+.s21-app ::-webkit-scrollbar-thumb { background: var(--bistre-4); border: 2px solid var(--surface-puits); }
+.s21-app ::-webkit-scrollbar-thumb:hover { background: var(--bistre-5); }
+
+/* No rounded corners. */
+.s21-app *, .s21-app *::before, .s21-app *::after { border-radius: 0; }
+
+/* Focus uses a crisp accent outline. */
+.s21-app :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+h1, h2, h3, h4, h5, h6 { font-family: var(--font-sans); color: var(--texte-fort); margin: 0; }
+code, kbd, samp, pre { font-family: var(--font-mono); }
+
+.s21-app ::placeholder { color: var(--texte-faible); opacity: 1; }
+.s21-logo-dark { display: var(--logo-dark-display, inline-block); }
+.s21-logo-light { display: var(--logo-light-display, none); }
+
+@media (prefers-reduced-motion: reduce) {
+  :root, .s21-clair, .s21-sombre { --duree: 0ms; --duree-courte: 0ms; }
+}

@@ -1,0 +1,39 @@
+/* Brand utilities use the 21-degree angle and square corners. */
+
+/* Fur shards are reserved for headings, index separators and footer signatures. */
+.s21-shards { display: inline-flex; gap: 5px; align-items: flex-start; }
+.s21-shards i { display: block; width: var(--filet-bloc); background: var(--filet-fort); transform: rotate(var(--pente)); }
+.s21-shards i:nth-child(1) { height: 17px; }
+.s21-shards i:nth-child(2) { height: 11px; margin-top: 3px; }
+.s21-shards i:nth-child(3) { height: 6px;  margin-top: 6px; }
+.s21-shards.s21-shards--accent i { background: var(--accent); }
+.s21-shards.s21-shards--flip { transform: scaleX(-1); }
+
+/* Eye slit replaces circular status markers. */
+.s21-slit { display: inline-block; width: 16px; height: 5px; background: var(--accent); transform: skewX(calc(-1 * var(--pente))); }
+.s21-slit--dim { background: var(--etat-clos); }
+.s21-slit--attente { background: var(--avert); }
+
+/* Crisp separator rule. */
+.s21-filet { border: 0; border-top: var(--filet-fin) solid var(--filet); height: 0; margin: 0; }
+.s21-filet--fort { border-top-color: var(--filet-fort); }
+.s21-filet--accent { border-top-color: var(--accent); }
+
+/* Shard separator for indexes and lists. */
+.s21-sep-eclats { display: flex; gap: 5px; }
+.s21-sep-eclats i { display: block; width: var(--filet-bloc); height: 12px; background: var(--filet); transform: rotate(var(--pente)); }
+
+/* Cut corners follow the tangent of 21 degrees. */
+.s21-coupe-tr { clip-path: polygon(0 0, calc(100% - var(--coupe)) 0, 100% var(--coupe-h), 100% 100%, 0 100%); }
+.s21-coupe-bl { clip-path: polygon(0 0, 100% 0, 100% 100%, var(--coupe) 100%, 0 calc(100% - var(--coupe-h))); }
+.s21-coupe-2  { clip-path: polygon(0 0, calc(100% - var(--coupe)) 0, 100% var(--coupe-h), 100% 100%, var(--coupe) 100%, 0 calc(100% - var(--coupe-h))); }
+
+/* Monospace archive identifier. */
+.s21-cote { font: var(--type-cote); letter-spacing: var(--ls-meta); color: var(--accent); }
+.s21-cote--dim { color: var(--texte-faible); }
+
+/* Stamp with a 21-degree cut. */
+.s21-tampon { position: relative; display: inline-block; font-family: var(--font-sans); font-weight: var(--poids-demi); font-size: var(--txt-sm); letter-spacing: var(--ls-libelle); color: var(--accent); padding: 4px 0; white-space: nowrap; }
+.s21-tampon::after { content: ''; position: absolute; left: -8px; right: -2px; top: 54%; height: 2px; background: var(--accent); transform: rotate(calc(-1 * var(--pente) / 2)); }
+.s21-tampon--clos { color: var(--etat-clos); }
+.s21-tampon--clos::after { background: var(--etat-clos); }

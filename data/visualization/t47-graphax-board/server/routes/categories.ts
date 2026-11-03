@@ -26,9 +26,9 @@ categoriesRouter.post('/projects/:projectId/categories', async (c) => {
   const created = await db.create(toRecordId('category', id)).content({
     projectId,
     name,
-    color: (body.color ?? '#38bdf8').trim(),
+    color: (body.color ?? '#47c0ef').trim(),
     icon: body.icon ?? 'tag',
-    shape: body.shape ?? 'rounded',
+    shape: body.shape ?? 'sharp',
   });
 
   await touchProject(db, projectId);

@@ -30,18 +30,18 @@ export function CategoryModal({
   onDelete,
 }: CategoryModalProps) {
   const [name, setName] = useState('');
-  const [color, setColor] = useState('#38bdf8');
+  const [color, setColor] = useState('#47c0ef');
   const [icon, setIcon] = useState<CategoryIconName>('tag');
-  const [shape, setShape] = useState<CategoryShape>('rounded');
+  const [shape, setShape] = useState<CategoryShape>('sharp');
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
       setName(initialCategory?.name ?? '');
-      setColor(initialCategory?.color ?? '#38bdf8');
+      setColor(initialCategory?.color ?? '#47c0ef');
       setIcon(initialCategory?.icon ?? 'tag');
-      setShape(initialCategory?.shape ?? 'rounded');
+      setShape(initialCategory?.shape ?? 'sharp');
       setConfirmDelete(false);
     }
   }, [isOpen, initialCategory]);
@@ -78,9 +78,9 @@ export function CategoryModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-      <div className="w-full max-w-md rounded-2xl bg-zinc-900 border border-zinc-800 shadow-2xl overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+      <div className="w-full max-w-md rounded-2xl bg-zinc-900 border border-filet shadow-2xl overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-filet">
           <h3 className="text-sm font-semibold text-zinc-100">
             {initialCategory ? 'Modifier la catégorie' : 'Nouvelle catégorie'}
           </h3>
@@ -95,7 +95,7 @@ export function CategoryModal({
 
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
           {/* Live Badge Preview */}
-          <div className="flex items-center justify-between px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800/80">
+          <div className="flex items-center justify-between px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-filet/80">
             <span className="text-xs text-zinc-400">Aperçu sur carte :</span>
             <span
               className={cn(
@@ -125,7 +125,7 @@ export function CategoryModal({
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Ex: Suspect, Serveur C2, Faction, Théorie…"
-              className="w-full px-3 py-2 text-sm rounded-lg bg-zinc-950 border border-zinc-800 text-zinc-100 placeholder-zinc-500 focus:border-cyan-500 focus:outline-none"
+              className="w-full px-3 py-2 text-sm rounded-lg bg-zinc-950 border border-filet text-zinc-100 placeholder-zinc-500 focus:border-cyan-500 focus:outline-none"
             />
           </div>
 
@@ -139,17 +139,17 @@ export function CategoryModal({
                   type="button"
                   onClick={() => setColor(hex)}
                   className={cn(
-                    'w-6 h-6 rounded-full transition-transform',
+                    'w-6 h-6',
                     color.toLowerCase() === hex.toLowerCase()
-                      ? 'scale-115 ring-2 ring-white ring-offset-2 ring-offset-zinc-900'
-                      : 'hover:scale-110 opacity-85 hover:opacity-100'
+                      ? 'ring-2 ring-zinc-100 ring-offset-2 ring-offset-zinc-900'
+                      : 'opacity-85 hover:opacity-100'
                   )}
                   style={{ backgroundColor: hex }}
                 />
               ))}
               <label
                 title="Couleur personnalisée"
-                className="relative inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-zinc-950 border border-zinc-800 text-xs text-zinc-300 cursor-pointer hover:border-zinc-700"
+                className="relative inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-zinc-950 border border-filet text-xs text-zinc-300 cursor-pointer hover:border-filet-fort"
               >
                 <input
                   type="color"
@@ -157,7 +157,7 @@ export function CategoryModal({
                   onChange={(e) => setColor(e.target.value)}
                   className="w-4 h-4 bg-transparent border-0 cursor-pointer p-0"
                 />
-                <span className="font-mono text-[11px] uppercase">{color}</span>
+                <span className="font-mono text-xs uppercase">{color}</span>
               </label>
             </div>
           </div>
@@ -183,7 +183,7 @@ export function CategoryModal({
                       'flex items-center justify-center h-9 rounded-lg border transition-all',
                       active
                         ? 'bg-cyan-500/15 border-cyan-400 text-cyan-300'
-                        : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700'
+                        : 'bg-zinc-950 border-filet text-zinc-400 hover:text-zinc-200 hover:border-filet-fort'
                     )}
                   >
                     <IconComp className="w-4 h-4" />
@@ -209,7 +209,7 @@ export function CategoryModal({
                     s.radiusClass,
                     shape === s.value
                       ? 'bg-cyan-500/15 border-cyan-400 text-cyan-300'
-                      : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                      : 'bg-zinc-950 border-filet text-zinc-400 hover:text-zinc-200'
                   )}
                 >
                   {s.label}
@@ -219,7 +219,7 @@ export function CategoryModal({
           </div>
 
           {/* Actions */}
-          <div className="flex items-center justify-between pt-3 border-t border-zinc-800">
+          <div className="flex items-center justify-between pt-3 border-t border-filet">
             {initialCategory && onDelete ? (
               <button
                 type="button"

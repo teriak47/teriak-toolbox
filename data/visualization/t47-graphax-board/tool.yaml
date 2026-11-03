@@ -1,7 +1,7 @@
 id: t47-graphax-board
 name: Graphax
 description: Create local interactive graph boards for investigation and research.
-version: 0.1.0
+version: 0.2.0
 author: Teriak47
 classification:
   family: data

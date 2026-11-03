@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlignHorizontalJustifyCenter,
   AlignVerticalJustifyCenter,
+  AlertTriangle,
   ArrowLeft,
   CheckCircle2,
   Download,
@@ -36,6 +37,8 @@ import { getCategoryIcon } from '@/lib/icons';
 import { computeAutoLayout } from '@/lib/layout';
 import { computeConstellationLayout } from '@/lib/forceLayout';
 import { cn } from '@/lib/utils';
+import { AppFooter } from '@/components/AppFooter';
+import logoWhite from '@/ds/assets/logo-white.svg';
 
 const UNCLASSIFIED_FILTER_ID = '__unclassified__';
 
@@ -56,7 +59,96 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
   const [relations, setRelations] = useState<GraphEdge[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [saveState, setSaveState] = useState<'saved' | 'saving'>('saved');
+  const [saveState, setSaveState] = useState<'saved' | 'saving' | 'error'>('saved');
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  // Save tracking: in-flight count, failed operations kept for retry, and a per-edge
+  // queue so a reversal can never overtake a label edit on the same link
+  const inFlightSavesRef = useRef(0);
+  const failedSavesRef = useRef(new Map<string, () => Promise<unknown>>());
+  const nodePatchesRef = useRef(new Map<string, Record<string, unknown>>());
+  // Unsaved field edits per link; a retry always sends the latest merged values
+  const edgePatchesRef = useRef(new Map<string, Record<string, unknown>>());
+  // Unsaved node positions: single drags and batch layouts share one latest-value map
+  const pendingPositionsRef = useRef(
+    new Map<string, { id: string; positionX: number; positionY: number }>()
+  );
+  const positionQueueRef = useRef<Promise<unknown>>(Promise.resolve());
+  const edgeQueueRef = useRef<Promise<unknown>>(Promise.resolve());
+  const edgeAliasRef = useRef(new Map<string, string>());
+
+  const unretryableErrorRef = useRef(false);
+
+  const settleSaveState = useCallback(() => {
+    if (inFlightSavesRef.current > 0) return;
+    const failed = failedSavesRef.current.size > 0 || unretryableErrorRef.current;
+    setSaveState(failed ? 'error' : 'saved');
+    if (!failed) setSaveError(null);
+  }, []);
+
+  // Runs one persistence call. A failure is reported, never hidden as "saved".
+  // `retryKey` keeps the operation so "Réessayer" can replay it; `rethrow` lets
+  // a caller (e.g. a modal) stay open on failure.
+  const runSave = useCallback(
+    async <T,>(
+      op: () => Promise<T>,
+      opts: { retryKey?: string; rethrow?: boolean } = {}
+    ): Promise<T | undefined> => {
+      inFlightSavesRef.current += 1;
+      setSaveState('saving');
+      try {
+        const result = await op();
+        if (opts.retryKey) failedSavesRef.current.delete(opts.retryKey);
+        return result;
+      } catch (err) {
+        console.error('[Graphax] Enregistrement impossible :', err);
+        if (opts.retryKey) failedSavesRef.current.set(opts.retryKey, op);
+        else unretryableErrorRef.current = true;
+        setSaveError(err instanceof Error ? err.message : 'Erreur inconnue.');
+        if (opts.rethrow) throw err;
+        return undefined;
+      } finally {
+        inFlightSavesRef.current -= 1;
+        settleSaveState();
+      }
+    },
+    [settleSaveState]
+  );
+
+  const retryFailedSaves = useCallback(async () => {
+    const pending = [...failedSavesRef.current.entries()];
+    unretryableErrorRef.current = false;
+    for (const [retryKey, op] of pending) {
+      await runSave(op, { retryKey });
+    }
+    settleSaveState();
+  }, [runSave, settleSaveState]);
+
+  const dismissSaveError = useCallback(() => {
+    unretryableErrorRef.current = false;
+    settleSaveState();
+  }, [settleSaveState]);
+
+  // Serialize operations on links; ids replaced by a reversal are mapped to the new id
+  const enqueueEdgeOp = useCallback(<T,>(op: () => Promise<T>): Promise<T> => {
+    const next = edgeQueueRef.current.then(op);
+    edgeQueueRef.current = next.catch(() => undefined);
+    return next;
+  }, []);
+
+  const resolveEdgeId = useCallback((edgeId: string): string => {
+    let current = edgeId;
+    while (edgeAliasRef.current.has(current)) current = edgeAliasRef.current.get(current)!;
+    return current;
+  }, []);
+
+  // Warn before closing the tab while changes are unsaved
+  useEffect(() => {
+    if (saveState === 'saved') return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [saveState]);
 
   // Selection & inline editing state
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -185,28 +277,23 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
       const defaultCategory =
         categories.find((c) => !hiddenCategoryIds.has(c.id))?.id ?? categories[0]?.id ?? null;
 
-      setSaveState('saving');
-      try {
-        const { node } = await api.createNode(projectId, {
+      const created = await runSave(() =>
+        api.createNode(projectId, {
           title: 'Nouvel indice',
           categoryId: defaultCategory,
           positionX: Math.round(positionX),
           positionY: Math.round(positionY),
           content: '',
           metadata: {},
-        });
-        setEntities((prev) => [...prev, node]);
-        setSelectedEdgeId(null);
-        setSelectedNodeId(node.id);
-        return node;
-      } catch (err) {
-        console.error('[Graphax] Création du nœud impossible :', err);
-        return null;
-      } finally {
-        setSaveState('saved');
-      }
+        })
+      );
+      if (!created) return null;
+      setEntities((prev) => [...prev, created.node]);
+      setSelectedEdgeId(null);
+      setSelectedNodeId(created.node.id);
+      return created.node;
     },
-    [projectId, categories, hiddenCategoryIds]
+    [projectId, categories, hiddenCategoryIds, runSave]
   );
 
   const handleCreateNodeCenter = useCallback(() => {
@@ -222,24 +309,22 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
       if (!sourceNodeId || !targetNodeId || sourceNodeId === targetNodeId) return;
       const defaultStyle: EdgeStyle = edgeFilter === 'dashed' ? 'dashed' : 'solid';
 
-      setSaveState('saving');
-      try {
-        const { edge } = await api.createEdge(projectId, {
+      const created = await runSave(() =>
+        api.createEdge(projectId, {
           sourceNodeId,
           targetNodeId,
           label: '',
           style: defaultStyle,
           directed: true,
-        });
-        setRelations((prev) => [...prev, edge]);
-        setSelectedNodeId(null);
-        setSelectedEdgeId(edge.id);
-        setAutoEditEdgeId(edge.id);
-      } finally {
-        setSaveState('saved');
-      }
+        })
+      );
+      if (!created) return;
+      setRelations((prev) => [...prev, created.edge]);
+      setSelectedNodeId(null);
+      setSelectedEdgeId(created.edge.id);
+      setAutoEditEdgeId(created.edge.id);
     },
-    [projectId, edgeFilter]
+    [projectId, edgeFilter, runSave]
   );
 
   // Dragging a link wire into empty space -> spawns a new node already linked!
@@ -249,8 +334,7 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
         categories.find((c) => !hiddenCategoryIds.has(c.id))?.id ?? categories[0]?.id ?? null;
       const defaultStyle: EdgeStyle = edgeFilter === 'dashed' ? 'dashed' : 'solid';
 
-      setSaveState('saving');
-      try {
+      const created = await runSave(async () => {
         const { node } = await api.createNode(projectId, {
           title: 'Nouvel indice',
           categoryId: defaultCategory,
@@ -259,22 +343,52 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
           content: '',
           metadata: {},
         });
-        const { edge } = await api.createEdge(projectId, {
-          sourceNodeId,
-          targetNodeId: node.id,
-          label: '',
-          style: defaultStyle,
-          directed: true,
-        });
-        setEntities((prev) => [...prev, node]);
-        setRelations((prev) => [...prev, edge]);
-        setSelectedEdgeId(null);
-        setSelectedNodeId(node.id);
-      } finally {
-        setSaveState('saved');
-      }
+        try {
+          const { edge } = await api.createEdge(projectId, {
+            sourceNodeId,
+            targetNodeId: node.id,
+            label: '',
+            style: defaultStyle,
+            directed: true,
+          });
+          return { node, edge };
+        } catch (err) {
+          // Do not leave an orphan node behind when the link could not be saved
+          await api.deleteNode(node.id).catch(() => undefined);
+          throw err;
+        }
+      });
+      if (!created) return;
+      setEntities((prev) => [...prev, created.node]);
+      setRelations((prev) => [...prev, created.edge]);
+      setSelectedEdgeId(null);
+      setSelectedNodeId(created.node.id);
     },
-    [projectId, categories, hiddenCategoryIds, edgeFilter]
+    [projectId, categories, hiddenCategoryIds, edgeFilter, runSave]
+  );
+
+  // Persists the latest unsaved positions. Single drags and batches write into the same map,
+  // so a retry can never replay coordinates older than a later successful save.
+  const savePositions = useCallback(
+    () =>
+      runSave(
+        () => {
+          const next = positionQueueRef.current.then(async () => {
+            const sent = [...pendingPositionsRef.current.values()];
+            if (sent.length === 0) return;
+            await api.updateBatchPositions(projectId, sent);
+            for (const p of sent) {
+              if (pendingPositionsRef.current.get(p.id) === p) {
+                pendingPositionsRef.current.delete(p.id);
+              }
+            }
+          });
+          positionQueueRef.current = next.catch(() => undefined);
+          return next;
+        },
+        { retryKey: `positions:${projectId}` }
+      ),
+    [projectId, runSave]
   );
 
   // Persist single node position
@@ -283,14 +397,10 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
       setEntities((prev) =>
         prev.map((n) => (n.id === nodeId ? { ...n, positionX: posX, positionY: posY } : n))
       );
-      setSaveState('saving');
-      try {
-        await api.updateNodePosition(nodeId, posX, posY);
-      } finally {
-        setSaveState('saved');
-      }
+      pendingPositionsRef.current.set(nodeId, { id: nodeId, positionX: posX, positionY: posY });
+      await savePositions();
     },
-    []
+    [savePositions]
   );
 
   // Persist batch node positions (from live physics or layout)
@@ -304,30 +414,59 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
           return p ? { ...n, positionX: p.positionX, positionY: p.positionY } : n;
         })
       );
-      setSaveState('saving');
-      try {
-        await api.updateBatchPositions(projectId, positions);
-      } finally {
-        setSaveState('saved');
-      }
+      for (const p of positions) pendingPositionsRef.current.set(p.id, { ...p });
+      await savePositions();
     },
-    [projectId]
+    [savePositions]
+  );
+
+  // Sends the merged unsaved field edits of a link. Overlapping edits supersede each other,
+  // so replaying a failed save can never restore an older value.
+  // Throws on failure, so callers (runSave, retryFailedSaves) see the real outcome
+  const edgeFieldsOp = useCallback(
+    (edgeId: string) =>
+      enqueueEdgeOp(async () => {
+        const currentId = resolveEdgeId(edgeId);
+        const patch = edgePatchesRef.current.get(currentId);
+        if (!patch) return;
+        const { edge } = await api.updateEdge(currentId, patch);
+        if (edgePatchesRef.current.get(currentId) === patch) {
+          edgePatchesRef.current.delete(currentId);
+        }
+        setRelations((prev) => prev.map((e) => (e.id === currentId ? edge : e)));
+      }),
+    [enqueueEdgeOp, resolveEdgeId]
+  );
+
+  const saveEdgeFields = useCallback(
+    (edgeId: string) =>
+      runSave(() => edgeFieldsOp(edgeId), { retryKey: `edge:${resolveEdgeId(edgeId)}` }),
+    [runSave, edgeFieldsOp, resolveEdgeId]
+  );
+
+  const queueEdgeFields = useCallback(
+    (edgeId: string, fields: Record<string, unknown>) => {
+      const currentId = resolveEdgeId(edgeId);
+      edgePatchesRef.current.set(currentId, {
+        ...(edgePatchesRef.current.get(currentId) ?? {}),
+        ...fields,
+      });
+      return saveEdgeFields(currentId);
+    },
+    [resolveEdgeId, saveEdgeFields]
   );
 
   // Commit inline edge label
-  const handleCommitEdgeLabel = useCallback(async (edgeId: string, newLabel: string) => {
-    setAutoEditEdgeId((curr) => (curr === edgeId ? null : curr));
-    setRelations((prev) =>
-      prev.map((e) => (e.id === edgeId ? { ...e, label: newLabel } : e))
-    );
-    setSaveState('saving');
-    try {
-      const { edge } = await api.updateEdge(edgeId, { label: newLabel });
-      setRelations((prev) => prev.map((e) => (e.id === edgeId ? edge : e)));
-    } finally {
-      setSaveState('saved');
-    }
-  }, []);
+  const handleCommitEdgeLabel = useCallback(
+    async (edgeId: string, newLabel: string) => {
+      setAutoEditEdgeId((curr) => (curr === edgeId ? null : curr));
+      setRelations((prev) =>
+        prev.map((e) => (e.id === edgeId ? { ...e, label: newLabel } : e))
+      );
+      await queueEdgeFields(edgeId, { label: newLabel });
+    },
+    [queueEdgeFields]
+  );
 
   // Node updates from Inspector
   const handleUpdateNode = useCallback(
@@ -343,15 +482,19 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
       setEntities((prev) =>
         prev.map((n) => (n.id === nodeId ? { ...n, ...patch } : n))
       );
-      setSaveState('saving');
-      try {
-        const { node } = await api.updateNode(nodeId, patch);
-        setEntities((prev) => prev.map((n) => (n.id === nodeId ? node : n)));
-      } finally {
-        setSaveState('saved');
-      }
+      // Merge with any earlier patch that failed, so a retry never loses a field
+      const merged = { ...(nodePatchesRef.current.get(nodeId) ?? {}), ...patch };
+      nodePatchesRef.current.set(nodeId, merged);
+      await runSave(
+        async () => {
+          const { node } = await api.updateNode(nodeId, merged);
+          nodePatchesRef.current.delete(nodeId);
+          setEntities((prev) => prev.map((n) => (n.id === nodeId ? node : n)));
+        },
+        { retryKey: `node:${nodeId}` }
+      );
     },
-    []
+    [runSave]
   );
 
   const handleDeleteNode = useCallback(async (nodeId: string) => {
@@ -361,13 +504,8 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
     );
     setSelectedNodeId((curr) => (curr === nodeId ? null : curr));
 
-    setSaveState('saving');
-    try {
-      await api.deleteNode(nodeId);
-    } finally {
-      setSaveState('saved');
-    }
-  }, []);
+    await runSave(() => api.deleteNode(nodeId), { retryKey: `delete-node:${nodeId}` });
+  }, [runSave]);
 
   // Edge updates from Inspector
   const handleUpdateEdge = useCallback(
@@ -381,40 +519,71 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
         reverse: boolean;
       }>
     ) => {
-      if (!patch.reverse) {
+      const { reverse, ...fields } = patch;
+      const hasFields = Object.keys(fields).length > 0;
+
+      if (!reverse) {
         setRelations((prev) =>
-          prev.map((e) => (e.id === edgeId ? { ...e, ...patch } : e))
+          prev.map((e) => (e.id === edgeId ? { ...e, ...fields } : e))
         );
+        await queueEdgeFields(edgeId, fields);
+        return;
       }
-      setSaveState('saving');
-      try {
-        const { edge, replacedId } = await api.updateEdge(edgeId, patch);
-        if (replacedId) {
-          setRelations((prev) =>
-            prev.map((e) => (e.id === replacedId ? edge : e))
-          );
-          setSelectedEdgeId(edge.id);
-        } else {
-          setRelations((prev) => prev.map((e) => (e.id === edgeId ? edge : e)));
-        }
-      } finally {
-        setSaveState('saved');
+
+      // The unsaved fields travel with the reversal and stay queued if it fails
+      const startId = resolveEdgeId(edgeId);
+      if (hasFields) {
+        edgePatchesRef.current.set(startId, {
+          ...(edgePatchesRef.current.get(startId) ?? {}),
+          ...fields,
+        });
+      }
+      const reversed = await runSave(() =>
+        enqueueEdgeOp(async () => {
+          const currentId = resolveEdgeId(edgeId);
+          const pending = edgePatchesRef.current.get(currentId);
+          const { edge, replacedId } = await api.updateEdge(currentId, {
+            ...(pending ?? {}),
+            reverse: true,
+          });
+          if (pending && edgePatchesRef.current.get(currentId) === pending) {
+            edgePatchesRef.current.delete(currentId);
+          }
+          if (replacedId) {
+            edgeAliasRef.current.set(replacedId, edge.id);
+            // Edits queued during the request were stored under the old id
+            const newer = edgePatchesRef.current.get(replacedId);
+            if (newer) {
+              edgePatchesRef.current.delete(replacedId);
+              edgePatchesRef.current.set(edge.id, {
+                ...newer,
+                ...(edgePatchesRef.current.get(edge.id) ?? {}),
+              });
+            }
+            setRelations((prev) => prev.map((e) => (e.id === replacedId ? edge : e)));
+            setSelectedEdgeId((curr) => (curr === replacedId ? edge.id : curr));
+          }
+          return true as const;
+        })
+      );
+      // A reversal is not replayed (it would flip the link twice), but its fields are
+      if (!reversed && edgePatchesRef.current.has(startId)) {
+        failedSavesRef.current.set(`edge:${startId}`, () => edgeFieldsOp(startId));
+        setSaveState('error');
       }
     },
-    []
+    [runSave, enqueueEdgeOp, resolveEdgeId, queueEdgeFields, edgeFieldsOp]
   );
 
   const handleDeleteEdge = useCallback(async (edgeId: string) => {
     setRelations((prev) => prev.filter((e) => e.id !== edgeId));
     setSelectedEdgeId((curr) => (curr === edgeId ? null : curr));
 
-    setSaveState('saving');
-    try {
-      await api.deleteEdge(edgeId);
-    } finally {
-      setSaveState('saved');
-    }
-  }, []);
+    await runSave(
+      () => enqueueEdgeOp(() => api.deleteEdge(resolveEdgeId(edgeId))),
+      { retryKey: `delete-edge:${edgeId}` }
+    );
+  }, [runSave, enqueueEdgeOp, resolveEdgeId]);
 
   // Category CRUD
   const handleSaveCategory = async (data: {
@@ -423,38 +592,38 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
     icon: CategoryIconName;
     shape: CategoryShape;
   }) => {
-    setSaveState('saving');
-    try {
-      if (editingCategory) {
-        const { category } = await api.updateCategory(editingCategory.id, data);
-        setCategories((prev) =>
-          prev.map((c) => (c.id === category.id ? category : c))
-        );
-      } else {
-        const { category } = await api.createCategory(projectId, data);
-        setCategories((prev) => [...prev, category]);
-      }
-    } finally {
-      setSaveState('saved');
-    }
+    await runSave(
+      async () => {
+        if (editingCategory) {
+          const { category } = await api.updateCategory(editingCategory.id, data);
+          setCategories((prev) =>
+            prev.map((c) => (c.id === category.id ? category : c))
+          );
+        } else {
+          const { category } = await api.createCategory(projectId, data);
+          setCategories((prev) => [...prev, category]);
+        }
+      },
+      { rethrow: true }
+    );
   };
 
   const handleDeleteCategory = async (categoryId: string) => {
-    setSaveState('saving');
-    try {
-      await api.deleteCategory(categoryId);
-      setCategories((prev) => prev.filter((c) => c.id !== categoryId));
-      setEntities((prev) =>
-        prev.map((n) => (n.categoryId === categoryId ? { ...n, categoryId: null } : n))
-      );
-      setHiddenCategoryIds((prev) => {
-        const next = new Set(prev);
-        next.delete(categoryId);
-        return next;
-      });
-    } finally {
-      setSaveState('saved');
-    }
+    await runSave(
+      async () => {
+        await api.deleteCategory(categoryId);
+        setCategories((prev) => prev.filter((c) => c.id !== categoryId));
+        setEntities((prev) =>
+          prev.map((n) => (n.categoryId === categoryId ? { ...n, categoryId: null } : n))
+        );
+        setHiddenCategoryIds((prev) => {
+          const next = new Set(prev);
+          next.delete(categoryId);
+          return next;
+        });
+      },
+      { rethrow: true }
+    );
   };
 
   // Layouts: Constellation (Force) or Hierarchical (Dagre)
@@ -523,13 +692,13 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
       setProjectNameDraft(project.name);
       return;
     }
-    setSaveState('saving');
-    try {
-      const { project: updated } = await api.updateProject(project.id, { name: trimmed });
-      setProject(updated);
-    } finally {
-      setSaveState('saved');
-    }
+    await runSave(
+      async () => {
+        const { project: updated } = await api.updateProject(project.id, { name: trimmed });
+        setProject(updated);
+      },
+      { retryKey: `project-name:${project.id}` }
+    );
   };
 
   const toggleCategoryVisibility = (catId: string) => {
@@ -563,7 +732,7 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
   if (loading) {
     return (
       <div className="h-screen w-screen bg-zinc-950 flex items-center justify-center gap-3 text-zinc-300">
-        <Loader2 className="w-5 h-5 animate-spin text-cyan-400" />
+        <span className="s21-slit" aria-hidden="true" />
         <span className="text-sm">Chargement du graphe depuis SurrealDB…</span>
       </div>
     );
@@ -576,7 +745,7 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
         <button
           type="button"
           onClick={onBack}
-          className="px-4 py-2 rounded-xl bg-zinc-900 border border-zinc-800 text-xs hover:bg-zinc-800"
+          className="px-4 py-2 rounded-xl bg-zinc-900 border border-filet text-xs hover:bg-zinc-800"
         >
           Retour aux projets
         </button>
@@ -589,13 +758,14 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
   return (
     <div className="h-screen w-screen flex flex-col bg-zinc-950 text-zinc-100 overflow-hidden">
       {/* ==================== TOP BAR ==================== */}
-      <header className="h-14 shrink-0 px-4 border-b border-zinc-800 bg-zinc-900/90 backdrop-blur-md flex items-center justify-between gap-4 z-30">
+      <header className="h-14 shrink-0 px-4 border-b border-filet bg-zinc-900/90 flex items-center justify-between gap-4 z-30">
         <div className="flex items-center gap-2.5 min-w-0">
+          <img src={logoWhite} alt="Teriak47" className="w-7 h-7 shrink-0" />
           <button
             type="button"
             onClick={onBack}
             title="Retour au gestionnaire de projets"
-            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-zinc-100 bg-zinc-950 hover:bg-zinc-800 border border-zinc-800 transition-colors shrink-0"
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-zinc-100 bg-zinc-950 hover:bg-zinc-800 border border-filet transition-colors shrink-0"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Projets</span>
@@ -605,7 +775,7 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
             type="button"
             onClick={() => setLeftSidebarOpen((v) => !v)}
             title={leftSidebarOpen ? 'Masquer les filtres' : 'Afficher les filtres et catégories'}
-            className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 border border-transparent hover:border-zinc-700 transition-colors shrink-0"
+            className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 border border-transparent hover:border-filet-fort transition-colors shrink-0"
           >
             {leftSidebarOpen ? (
               <PanelLeftClose className="w-4 h-4" />
@@ -643,11 +813,38 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
             </button>
           )}
 
-          <span className="hidden lg:inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-zinc-950 border border-zinc-800 text-[11px] text-zinc-400 shrink-0">
+          <span className="hidden lg:inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-zinc-950 border border-filet text-xs text-zinc-400 shrink-0">
             {saveState === 'saving' ? (
               <>
-                <Loader2 className="w-3 h-3 animate-spin text-cyan-400" />
+                <span className="s21-slit" aria-hidden="true" />
                 <span>Sauvegarde…</span>
+              </>
+            ) : saveState === 'error' ? (
+              <>
+                <AlertTriangle className="w-3 h-3 text-red-400" />
+                <span
+                  className="text-red-300 truncate max-w-[220px]"
+                  title={saveError ?? undefined}
+                >
+                  Échec de l'enregistrement
+                </span>
+                {failedSavesRef.current.size > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => void retryFailedSaves()}
+                    className="underline text-cyan-300 hover:text-cyan-200"
+                  >
+                    Réessayer
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={dismissSaveError}
+                  title="Masquer le message"
+                  className="text-zinc-500 hover:text-zinc-300"
+                >
+                  <X className="w-3 h-3" />
+                </button>
               </>
             ) : (
               <>
@@ -681,7 +878,7 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
                 }
               }}
               placeholder="Rechercher un nœud, une note, une IP, un attribut… (Ctrl+K)"
-              className="w-full pl-8 pr-16 py-1.5 text-xs rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-100 placeholder-zinc-500 focus:border-cyan-500 focus:outline-none transition-colors"
+              className="w-full pl-8 pr-16 py-1.5 text-xs rounded-xl bg-zinc-950 border border-filet text-zinc-100 placeholder-zinc-500 focus:border-cyan-500 focus:outline-none transition-colors"
             />
             {searchQuery ? (
               <button
@@ -692,20 +889,20 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
                 <X className="w-3.5 h-3.5" />
               </button>
             ) : (
-              <kbd className="hidden sm:inline-block absolute right-2.5 px-1.5 py-0.5 text-[10px] font-mono text-zinc-500 bg-zinc-900 border border-zinc-800 rounded">
+              <kbd className="hidden sm:inline-block absolute right-2.5 px-1.5 py-0.5 text-xs font-mono text-zinc-500 bg-zinc-900 border border-filet rounded">
                 Ctrl+K
               </kbd>
             )}
           </div>
 
           {searchFocused && searchQuery.trim().length > 0 && (
-            <div className="absolute left-0 right-0 mt-1.5 rounded-xl bg-zinc-900 border border-zinc-800 shadow-2xl overflow-hidden max-h-72 overflow-y-auto z-50">
+            <div className="absolute left-0 right-0 mt-1.5 rounded-xl bg-zinc-900 border border-filet shadow-2xl overflow-hidden max-h-72 overflow-y-auto z-50">
               {searchMatches.length === 0 ? (
                 <div className="px-3.5 py-3 text-xs text-zinc-400">
                   Aucun indice ne correspond à « {searchQuery} ».
                 </div>
               ) : (
-                <div className="divide-y divide-zinc-800/70">
+                <div className="divide-y divide-filet/70">
                   {searchMatches.map((node) => {
                     const cat = node.categoryId ? categoryMap.get(node.categoryId) : null;
                     return (
@@ -723,7 +920,7 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
                             {node.title}
                           </div>
                           {Object.keys(node.metadata).length > 0 && (
-                            <div className="text-[10.5px] font-mono text-zinc-400 truncate mt-0.5">
+                            <div className="text-xs font-mono text-zinc-400 truncate mt-0.5">
                               {Object.entries(node.metadata)
                                 .slice(0, 2)
                                 .map(([k, v]) => `${k}: ${v}`)
@@ -733,7 +930,7 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
                         </div>
                         {cat && (
                           <span
-                            className="px-2 py-0.5 rounded text-[10px] font-medium shrink-0"
+                            className="px-2 py-0.5 rounded text-xs font-medium shrink-0"
                             style={{
                               backgroundColor: `${cat.color}22`,
                               color: cat.color,
@@ -768,15 +965,15 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
               type="button"
               onClick={() => setLayoutMenuOpen((v) => !v)}
               title="Organiser le graphe"
-              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium bg-zinc-950 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 transition-colors"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium bg-zinc-950 hover:bg-zinc-800 border border-filet text-zinc-300 transition-colors"
             >
               <LayoutGrid className="w-3.5 h-3.5 text-zinc-400" />
               <span className="hidden md:inline">Disposition</span>
             </button>
 
             {layoutMenuOpen && (
-              <div className="absolute right-0 mt-1.5 w-60 rounded-xl bg-zinc-900 border border-zinc-800 shadow-2xl py-1 z-50">
-                <div className="px-3 py-1.5 text-[10.5px] font-medium uppercase tracking-wider text-zinc-500">
+              <div className="absolute right-0 mt-1.5 w-60 rounded-xl bg-zinc-900 border border-filet shadow-2xl py-1 z-50">
+                <div className="px-3 py-1.5 text-xs font-medium uppercase tracking-wider text-zinc-500">
                   Disposition du graphe
                 </div>
                 <button
@@ -811,7 +1008,7 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
             type="button"
             onClick={() => void handleExportProject()}
             title="Exporter ce projet en .json"
-            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium bg-zinc-950 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 transition-colors"
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium bg-zinc-950 hover:bg-zinc-800 border border-filet text-zinc-300 transition-colors"
           >
             <Download className="w-3.5 h-3.5 text-zinc-400" />
             <span className="hidden md:inline">Export .json</span>
@@ -823,11 +1020,11 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
       <div className="flex-1 flex min-h-0 relative">
         {/* LEFT SIDEBAR: Filters & Custom Categories */}
         {leftSidebarOpen && (
-          <aside className="w-64 shrink-0 h-full bg-zinc-900/90 border-r border-zinc-800 flex flex-col justify-between overflow-hidden z-20">
+          <aside className="w-64 shrink-0 h-full bg-zinc-900/90 border-r border-filet flex flex-col justify-between overflow-hidden z-20">
             <div className="flex-1 overflow-y-auto p-3.5 space-y-5">
               {/* Edge Certainty Filter */}
               <div className="space-y-2">
-                <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
+                <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-zinc-400">
                   <Filter className="w-3 h-3 text-cyan-400" />
                   <span>Filtre des Relations</span>
                 </div>
@@ -854,12 +1051,12 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
                       className={cn(
                         'flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition-colors border',
                         edgeFilter === opt.value
-                          ? 'bg-zinc-800 border-zinc-700 text-zinc-100 font-medium'
+                          ? 'bg-zinc-800 border-filet-fort text-zinc-100 font-medium'
                           : 'bg-transparent border-transparent text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-200'
                       )}
                     >
                       <span>{opt.label}</span>
-                      <span className="text-[10.5px] font-mono text-zinc-500">{opt.count}</span>
+                      <span className="text-xs font-mono text-zinc-500">{opt.count}</span>
                     </button>
                   ))}
                 </div>
@@ -868,7 +1065,7 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
               {/* Categories List & Toggles */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
                     Catégories ({categories.length})
                   </span>
                   <button
@@ -877,7 +1074,7 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
                       setEditingCategory(null);
                       setCategoryModalOpen(true);
                     }}
-                    className="inline-flex items-center gap-0.5 text-[11px] font-medium text-cyan-400 hover:text-cyan-300"
+                    className="inline-flex items-center gap-0.5 text-xs font-medium text-cyan-400 hover:text-cyan-300"
                   >
                     <Plus className="w-3 h-3" />
                     <span>Ajouter</span>
@@ -888,7 +1085,7 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
                   <button
                     type="button"
                     onClick={() => setHiddenCategoryIds(new Set())}
-                    className="w-full py-1 px-2 rounded-md bg-cyan-500/10 border border-cyan-500/30 text-[11px] text-cyan-300 hover:bg-cyan-500/15 transition-colors"
+                    className="w-full py-1 px-2 rounded-md bg-cyan-500/10 border border-cyan-500/30 text-xs text-cyan-300 hover:bg-cyan-500/15 transition-colors"
                   >
                     Réafficher toutes les catégories ({hiddenCategoryIds.size} masquée
                     {hiddenCategoryIds.size > 1 ? 's' : ''})
@@ -929,7 +1126,7 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
                         </button>
 
                         <div className="flex items-center gap-1 shrink-0">
-                          <span className="text-[10.5px] font-mono text-zinc-500 px-1">
+                          <span className="text-xs font-mono text-zinc-500 px-1">
                             {count}
                           </span>
                           <button
@@ -972,10 +1169,10 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
                         onClick={() => toggleCategoryVisibility(UNCLASSIFIED_FILTER_ID)}
                         className="flex items-center gap-2 min-w-0 flex-1 text-left"
                       >
-                        <span className="w-2.5 h-2.5 rounded-full bg-zinc-500 ml-1" />
+                        <span className="s21-slit s21-slit--dim ml-1" aria-hidden="true" />
                         <span className="text-xs text-zinc-400 truncate">Non classé</span>
                       </button>
-                      <span className="text-[10.5px] font-mono text-zinc-500 px-1">
+                      <span className="text-xs font-mono text-zinc-500 px-1">
                         {unclassifiedCount}
                       </span>
                     </div>
@@ -985,12 +1182,12 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
             </div>
 
             {/* Updated Constellation Shortcuts Legend */}
-            <div className="p-3 border-t border-zinc-800 bg-zinc-950/60 space-y-1 text-[10.5px] text-zinc-500">
+            <div className="p-3 border-t border-filet bg-zinc-950/60 space-y-1 text-xs text-zinc-500">
               <div>
                 <strong className="text-zinc-300">Double-clic fond :</strong> créer un nœud
               </div>
               <div>
-                <strong className="text-zinc-300">Anneau halo / Shift+glisser :</strong> relier
+                <strong className="text-zinc-300">Cadre autour du nœud / Shift+glisser :</strong> relier
               </div>
               <div>
                 <strong className="text-zinc-300">Tirer dans le vide :</strong> créer nœud relié
@@ -1055,6 +1252,8 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
       </div>
 
       {/* Category Create/Edit Modal */}
+      <AppFooter />
+
       <CategoryModal
         isOpen={categoryModalOpen}
         initialCategory={editingCategory}

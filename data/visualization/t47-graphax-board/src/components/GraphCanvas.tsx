@@ -90,13 +90,36 @@ function sanitizeViewport(vp: Viewport, fallback: Viewport = { x: 400, y: 300, z
   };
 }
 
-function getPolygonPoints(sides: number, radius: number, rotationRad = -Math.PI / 2): string {
-  const pts: string[] = [];
-  for (let i = 0; i < sides; i++) {
-    const a = rotationRad + (i * 2 * Math.PI) / sides;
-    pts.push(`${(Math.cos(a) * radius).toFixed(2)},${(Math.sin(a) * radius).toFixed(2)}`);
+// SECTION 21 geometry: no curves. Nodes are square boxes; "cut" boxes lose two opposite
+// corners along the 21 degree slope (width / height = tan 21 degrees).
+const NODE_HALF_RATIO = 0.92;
+const CUT_SLOPE = Math.tan((21 * Math.PI) / 180);
+
+function nodeHalf(r: number): number {
+  return r * NODE_HALF_RATIO;
+}
+
+// Distance from a box centre to its border along the unit direction (ux, uy)
+function boxBoundary(half: number, ux: number, uy: number): number {
+  const m = Math.max(Math.abs(ux), Math.abs(uy));
+  return m > 0 ? half / m : half;
+}
+
+function boxPoints(half: number, cut: boolean): string {
+  if (!cut) {
+    return `${-half},${-half} ${half},${-half} ${half},${half} ${-half},${half}`;
   }
-  return pts.join(' ');
+  const w = half * 0.38;
+  const h = Math.min(w / CUT_SLOPE, half * 1.6);
+  const pts: Array<[number, number]> = [
+    [-half, -half],
+    [half - w, -half],
+    [half, -half + h],
+    [half, half],
+    [-half + w, half],
+    [-half, half - h],
+  ];
+  return pts.map(([x, y]) => `${x.toFixed(2)},${y.toFixed(2)}`).join(' ');
 }
 
 function renderNodeShape(
@@ -106,33 +129,16 @@ function renderNodeShape(
   stroke: string,
   strokeWidth: number
 ) {
-  if (shape === 'sharp') {
-    const side = r * 1.72;
-    return (
-      <rect
-        x={-side / 2}
-        y={-side / 2}
-        width={side}
-        height={side}
-        rx={8}
-        fill={fill}
-        stroke={stroke}
-        strokeWidth={strokeWidth}
-      />
-    );
-  }
-  if (shape === 'cut') {
-    return (
-      <polygon
-        points={getPolygonPoints(6, r * 1.06, -Math.PI / 2)}
-        fill={fill}
-        stroke={stroke}
-        strokeWidth={strokeWidth}
-        strokeLinejoin="round"
-      />
-    );
-  }
-  return <circle r={r} fill={fill} stroke={stroke} strokeWidth={strokeWidth} />;
+  // Legacy "rounded" and "pill" categories are drawn as plain square boxes
+  return (
+    <polygon
+      points={boxPoints(nodeHalf(r), shape === 'cut')}
+      fill={fill}
+      stroke={stroke}
+      strokeWidth={strokeWidth}
+      strokeLinejoin="miter"
+    />
+  );
 }
 
 export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
@@ -847,8 +853,9 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
           const sdx = cx - p1.x;
           const sdy = cy - p1.y;
           const sLen = Math.hypot(sdx, sdy) || 1;
-          const sx = p1.x + (sdx / sLen) * (r1 + 3);
-          const sy = p1.y + (sdy / sLen) * (r1 + 3);
+          const b1 = boxBoundary(nodeHalf(r1), sdx / sLen, sdy / sLen);
+          const sx = p1.x + (sdx / sLen) * (b1 + 3);
+          const sy = p1.y + (sdy / sLen) * (b1 + 3);
 
           // End tangent control -> p2
           const edx = p2.x - cx;
@@ -856,7 +863,8 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
           const eLen = Math.hypot(edx, edy) || 1;
           const eux = edx / eLen;
           const euy = edy / eLen;
-          const endPad = edge.directed ? r2 + 5 : r2 + 3;
+          const b2 = boxBoundary(nodeHalf(r2), eux, euy);
+          const endPad = edge.directed ? b2 + 5 : b2 + 3;
           const tx = p2.x - eux * endPad;
           const ty = p2.y - euy * endPad;
 
@@ -867,17 +875,11 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
           const pathD =
             Math.abs(curveStep) < 0.5
               ? `M ${sx.toFixed(1)} ${sy.toFixed(1)} L ${tx.toFixed(1)} ${ty.toFixed(1)}`
-              : `M ${sx.toFixed(1)} ${sy.toFixed(1)} Q ${cx.toFixed(1)} ${cy.toFixed(1)} ${tx.toFixed(1)} ${ty.toFixed(1)}`;
+              : `M ${sx.toFixed(1)} ${sy.toFixed(1)} L ${cx.toFixed(1)} ${cy.toFixed(1)} L ${tx.toFixed(1)} ${ty.toFixed(1)}`;
 
-          // Quadratic Bezier midpoint at t = 0.5
-          const mx =
-            Math.abs(curveStep) < 0.5
-              ? (sx + tx) / 2
-              : 0.25 * sx + 0.5 * cx + 0.25 * tx;
-          const my =
-            Math.abs(curveStep) < 0.5
-              ? (sy + ty) / 2
-              : 0.25 * sy + 0.5 * cy + 0.25 * ty;
+          // Parallel links bend at a single point; the label sits on that bend
+          const mx = Math.abs(curveStep) < 0.5 ? (sx + tx) / 2 : cx;
+          const my = Math.abs(curveStep) < 0.5 ? (sy + ty) / 2 : cy;
 
           // Arrowhead polygon at (tx, ty)
           const arrowLen = 9.5;
@@ -1019,27 +1021,12 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
           });
         }}
         className={cn(
-          'relative w-full h-full overflow-hidden select-none bg-[#07080c]',
+          'relative w-full h-full overflow-hidden select-none bg-zinc-950',
           toolMode === 'link' ? 'cursor-crosshair' : 'cursor-grab active:cursor-grabbing'
         )}
-        style={{
-          backgroundImage:
-            'radial-gradient(circle at 50% 50%, rgba(14, 116, 144, 0.06) 0%, transparent 70%), radial-gradient(circle at 1px 1px, rgba(63, 63, 70, 0.28) 1px, transparent 0)',
-          backgroundSize: '100% 100%, 28px 28px',
-        }}
       >
         {/* ==================== VECTOR CONSTELLATION SVG ==================== */}
         <svg ref={svgRef} className="w-full h-full block">
-          <defs>
-            <filter id="graphax-glow" x="-50%" y="-50%" width="200%" height="200%">
-              <feGaussianBlur stdDeviation="5" result="blur" />
-              <feMerge>
-                <feMergeNode in="blur" />
-                <feMergeNode in="SourceGraphic" />
-              </feMerge>
-            </filter>
-          </defs>
-
           {/* Dedicated Canvas Background Hit-Target */}
           <rect
             data-canvas-bg="true"
@@ -1066,16 +1053,10 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
                   !searchMatchIds.has(edge.targetNodeId));
 
               const strokeColor = isSelected
-                ? isDashed
-                  ? '#fbbf24'
-                  : '#22d3ee'
+                ? 'var(--accent-fort)'
                 : isIncidentSpotlight || isHovered
-                  ? isDashed
-                    ? '#f59e0b'
-                    : '#38bdf8'
-                  : isDashed
-                    ? '#b45309'
-                    : '#475569';
+                  ? 'var(--accent)'
+                  : 'var(--filet-fort)';
 
               const strokeWidth =
                 isSelected || isHovered ? 2.4 : isIncidentSpotlight ? 2.0 : 1.45;
@@ -1115,7 +1096,7 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
                     stroke={strokeColor}
                     strokeWidth={strokeWidth}
                     strokeDasharray={isDashed ? '6 5' : undefined}
-                    strokeLinecap="round"
+                    strokeLinecap="butt"
                   />
 
                   {/* Perimeter-aligned Directional Arrowhead */}
@@ -1127,29 +1108,20 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
                       {labelText ? (
                         <>
                           <rect
-                            x={-(labelText.length * 3.3 + 10)}
-                            y={-9.5}
-                            width={labelText.length * 6.6 + 20}
-                            height={19}
-                            rx={6}
-                            fill="#09090bee"
-                            stroke={
-                              isSelected
-                                ? isDashed
-                                  ? '#fbbf24'
-                                  : '#22d3ee'
-                                : isDashed
-                                  ? '#92400e'
-                                  : '#27272a'
-                            }
+                            x={-(labelText.length * 3.7 + 10)}
+                            y={-10.5}
+                            width={labelText.length * 7.4 + 20}
+                            height={21}
+                            fill="var(--surface-puits)"
+                            stroke={isSelected ? 'var(--accent-fort)' : 'var(--filet)'}
                             strokeWidth={1}
                             strokeDasharray={isDashed ? '3 2' : undefined}
                           />
                           <text
                             textAnchor="middle"
                             dominantBaseline="central"
-                            fill={isDashed ? '#fcd34d' : '#cbd5e1'}
-                            fontSize={10.5}
+                            fill="var(--texte-fort)"
+                            fontSize={12}
                             fontWeight={500}
                             className="pointer-events-none"
                           >
@@ -1163,16 +1135,15 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
                             y={-9}
                             width={68}
                             height={18}
-                            rx={6}
-                            fill="#18181bee"
-                            stroke="#3f3f46"
+                            fill="var(--surface-carte)"
+                            stroke="var(--filet-fort)"
                             strokeWidth={1}
                           />
                           <text
                             textAnchor="middle"
                             dominantBaseline="central"
-                            fill="#a1a1aa"
-                            fontSize={9.5}
+                            fill="var(--texte)"
+                            fontSize={12}
                           >
                             + label
                           </text>
@@ -1204,18 +1175,28 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
                       y1={p1.y}
                       x2={p2.x}
                       y2={p2.y}
-                      stroke="#22d3ee"
+                      stroke="var(--accent-fort)"
                       strokeWidth={2.2}
                       strokeDasharray="6 4"
                     />
-                    <circle
-                      cx={p2.x}
-                      cy={p2.y}
-                      r={snapNode ? getNodeRadius(snapNode.id) + 7 : 5}
-                      fill={snapNode ? 'rgba(34, 211, 238, 0.14)' : '#22d3ee'}
-                      stroke="#22d3ee"
-                      strokeWidth={1.8}
-                    />
+                    {(() => {
+                      const halfBox = snapNode ? nodeHalf(getNodeRadius(snapNode.id)) + 7 : 5;
+                      return (
+                        <rect
+                          x={p2.x - halfBox}
+                          y={p2.y - halfBox}
+                          width={halfBox * 2}
+                          height={halfBox * 2}
+                          fill={
+                            snapNode
+                              ? 'color-mix(in oklab, var(--accent) 14%, transparent)'
+                              : 'var(--accent-fort)'
+                          }
+                          stroke="var(--accent-fort)"
+                          strokeWidth={1.8}
+                        />
+                      );
+                    })()}
                   </g>
                 );
               })()}
@@ -1226,7 +1207,7 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
               const pos = getNodePos(node);
               const r = getNodeRadius(node.id);
               const cat = node.categoryId ? (categoryMap.get(node.categoryId) ?? null) : null;
-              const color = cat?.color ?? '#94a3b8';
+              const color = cat?.color ?? 'var(--texte)';
               const Icon = getCategoryIcon(cat?.icon);
               const nodeTitle = String(node.title ?? 'Indice');
               const nodeContent = String(node.content ?? '');
@@ -1285,22 +1266,15 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
                     centerOnPoint(pos.x, pos.y, Math.max(viewportRef.current.zoom, 1.25));
                   }}
                 >
-                  {/* Ambient Constellation Glow */}
-                  {(isSelected || isHovered || isSearchHit || isSnapTarget) && (
-                    <circle
-                      r={r + 14}
-                      fill={isSnapTarget ? '#22d3ee' : color}
-                      opacity={isSelected || isSnapTarget ? 0.22 : 0.14}
-                      className="pointer-events-none"
-                    />
-                  )}
-
                   {/* 360° OUTER LINK HALO RING — Drag anywhere on this ring to link effortlessly! */}
                   {toolMode === 'select' && (
-                    <circle
-                      r={r + 8}
+                    <rect
+                      x={-(nodeHalf(r) + 8)}
+                      y={-(nodeHalf(r) + 8)}
+                      width={(nodeHalf(r) + 8) * 2}
+                      height={(nodeHalf(r) + 8) * 2}
                       fill="none"
-                      stroke={isHaloHovered || isLinkSource ? '#22d3ee' : color}
+                      stroke={isHaloHovered || isLinkSource ? 'var(--accent-fort)' : color}
                       strokeWidth={11}
                       strokeOpacity={
                         isHaloHovered || isLinkSource ? 0.42 : isHovered ? 0.18 : 0
@@ -1322,16 +1296,19 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
                         onSelectNode(node.id);
                       }}
                     >
-                      <title>Glisser cet anneau vers un autre nœud pour créer un lien</title>
-                    </circle>
+                      <title>Glisser ce cadre vers un autre nœud pour créer un lien</title>
+                    </rect>
                   )}
 
                   {/* Subtle dashed visual ring when hovered */}
                   {(isHovered || isHaloHovered || isLinkSource) && (
-                    <circle
-                      r={r + 9}
+                    <rect
+                      x={-(nodeHalf(r) + 9)}
+                      y={-(nodeHalf(r) + 9)}
+                      width={(nodeHalf(r) + 9) * 2}
+                      height={(nodeHalf(r) + 9) * 2}
                       fill="none"
-                      stroke={isHaloHovered || isLinkSource ? '#22d3ee' : color}
+                      stroke={isHaloHovered || isLinkSource ? 'var(--accent-fort)' : color}
                       strokeWidth={1.3}
                       strokeDasharray="4 3"
                       opacity={0.75}
@@ -1341,10 +1318,13 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
 
                   {/* Selection / Search outer ring */}
                   {(isSelected || isSearchHit) && (
-                    <circle
-                      r={r + 4.5}
+                    <rect
+                      x={-(nodeHalf(r) + 4.5)}
+                      y={-(nodeHalf(r) + 4.5)}
+                      width={(nodeHalf(r) + 4.5) * 2}
+                      height={(nodeHalf(r) + 4.5) * 2}
                       fill="none"
-                      stroke={isSelected ? '#22d3ee' : '#fbbf24'}
+                      stroke={isSelected ? 'var(--accent-fort)' : 'var(--attention)'}
                       strokeWidth={2}
                       className="pointer-events-none"
                     />
@@ -1398,14 +1378,20 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
                     }}
                   >
                     {/* Base dark fill */}
-                    {renderNodeShape(cat?.shape, r, '#0f1118', color, isSelected ? 2.6 : 2)}
+                    {renderNodeShape(cat?.shape, r, 'var(--surface-carte)', color, isSelected ? 2.6 : 2)}
                     {/* Translucent category tint overlay */}
-                    {renderNodeShape(cat?.shape, r - 1, `${color}2b`, 'none', 0)}
+                    {renderNodeShape(
+                      cat?.shape,
+                      r - 1,
+                      `color-mix(in oklab, ${color} 17%, transparent)`,
+                      'none',
+                      0
+                    )}
 
                     {/* Centered Vector Category Icon */}
                     <g
                       transform={`translate(${-9}, ${-9})`}
-                      style={{ color: isSelected ? '#ffffff' : color }}
+                      style={{ color: isSelected ? 'var(--texte-fort)' : color }}
                       className="pointer-events-none"
                     >
                       <Icon width={18} height={18} strokeWidth={2} />
@@ -1413,12 +1399,13 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
 
                     {/* Subtle detail badge dot (indicates Markdown notes or metadata) */}
                     {hasDetails && (
-                      <circle
-                        cx={r * 0.72}
-                        cy={-r * 0.72}
-                        r={3.8}
+                      <rect
+                        x={nodeHalf(r) - 4}
+                        y={-nodeHalf(r) - 4}
+                        width={8}
+                        height={8}
                         fill={color}
-                        stroke="#09090b"
+                        stroke="var(--surface-puits)"
                         strokeWidth={1.5}
                         className="pointer-events-none"
                       />
@@ -1438,14 +1425,14 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
                   >
                     <text
                       textAnchor="middle"
-                      fill={isSelected || isHovered ? '#ffffff' : '#e4e4e7'}
+                      fill={isSelected || isHovered ? 'var(--texte-fort)' : 'var(--txt-1)'}
                       fontSize={12}
                       fontWeight={isSelected || isHovered ? 600 : 500}
                       style={{
                         paintOrder: 'stroke',
-                        stroke: '#07080cee',
+                        stroke: 'var(--surface-puits)',
                         strokeWidth: 4.5,
-                        strokeLinejoin: 'round',
+                        strokeLinejoin: 'miter',
                       }}
                     >
                       {nodeTitle.length > 34 ? `${nodeTitle.slice(0, 32)}…` : nodeTitle}
@@ -1456,12 +1443,12 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
                       <text
                         y={15}
                         textAnchor="middle"
-                        fill="#94a3b8"
-                        fontSize={10}
-                        fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
+                        fill="var(--texte)"
+                        fontSize={12}
+                        fontFamily="var(--font-mono)"
                         style={{
                           paintOrder: 'stroke',
-                          stroke: '#07080cee',
+                          stroke: 'var(--surface-puits)',
                           strokeWidth: 4,
                         }}
                       >
@@ -1517,7 +1504,7 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
 
         {/* ==================== LINK MODE ACTIVE BANNER ==================== */}
         {(toolMode === 'link' || linkingWire) && (
-          <div className="pointer-events-none absolute top-3 left-1/2 -translate-x-1/2 px-3.5 py-1.5 rounded-full bg-cyan-950/90 border border-cyan-500/50 text-xs text-cyan-200 shadow-xl backdrop-blur-md flex items-center gap-2 z-20">
+          <div className="pointer-events-none absolute top-3 left-1/2 -translate-x-1/2 px-3.5 py-1.5 rounded-full bg-cyan-950/90 border border-cyan-500/50 text-xs text-cyan-200 flex items-center gap-2 z-20">
             <Link2 className="w-3.5 h-3.5 text-cyan-400" />
             <span>
               {linkingWire
@@ -1530,7 +1517,7 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
         {/* ==================== EMPTY CANVAS OVERLAY ==================== */}
         {nodes.length === 0 && (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-            <div className="px-6 py-4 rounded-2xl bg-zinc-900/85 border border-zinc-800 text-center max-w-sm shadow-2xl backdrop-blur-sm">
+            <div className="px-6 py-4 rounded-2xl bg-zinc-900/85 border border-filet text-center max-w-sm shadow-2xl">
               <p className="text-sm font-medium text-zinc-200 mb-1">
                 Graphe de constellation prêt
               </p>
@@ -1547,7 +1534,7 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
           onMouseDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
           onDoubleClick={(e) => e.stopPropagation()}
-          className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-1 p-1.5 rounded-2xl bg-zinc-900/92 border border-zinc-800 shadow-2xl backdrop-blur-md z-20"
+          className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-1 p-1.5 rounded-2xl bg-zinc-900/92 border border-filet shadow-2xl z-20"
         >
           <button
             type="button"
@@ -1559,7 +1546,7 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
             className={cn(
               'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-colors',
               toolMode === 'select'
-                ? 'bg-zinc-800 text-zinc-100 border border-zinc-700'
+                ? 'bg-zinc-800 text-zinc-100 border border-filet-fort'
                 : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
             )}
           >
@@ -1635,7 +1622,7 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
             <ZoomOut className="w-3.5 h-3.5" />
           </button>
 
-          <span className="px-1.5 text-[11px] font-mono text-zinc-400 min-w-[42px] text-center">
+          <span className="px-1.5 text-xs font-mono text-zinc-400 min-w-[42px] text-center">
             {Math.round(viewport.zoom * 100)}%
           </span>
 
@@ -1678,7 +1665,7 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
               centerOnPoint(wx, wy, viewport.zoom);
             }}
             title="Mini-carte de la constellation (cliquer pour déplacer la caméra)"
-            className="hidden md:block absolute bottom-4 right-4 rounded-xl bg-zinc-900/90 border border-zinc-800 shadow-2xl overflow-hidden cursor-pointer backdrop-blur-md z-20"
+            className="hidden md:block absolute bottom-4 right-4 rounded-xl bg-zinc-900/90 border border-filet shadow-2xl overflow-hidden cursor-pointer z-20"
             style={{ width: miniMapData.MM_W, height: miniMapData.MM_H }}
           >
             <svg width={miniMapData.MM_W} height={miniMapData.MM_H}>
@@ -1696,7 +1683,7 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
                     y1={ps.y * miniMapData.scale + miniMapData.offsetY}
                     x2={pt.x * miniMapData.scale + miniMapData.offsetX}
                     y2={pt.y * miniMapData.scale + miniMapData.offsetY}
-                    stroke="#3f3f46"
+                    stroke="var(--filet-fort)"
                     strokeWidth={0.8}
                   />
                 );
@@ -1707,12 +1694,13 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
                 const p = getNodePos(n);
                 const cat = n.categoryId ? categoryMap.get(n.categoryId) : null;
                 return (
-                  <circle
+                  <rect
                     key={n.id}
-                    cx={p.x * miniMapData.scale + miniMapData.offsetX}
-                    cy={p.y * miniMapData.scale + miniMapData.offsetY}
-                    r={n.id === selectedNodeId ? 3.5 : 2.5}
-                    fill={cat?.color ?? '#94a3b8'}
+                    x={p.x * miniMapData.scale + miniMapData.offsetX - (n.id === selectedNodeId ? 3.5 : 2.5)}
+                    y={p.y * miniMapData.scale + miniMapData.offsetY - (n.id === selectedNodeId ? 3.5 : 2.5)}
+                    width={n.id === selectedNodeId ? 7 : 5}
+                    height={n.id === selectedNodeId ? 7 : 5}
+                    fill={cat?.color ?? 'var(--texte)'}
                   />
                 );
               })}
@@ -1722,20 +1710,19 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
                 y={miniMapData.vpRect.y}
                 width={Math.max(8, miniMapData.vpRect.w)}
                 height={Math.max(6, miniMapData.vpRect.h)}
-                fill="rgba(34, 211, 238, 0.08)"
-                stroke="#22d3ee"
+                fill="color-mix(in oklab, var(--accent) 8%, transparent)"
+                stroke="var(--accent-fort)"
                 strokeWidth={1}
-                rx={2}
               />
             </svg>
           </div>
         )}
 
         {/* Quick Halo Hint Pill (Bottom Left) */}
-        <div className="hidden xl:flex items-center gap-1.5 absolute bottom-4 left-4 px-3 py-1.5 rounded-xl bg-zinc-900/80 border border-zinc-800/80 text-[11px] text-zinc-400 pointer-events-none z-10">
-          <Sparkles className="w-3 h-3 text-cyan-400 shrink-0" />
+        <div className="hidden xl:flex items-center gap-1.5 absolute bottom-4 left-4 px-3 py-1.5 rounded-xl bg-zinc-900/80 border border-filet/80 text-xs text-zinc-400 pointer-events-none z-10">
+          <span className="text-cyan-400 shrink-0">▸</span>
           <span>
-            Tirez <strong className="text-zinc-200">l'anneau autour d'un nœud</strong> (ou{' '}
+            Tirez <strong className="text-zinc-200">le cadre autour d'un nœud</strong> (ou{' '}
             <strong className="text-zinc-200">Shift + glisser</strong>) pour relier
           </span>
         </div>
