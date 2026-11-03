@@ -1,9 +1,9 @@
-# Web Enumeration Prep
+# T47 Web Enumeration Prep
 
 🌐 **Langue :** [English](README.md) | Français
 
 Cet outil prépare des dictionnaires de fichiers et des commandes
-Gobuster/ffuf à copier. L’application n’exécute aucun scan.
+Gobuster/ffuf à copier. Son interface est en anglais et l’application n’exécute aucun scan.
 
 ## Démarrer
 
@@ -20,9 +20,9 @@ sans dépendance Python à installer. Ctrl+C arrête le serveur.
 python3 app.py --port 8766
 ```
 
-L’accueil permet d’ouvrir **Énumération web**, le module précédemment nommé
+L’accueil permet d’ouvrir **Web Enumeration**, le module précédemment nommé
 WebEnum. L’interface reste toujours sombre.
-Le logo, les tokens Teriak47 V2 et les polices sont locaux : aucun accès
+Le logo, les styles SECTION 21 et les polices sont locaux : aucun accès
 Internet n’est requis pour l’affichage. Les licences des fontes sont jointes.
 
 ## Énumération web
@@ -39,10 +39,11 @@ Internet n’est requis pour l’affichage. Les licences des fontes sont jointes
 Le chemin `/usr/share/wordlists/dirb/common.txt` est un point de départ à vérifier
 sur la machine. Gobuster et ffuf sont requis seulement pour exécuter leurs commandes
 dans le terminal. Vérifier les options avec `gobuster dir --help` et `ffuf -h`.
-Les commandes utilisent les chemins du serveur : les créer depuis Kali pour les
-exécuter sur Kali. Les noms contiennent déjà l’extension, sans ajouter `-x pdf`.
-Les sorties sont écrites dans le dossier courant du terminal ; changer `-o`
-pour éviter de remplacer les résultats d’une précédente recherche.
+Les commandes utilisent les chemins du serveur : si l’outil tourne sur une autre
+machine que Kali, transférer les listes et adapter leurs chemins. Les noms contiennent
+déjà l’extension, sans ajouter `-x pdf`.
+Chaque commande utilise GNU `mktemp` pour créer un nouveau fichier de résultats et
+affiche son chemin. Une exécution interrompue peut laisser un fichier vide.
 
 Les motifs proposés sont des exemples ; renseigne la cible réellement utilisée.
 
@@ -80,7 +81,7 @@ et supprimer ensemble le `.txt` et le `.json` portant le même identifiant.
 ## Architecture
 
 - `app.py` : serveur local, session, assets communs et distribution des requêtes.
-- `web/` : accueil, catalogue des modules, identité V2 commune.
+- `web/` : accueil, catalogue des modules et identité SECTION 21 commune.
 - `modules/__init__.py` : registre explicite des outils.
 - `modules/webenum/` : logique et interface du premier module.
 - `data/<module>/` : données propres à chaque outil.

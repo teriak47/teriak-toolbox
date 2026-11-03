@@ -1,44 +1,37 @@
-/* Teriak47 — Dispositifs de marque (utilitaires)
-   Tous dérivés du logo : la pente de l'éclair (21°), les éclats de fourrure,
-   la fente d'œil, les coins coupés. Classes autonomes, réutilisables partout.
-   AUCUNE n'introduit de courbe. */
-
-/* ——— Éclats de fourrure — l'ornement signature (3 traits décroissants à 21°).
-   Trois emplois codifiés UNIQUEMENT : tête de section, séparateur d'index,
-   signature de pied. Ne pas semer ailleurs. ——— */
+/* Adapted from SECTION 21; local fonts and assets remain offline. */
 .t47-shards { display: inline-flex; gap: 5px; align-items: flex-start; }
-.t47-shards i { display: block; width: var(--filet-bloc); background: var(--filet-fort); transform: rotate(var(--pente)); }
+.t47-shards i { display: block; width: var(--rule-block); background: var(--rule-strong); transform: rotate(var(--slope)); }
 .t47-shards i:nth-child(1) { height: 17px; }
 .t47-shards i:nth-child(2) { height: 11px; margin-top: 3px; }
 .t47-shards i:nth-child(3) { height: 6px;  margin-top: 6px; }
 .t47-shards.t47-shards--accent i { background: var(--accent); }
 .t47-shards.t47-shards--flip { transform: scaleX(-1); }
 
-/* ——— Fente d'œil — remplace TOUT point/pastille d'état (jamais de cercle). ——— */
-.t47-slit { display: inline-block; width: 16px; height: 5px; background: var(--accent); transform: skewX(calc(-1 * var(--pente))); }
-.t47-slit--dim { background: var(--etat-clos); }
-.t47-slit--attente { background: var(--avert); }
 
-/* ——— Filet : le seul trait de séparation. Net, pas d'ombre. ——— */
-.t47-filet { border: 0; border-top: var(--filet-fin) solid var(--filet); height: 0; margin: 0; }
-.t47-filet--fort { border-top-color: var(--filet-fort); }
-.t47-filet--accent { border-top-color: var(--accent); }
+.t47-slit { display: inline-block; width: 16px; height: 5px; background: var(--accent); transform: skewX(calc(-1 * var(--slope))); }
+.t47-slit--dim { background: var(--state-closed); }
+.t47-slit--pending { background: var(--warning); }
 
-/* ——— Séparateur en éclats (pour les index / listes) ——— */
-.t47-sep-eclats { display: flex; gap: 5px; }
-.t47-sep-eclats i { display: block; width: var(--filet-bloc); height: 12px; background: var(--filet); transform: rotate(var(--pente)); }
 
-/* ——— Coupes de coin (ratio tan 21°) — la seule façon de casser un angle ——— */
-.t47-coupe-tr { clip-path: polygon(0 0, calc(100% - var(--coupe)) 0, 100% var(--coupe-h), 100% 100%, 0 100%); }
-.t47-coupe-bl { clip-path: polygon(0 0, 100% 0, 100% 100%, var(--coupe) 100%, 0 calc(100% - var(--coupe-h))); }
-.t47-coupe-2  { clip-path: polygon(0 0, calc(100% - var(--coupe)) 0, 100% var(--coupe-h), 100% 100%, var(--coupe) 100%, 0 calc(100% - var(--coupe-h))); }
+.t47-rule { border: 0; border-top: var(--rule-thin) solid var(--rule); height: 0; margin: 0; }
+.t47-rule--strong { border-top-color: var(--rule-strong); }
+.t47-rule--accent { border-top-color: var(--accent); }
 
-/* ——— Cote de classement — l'identifiant mono qui marque chaque artefact ——— */
-.t47-cote { font: var(--type-cote); letter-spacing: var(--ls-meta); color: var(--accent); }
-.t47-cote--dim { color: var(--texte-faible); }
 
-/* ——— Tampon — entaillé d'un seul trait net à 21° (pas de rotation bancale) ——— */
-.t47-tampon { position: relative; display: inline-block; font-family: var(--font-sans); font-weight: var(--poids-demi); font-size: var(--txt-sm); letter-spacing: var(--ls-libelle); color: var(--accent); padding: 4px 0; white-space: nowrap; }
-.t47-tampon::after { content: ''; position: absolute; left: -8px; right: -2px; top: 54%; height: 2px; background: var(--accent); transform: rotate(calc(-1 * var(--pente) / 2)); }
-.t47-tampon--clos { color: var(--etat-clos); }
-.t47-tampon--clos::after { background: var(--etat-clos); }
+.t47-shard-separator { display: flex; gap: 5px; }
+.t47-shard-separator i { display: block; width: var(--rule-block); height: 12px; background: var(--rule); transform: rotate(var(--slope)); }
+
+
+.t47-cut-tr { clip-path: polygon(0 0, calc(100% - var(--cut-width)) 0, 100% var(--cut-height), 100% 100%, 0 100%); }
+.t47-cut-bl { clip-path: polygon(0 0, 100% 0, 100% 100%, var(--cut-width) 100%, 0 calc(100% - var(--cut-height))); }
+.t47-cut-2  { clip-path: polygon(0 0, calc(100% - var(--cut-width)) 0, 100% var(--cut-height), 100% 100%, var(--cut-width) 100%, 0 calc(100% - var(--cut-height))); }
+
+
+.t47-reference { font: var(--type-reference); letter-spacing: var(--ls-meta); color: var(--accent); }
+.t47-reference--dim { color: var(--text-subtle); }
+
+
+.t47-stamp { position: relative; display: inline-block; font-family: var(--font-sans); font-weight: var(--weight-semibold); font-size: var(--txt-sm); letter-spacing: var(--tracking-label); color: var(--accent); padding: 4px 0; white-space: nowrap; }
+.t47-stamp::after { content: ''; position: absolute; left: -8px; right: -2px; top: 54%; height: 2px; background: var(--accent); transform: rotate(calc(-1 * var(--slope) / 2)); }
+.t47-stamp--closed { color: var(--state-closed); }
+.t47-stamp--closed::after { background: var(--state-closed); }

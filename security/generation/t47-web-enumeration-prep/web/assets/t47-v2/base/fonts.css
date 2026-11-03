@@ -1,3 +1,4 @@
+/* Adapted from SECTION 21; local fonts and assets remain offline. */
 @font-face{font-family:'Chakra Petch';font-weight:400;font-style:normal;font-display:swap;src:url('../fonts/ChakraPetch-Regular.ttf') format('truetype')}
 @font-face{font-family:'Chakra Petch';font-weight:400;font-style:italic;font-display:swap;src:url('../fonts/ChakraPetch-Italic.ttf') format('truetype')}
 @font-face{font-family:'Chakra Petch';font-weight:600;font-style:normal;font-display:swap;src:url('../fonts/ChakraPetch-SemiBold.ttf') format('truetype')}

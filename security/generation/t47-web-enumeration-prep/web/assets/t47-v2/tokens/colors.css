@@ -1,66 +1,140 @@
-/* Teriak47 — Couleurs
-   Tempérament : sombre d'abord, neutres bistre TIÈDES (hue ~70°, chroma quasi nul) —
-   surtout pas l'empilement charbon neutre standard. Un seul accent, un bleu FROID
-   (hue 228°) construit en oklch : il signale, il ne décore jamais.
-   Une SEULE exception chaude : --avert, un ocre calme et désaturé (hue 80°), réservé
-   à l'état « requiert l'œil » (à vérifier / alerte). Jamais décoratif, jamais le rouge
-   ni le vert, jamais l'ambre criard d'un framework. Hors de l'alerte, tout reste froid. */
+/* Adapted from SECTION 21; local fonts and assets remain offline. */
+:root, .s21-sombre {
+  --logo-dark-display: inline-block;
+  --logo-light-display: none;
 
-:root {
-  /* — Neutres bistre (tièdes, hue 65–82°) — */
-  --bistre-0:  oklch(0.135 0.008 64);   /* fond le plus profond, puits */
-  --bistre-1:  oklch(0.165 0.009 66);   /* fond d'application */
-  --bistre-2:  oklch(0.205 0.011 70);   /* surface, carte */
-  --bistre-3:  oklch(0.245 0.012 72);   /* surface surélevée, encart */
-  --bistre-4:  oklch(0.340 0.012 78);   /* filet discret */
-  --bistre-5:  oklch(0.560 0.014 80);   /* filet appuyé, texte sourd */
+  --bistre-0:  oklch(0.135 0.008 64);
+  --bistre-1:  oklch(0.165 0.009 66);
+  --bistre-2:  oklch(0.205 0.011 70);
+  --bistre-3:  oklch(0.245 0.012 72);
+  --bistre-4:  oklch(0.340 0.012 78);
+  --bistre-5:  oklch(0.560 0.014 80);
 
-  /* — Ivoire / encre (le clair du masque du renard) — */
-  --ivoire-1:  oklch(0.915 0.018 85);
-  --ivoire-2:  oklch(0.805 0.016 82);
-  --encre:     oklch(0.180 0.012 70);   /* texte sombre sur clair / imprimé */
 
-  /* — Texte (sur sombre) — */
-  --txt-1:     oklch(0.885 0.018 85);   /* titres, texte fort */
-  --txt-2:     oklch(0.660 0.014 80);   /* corps */
-  --txt-3:     oklch(0.470 0.012 78);   /* métadonnées, libellés faibles */
+  --ivory-1:  oklch(0.915 0.018 85);
+  --ivory-2:  oklch(0.805 0.016 82);
+  --ink:     oklch(0.180 0.012 70);
 
-  /* — Accent : un seul bleu froid, en oklch (hue 228°) — */
-  --bleu-clair: oklch(0.840 0.090 228);
-  --bleu:       oklch(0.760 0.125 228); /* l'accent canonique */
-  --bleu-fonce: oklch(0.620 0.130 230);
-  --bleu-sourd: oklch(0.430 0.060 230); /* accent presque éteint, fonds */
 
-  /* — Avertissement : l'UNIQUE ton chaud. Ocre calme, désaturé (hue 80°, chroma 0.095).
-     Réservé à l'état « requiert l'œil ». L'opposé d'un ambre de framework. — */
-  --ocre-clair: oklch(0.860 0.080 80);
-  --ocre:       oklch(0.800 0.095 80); /* le ton d'alerte canonique */
-  --ocre-fonce: oklch(0.660 0.100 78);
+  --txt-1:     oklch(0.885 0.018 85);
+  --txt-2:     oklch(0.660 0.014 80);
+  --txt-3:     oklch(0.640 0.012 78);
 
-  /* ——— Alias sémantiques ——— */
+
+  --blue-light: oklch(0.840 0.090 228);
+  --blue-brand:       oklch(0.760 0.125 228);
+  --blue-dark: oklch(0.620 0.130 230);
+  --blue-muted: oklch(0.430 0.060 230);
+
+
+  --ochre-light: oklch(0.860 0.080 80);
+  --ochre:       oklch(0.800 0.095 80);
+  --ochre-dark: oklch(0.660 0.100 78);
+
+
   --surface-app:     var(--bistre-1);
-  --surface-puits:   var(--bistre-0);
-  --surface-carte:   var(--bistre-2);
-  --surface-haute:   var(--bistre-3);
+  --surface-well:   var(--bistre-0);
+  --surface-card:   var(--bistre-2);
+  --surface-raised:   var(--bistre-3);
 
-  --texte-fort:      var(--txt-1);
-  --texte:           var(--txt-2);
-  --texte-faible:    var(--txt-3);
-  --texte-sur-accent: var(--encre);
+  --text-strong:      var(--txt-1);
+  --text-body:           var(--txt-2);
+  --text-subtle:    var(--txt-3);
+  --text-on-accent: var(--ink);
 
-  --filet:           var(--bistre-4);
-  --filet-fort:      var(--bistre-5);
+  --rule:           var(--bistre-4);
+  --rule-strong:      var(--bistre-5);
 
-  --accent:          var(--bleu);
-  --accent-fort:     var(--bleu-clair);
-  --accent-sourd:    var(--bleu-sourd);
+  --accent:          var(--blue-brand);
+  --accent-strong:     var(--blue-light);
+  --accent-muted:    var(--blue-muted);
 
-  /* États. Le vivant porte l'accent FROID ; « à vérifier » porte l'unique ton chaud
-     (--avert), calme et réservé ; « clos/écarté » s'efface dans les neutres.
-     En registre monochrome, --avert n'est pas employé : la forme évidée suffit. */
-  --etat-actif:      var(--bleu);
-  --avert:           var(--ocre);   /* requiert l'œil — à vérifier / alerte */
-  --etat-attente:    var(--bistre-5);
-  --etat-clos:       var(--txt-3);
+
+  --state-active:      var(--blue-brand);
+  --warning:           var(--ochre);
+  --state-pending:    var(--txt-3);
+  --state-closed:       var(--txt-3);
+
+
+  --series-1: var(--accent);
+  --series-2: oklch(0.640 0.060 230);
+  --series-3: var(--bistre-5);
+  --series-4: oklch(0.700 0.012 80);
+  --series-5: var(--ivory-2);
 }
 
+
+:root[data-theme="clair"],
+.s21-clair {
+  --logo-dark-display: none;
+  --logo-light-display: inline-block;
+  --surface-app:     #ffffff;
+  --surface-well:   #f7f7f5;
+  --surface-card:   #ffffff;
+  --surface-raised:   #f3f2ef;
+
+  --text-strong:      var(--ink);
+  --text-body:           oklch(0.34 0.012 72);
+  --text-subtle:    #5a5249;
+  --text-on-accent: var(--ivory-1);
+
+  --rule:           #d7d0c6;
+  --rule-strong:      #b9afa1;
+
+  --accent:          var(--ink);
+  --accent-strong:     var(--ink);
+  --accent-muted:    #f3f2ef;
+
+  --warning:           var(--text-strong);
+
+  --state-active:      var(--ink);
+  --state-pending:    var(--text-subtle);
+  --state-closed:       var(--text-subtle);
+  --series-1: var(--ink);
+  --series-2: #31586d;
+  --series-3: #766f64;
+  --series-4: #4b6170;
+  --series-5: #45413c;
+}
+
+@media print {
+  :root, :root[data-theme="clair"], .s21-clair, .s21-sombre {
+    --logo-dark-display: none; --logo-light-display: inline-block;
+    --text-on-accent: #fff;
+    --surface-app: #fff; --surface-well: #fff; --surface-card: #fff; --surface-raised: #fff;
+    --text-strong: #161310; --text-body: #2d2823; --text-subtle: #5a5249;
+    --rule: #c9c1b4; --rule-strong: #8c8475;
+    --accent: #161310; --accent-strong: #161310; --accent-muted: #f3f2ef;
+    --warning: #161310;
+    --state-active: #161310; --state-pending: #5a5249; --state-closed: #5a5249;
+    --series-1: #161310; --series-2: #45413c; --series-3: #766f64;
+    --series-4: #5a5249; --series-5: #34302b;
+  }
+}
+
+
+:root, .s21-sombre {
+  --info: var(--blue-brand);
+  --success: oklch(0.77 0.105 155);
+  --attention: oklch(0.80 0.115 68);
+  --error: oklch(0.74 0.13 25);
+  --code-background: var(--bistre-0);
+  --code-command: var(--blue-light);
+  --code-value: var(--ochre-light);
+  --code-comment: oklch(0.70 0.055 155);
+}
+:root[data-theme="clair"], .s21-clair {
+  --info: oklch(0.48 0.11 228); --success: oklch(0.44 0.09 155);
+  --attention: oklch(0.48 0.10 68); --error: oklch(0.48 0.14 25);
+  --code-background: #f7f7f5;
+  --code-command: var(--text-strong);
+  --code-value: var(--text-strong);
+  --code-comment: var(--text-subtle);
+}
+@media print {
+  :root, :root[data-theme="clair"], .s21-clair, .s21-sombre {
+    --info: #161310; --success: #161310; --attention: #161310; --error: #161310;
+    --code-background: #f7f7f5; --code-command: #161310;
+    --code-value: #161310; --code-comment: #5a5249;
+  }
+}

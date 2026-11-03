@@ -1,69 +1,69 @@
-/* Compatibility layer for the existing course/report layouts. Content stays intact. */
+/* Adapted from SECTION 21; local fonts and assets remain offline. */
 :root{
  color-scheme:dark!important;
- --bg:var(--surface-app)!important;--bg-raised:var(--surface-puits)!important;
- --panel:var(--surface-carte)!important;--surface:var(--surface-carte)!important;
- --text:var(--texte-fort)!important;--muted:var(--texte)!important;
- --text-main:var(--texte-fort)!important;--text-muted:var(--texte)!important;--text-dim:var(--texte-faible)!important;
- --border:var(--filet)!important;--border-strong:var(--filet-fort)!important;
+ --bg:var(--surface-app)!important;--bg-raised:var(--surface-well)!important;
+ --panel:var(--surface-card)!important;--surface:var(--surface-card)!important;
+ --text:var(--text-strong)!important;--muted:var(--text-body)!important;
+ --text-main:var(--text-strong)!important;--text-muted:var(--text-body)!important;--text-dim:var(--text-subtle)!important;
+ --border:var(--rule)!important;--border-strong:var(--rule-strong)!important;
  --blue:var(--accent)!important;--blue-400:var(--accent)!important;--blue-500:var(--accent)!important;
- --blue-600:var(--bleu-fonce)!important;--blue-300:var(--bleu-clair)!important;
- --text-primary:var(--texte-fort)!important;--text-secondary:var(--texte)!important;
+ --blue-600:var(--blue-dark)!important;--blue-300:var(--blue-light)!important;
+ --text-primary:var(--text-strong)!important;--text-secondary:var(--text-body)!important;
  --font-body:var(--font-sans)!important;--font-heading:var(--font-sans)!important;
  --radius:0px!important;--radius-sm:0px!important;--radius-md:0px!important;--radius-lg:0px!important;
- --graphite-950:var(--surface-app)!important;--graphite-900:var(--surface-puits)!important;
- --graphite-850:var(--surface-carte)!important;--graphite-800:var(--surface-haute)!important;
- --graphite-700:var(--filet)!important;--graphite-600:var(--filet-fort)!important;
- --graphite-500:var(--texte-faible)!important;--graphite-400:var(--texte)!important;
- --graphite-300:var(--texte)!important;--white:var(--texte-fort)!important;
+ --graphite-950:var(--surface-app)!important;--graphite-900:var(--surface-well)!important;
+ --graphite-850:var(--surface-card)!important;--graphite-800:var(--surface-raised)!important;
+ --graphite-700:var(--rule)!important;--graphite-600:var(--rule-strong)!important;
+ --graphite-500:var(--text-subtle)!important;--graphite-400:var(--text-body)!important;
+ --graphite-300:var(--text-body)!important;--white:var(--text-strong)!important;
 }
 html{background:var(--surface-app)}
-body.t47-app{background:var(--surface-app)!important;color:var(--texte-fort)!important;font-family:var(--font-sans)!important;font-variant-numeric:tabular-nums}
+body.t47-app{background:var(--surface-app)!important;color:var(--text-strong)!important;font-family:var(--font-sans)!important;font-variant-numeric:tabular-nums}
 .t47-app *,.t47-app *::before,.t47-app *::after{border-radius:0!important;box-shadow:none!important}
-.t47-app h1,.t47-app h2,.t47-app h3,.t47-app h4,.t47-app h5,.t47-app h6,.t47-app .btn{font-family:var(--font-sans)!important;color:var(--texte-fort);letter-spacing:var(--ls-titre)}
+.t47-app h1,.t47-app h2,.t47-app h3,.t47-app h4,.t47-app h5,.t47-app h6,.t47-app .btn{font-family:var(--font-sans)!important;color:var(--text-strong);letter-spacing:var(--tracking-heading)}
 .t47-app p,.t47-app li,.t47-app label,.t47-app button,.t47-app input,.t47-app select,.t47-app textarea{font-family:var(--font-sans)}
-.t47-app pre,.t47-app code,.t47-app kbd,.t47-app samp,.t47-app .collapse1,.t47-app .techniques,.t47-app .no_color,.t47-app .nav-label,.t47-app .eyebrow,.t47-app .chapter-number,.t47-app .t47-cote,.t47-app .facts b{font-family:var(--font-mono)!important}
+.t47-app pre,.t47-app code,.t47-app kbd,.t47-app samp,.t47-app .collapse1,.t47-app .techniques,.t47-app .no_color,.t47-app .nav-label,.t47-app .eyebrow,.t47-app .chapter-number,.t47-app .t47-reference,.t47-app .facts b{font-family:var(--font-mono)!important}
 .t47-app a{color:var(--accent)}
 .t47-app :focus-visible{outline:2px solid var(--accent)!important;outline-offset:3px}
-.t47-app .topbar,.t47-app aside,.t47-app .sidebar{background:var(--surface-puits)!important;border-color:var(--filet)!important}
+.t47-app .topbar,.t47-app aside,.t47-app .sidebar{background:var(--surface-well)!important;border-color:var(--rule)!important}
 .t47-app .topbar{backdrop-filter:none!important}
-.t47-app .brand{color:var(--texte-fort);text-decoration:none}
+.t47-app .brand{color:var(--text-strong);text-decoration:none}
 .t47-app .brand-mark{background:none!important;border:0!important;padding:0!important;display:inline-flex;align-items:center;justify-content:center;width:40px;min-width:40px;height:40px}
 .t47-app .brand-mark img,.t47-app .brand>img{width:40px;height:40px;object-fit:contain}
-.t47-app .chapters a,.t47-app nav a{color:var(--texte)!important;border-color:var(--filet)!important}
-.t47-app nav a:hover{background:var(--surface-haute)!important;color:var(--texte-fort)!important}
-.t47-app nav a.active,.t47-app nav a[aria-current=page]{background:var(--surface-carte)!important;color:var(--accent)!important;border-left:2px solid var(--accent)!important}
-.t47-app .chapter-card,.t47-app .stat,.t47-app .toolbar,.t47-app details,.t47-app .instructions,.t47-app .note,.t47-app .panel,.t47-app .copy-dialog,.t47-app .copy-status,.t47-app .toast{background:var(--surface-carte)!important;border-color:var(--filet)!important;background-image:none!important}
+.t47-app .chapters a,.t47-app nav a{color:var(--text-body)!important;border-color:var(--rule)!important}
+.t47-app nav a:hover{background:var(--surface-raised)!important;color:var(--text-strong)!important}
+.t47-app nav a.active,.t47-app nav a[aria-current=page]{background:var(--surface-card)!important;color:var(--accent)!important;border-left:2px solid var(--accent)!important}
+.t47-app .chapter-card,.t47-app .stat,.t47-app .toolbar,.t47-app details,.t47-app .instructions,.t47-app .note,.t47-app .panel,.t47-app .copy-dialog,.t47-app .copy-status,.t47-app .toast{background:var(--surface-card)!important;border-color:var(--rule)!important;background-image:none!important}
 .t47-app .chapter-card:hover{border-color:var(--accent)!important;transform:none!important}
-.t47-app .note,.t47-app .help{color:var(--texte)!important;border-left:2px solid var(--filet-fort)!important}
-.t47-app .eyebrow,.t47-app .chapter-number,.t47-app .code-bar span{color:var(--texte)!important}
-.t47-app .intro,.t47-app .lead,.t47-app .side-note,.t47-app .result-line,.t47-app .topline,.t47-app .local{color:var(--texte)!important}
-.t47-app button,.t47-app input,.t47-app select,.t47-app textarea{background:var(--surface-haute)!important;color:var(--texte-fort)!important;border-color:var(--filet)!important}
-.t47-app button:hover{background:var(--surface-carte)!important;border-color:var(--accent)!important;color:var(--accent)!important;transform:none!important}
+.t47-app .note,.t47-app .help{color:var(--text-body)!important;border-left:2px solid var(--rule-strong)!important}
+.t47-app .eyebrow,.t47-app .chapter-number,.t47-app .code-bar span{color:var(--text-body)!important}
+.t47-app .intro,.t47-app .lead,.t47-app .side-note,.t47-app .result-line,.t47-app .topline,.t47-app .local{color:var(--text-body)!important}
+.t47-app button,.t47-app input,.t47-app select,.t47-app textarea{background:var(--surface-raised)!important;color:var(--text-strong)!important;border-color:var(--rule)!important}
+.t47-app button:hover{background:var(--surface-card)!important;border-color:var(--accent)!important;color:var(--accent)!important;transform:none!important}
 .t47-app input[type=checkbox]{accent-color:var(--accent)}
-.t47-app .code-block,.t47-app .code-bar,.t47-app pre{background:var(--surface-puits)!important;border-color:var(--filet)!important;color:var(--texte-fort)!important}
-.t47-app table{color:var(--texte-fort)!important;border-color:var(--filet)!important}
-.t47-app th{background:var(--surface-carte)!important;color:var(--texte-fort)!important}
-.t47-app td{background:transparent;border-color:var(--filet)!important;color:var(--texte-fort)!important}
-.t47-app tr:nth-child(even){background:var(--surface-carte)!important}
-.t47-app .btn1,.t47-app .check-heading,.t47-app .collapse1,.t47-app .collapse>i,.t47-app .collapse>.no_color{background:var(--surface-carte)!important;border-color:var(--filet)!important;color:var(--texte-fort)!important}
+.t47-app .code-block,.t47-app .code-bar,.t47-app pre{background:var(--surface-well)!important;border-color:var(--rule)!important;color:var(--text-strong)!important}
+.t47-app table{color:var(--text-strong)!important;border-color:var(--rule)!important}
+.t47-app th{background:var(--surface-card)!important;color:var(--text-strong)!important}
+.t47-app td{background:transparent;border-color:var(--rule)!important;color:var(--text-strong)!important}
+.t47-app tr:nth-child(even){background:var(--surface-card)!important}
+.t47-app .btn1,.t47-app .check-heading,.t47-app .collapse1,.t47-app .collapse>i,.t47-app .collapse>.no_color{background:var(--surface-card)!important;border-color:var(--rule)!important;color:var(--text-strong)!important}
 .t47-app .btn:before,.t47-app .btn1:before{color:var(--accent)!important}
-.t47-app #report b[style]{color:var(--texte-fort)!important;background:transparent!important}
-.t47-app #report b[style*="#FF0000"],.t47-app #report b[style*="#FFFF00"]{color:var(--avert)!important}
-.t47-app .collapse1>div.red,.t47-app .collapse>.no_color.red{border-left-color:var(--filet-fort)!important}
-.t47-app .collapse1>div.redyellow,.t47-app .collapse>.no_color.redyellow{border-left-color:var(--avert)!important;background:var(--surface-haute)!important}
-.t47-app .legend span:before{width:16px;height:5px;border-radius:0!important;transform:skewX(calc(-1 * var(--pente)));background:var(--filet-fort)!important}
-.t47-app .legend span:first-child:before{background:var(--avert)!important}
-.t47-app .t47-document-brand{display:flex;align-items:center;gap:16px;margin:0 0 24px;border-bottom:1px solid var(--filet);padding-bottom:16px;font:var(--type-cote);color:var(--texte)}
+.t47-app #report b[style]{color:var(--text-strong)!important;background:transparent!important}
+.t47-app #report b[style*="#FF0000"],.t47-app #report b[style*="#FFFF00"]{color:var(--warning)!important}
+.t47-app .collapse1>div.red,.t47-app .collapse>.no_color.red{border-left-color:var(--rule-strong)!important}
+.t47-app .collapse1>div.redyellow,.t47-app .collapse>.no_color.redyellow{border-left-color:var(--warning)!important;background:var(--surface-raised)!important}
+.t47-app .legend span:before{width:16px;height:5px;border-radius:0!important;transform:skewX(calc(-1 * var(--slope)));background:var(--rule-strong)!important}
+.t47-app .legend span:first-child:before{background:var(--warning)!important}
+.t47-app .t47-document-brand{display:flex;align-items:center;gap:16px;margin:0 0 24px;border-bottom:1px solid var(--rule);padding-bottom:16px;font:var(--type-reference);color:var(--text-body)}
 .t47-app .t47-document-brand img{width:48px;height:48px;object-fit:contain}
 .t47-app.t47-standalone{max-width:1000px;margin:auto!important;padding:32px!important;line-height:1.7}
 .t47-app.t47-standalone h1{margin:24px 0;font-size:34px}
 .t47-app.t47-standalone h2{margin:32px 0 16px;font-size:26px}
 .t47-app.t47-standalone table{width:100%;border-collapse:collapse}
-.t47-app.t47-standalone th,.t47-app.t47-standalone td{padding:12px;border:1px solid var(--filet)}
+.t47-app.t47-standalone th,.t47-app.t47-standalone td{padding:12px;border:1px solid var(--rule)}
 .t47-app .t47-document-brand+.hero{padding-top:0}
-.t47-app footer{color:var(--texte-faible);border-color:var(--filet)}
+.t47-app footer{color:var(--text-subtle);border-color:var(--rule)}
 @media(max-width:760px){.t47-app .brand-mark{width:32px;min-width:32px;height:32px}.t47-app .brand-mark img{width:32px;height:32px}.t47-app.t47-standalone{padding:20px!important}.t47-app.t47-standalone table{display:block;overflow-x:auto}}
 @media(prefers-reduced-motion:reduce){.t47-app *{transition:none!important;animation:none!important}html{scroll-behavior:auto!important}}
-/* The on-screen UI is always dark. Existing document print layouts remain readable on paper. */
+
 @media print{body.t47-app{background:white!important;color:#211d19!important}.t47-app .t47-document-brand{display:none}.t47-app h1,.t47-app h2,.t47-app h3,.t47-app table,.t47-app td,.t47-app th,.t47-app pre,.t47-app code,.t47-app .collapse1,.t47-app .collapse>i,.t47-app .no_color{color:#211d19!important;background:white!important}.t47-app button{display:none!important}.t47-app.t47-standalone{padding:0!important}.t47-app a{color:#23485a}}
