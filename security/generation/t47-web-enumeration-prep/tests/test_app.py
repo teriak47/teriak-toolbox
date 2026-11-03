@@ -1,6 +1,9 @@
 import json
+import os
 from pathlib import Path
 import shlex
+import shutil
+import subprocess
 import tempfile
 import threading
 import unittest
@@ -53,7 +56,40 @@ class ListTests(unittest.TestCase):
         self.assertEqual(args[args.index('-w')+1], path)
         self.assertEqual(args[args.index('-u')+1], 'http://127.0.0.1:8000/docs/')
         self.assertNotIn('-x', args)
-        self.assertEqual(shlex.split(result['ffuf'])[2], 'http://127.0.0.1:8000/docs/FUZZ')
+        ffuf_args = shlex.split(result['ffuf'])
+        self.assertEqual(ffuf_args[ffuf_args.index('-u')+1], 'http://127.0.0.1:8000/docs/FUZZ')
+
+    @unittest.skipUnless(os.name == 'posix' and shutil.which('mktemp'), 'Requires POSIX shell and GNU mktemp')
+    def test_each_command_execution_allocates_a_fresh_output(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            binary = root / 'gobuster'
+            binary.write_text('#!/bin/sh\nwhile [ "$#" -gt 0 ]; do\n'
+                              '  if [ "$1" = "-o" ]; then shift; printf "test\\n" > "$1"; exit; fi\n'
+                              '  shift\ndone\nexit 1\n')
+            binary.chmod(0o755)
+            env = dict(os.environ, PATH=str(root) + os.pathsep + os.environ['PATH'])
+            command = make_commands('http://127.0.0.1:8000', '/tmp/list.txt', '/tmp/dirs.txt', 10)['files']
+            for _ in range(2):
+                run = subprocess.run(command, shell=True, cwd=root, env=env, text=True, capture_output=True, check=True)
+                self.assertIn('Results: ./webenum-files-', run.stderr)
+            outputs = list(root.glob('webenum-files-*.txt'))
+            self.assertEqual(len(outputs), 2)
+            self.assertTrue(all(p.read_text() == 'test\n' for p in outputs))
+
+    @unittest.skipUnless(os.name == 'posix', 'Requires POSIX shell')
+    def test_failed_output_allocation_does_not_run_scanner(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            for name, body in [('mktemp', 'exit 1'), ('gobuster', 'touch called')]:
+                binary = root / name
+                binary.write_text('#!/bin/sh\n' + body + '\n')
+                binary.chmod(0o755)
+            env = dict(os.environ, PATH=str(root) + os.pathsep + os.defpath)
+            command = make_commands('http://127.0.0.1:8000', '/tmp/list.txt', '/tmp/dirs.txt', 10)['files']
+            run = subprocess.run(command, shell=True, cwd=root, env=env, capture_output=True)
+            self.assertNotEqual(run.returncode, 0)
+            self.assertFalse((root / 'called').exists())
 
     def test_invalid_targets(self):
         for target in ['127.0.0.1', 'file:///etc/passwd', 'http://u:p@host/',

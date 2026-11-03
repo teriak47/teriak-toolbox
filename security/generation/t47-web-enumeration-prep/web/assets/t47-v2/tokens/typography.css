@@ -1,29 +1,25 @@
-/* Teriak47 — Typographie
-   Pourquoi ces caractères (et pas Inter/Sora) :
-   · CHAKRA PETCH — grotesque aux terminaisons BISEAUTÉES et aux jonctions
-     anguleuses : la lettre descend directement de la géométrie de l'éclair et
-     du renard (angles francs, aucune rondeur molle). Elle porte titres et corps.
-   · FRAGMENT MONO — mono de machine à écrire, étroite, légèrement mécanique :
-     la voix des cotes, horodatages, états, journaux. C'est l'écriture du dossier.
-   Aucune des deux n'est un défaut d'outil ; chacune a une raison d'être dans un
-   univers d'enquête et d'archive. */
-
+/* Adapted from SECTION 21; local fonts and assets remain offline. */
 :root {
   --font-sans: 'Chakra Petch', 'Segoe UI', system-ui, sans-serif;
   --font-mono: 'Fragment Mono', ui-monospace, 'SFMono-Regular', monospace;
+  --font-document: Calibri, Carlito, 'Segoe UI', Arial, sans-serif;
+  --doc-body: 11pt;
+  --doc-caption: 9pt;
+  --doc-code: 9pt;
 
-  /* Graisses (Chakra Petch : 300/400/500/600/700) */
-  --poids-leger: 300;  /* @kind other */
-  --poids-normal: 400; /* @kind other */
-  --poids-moyen: 500;  /* @kind other */
-  --poids-demi: 600;   /* @kind other */
-  --poids-gras: 700;   /* @kind other */
 
-  /* Échelle typographique (ratio ~1.25, base 16px) */
-  --txt-2xs: 10.5px;
+  --weight-light: 300;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+
+
+  --txt-2xs: 12px;
   --txt-xs:  12px;
   --txt-sm:  13.5px;
-  --txt-base: 15px;
+  --txt-base: 16px;
   --txt-md:  17px;
   --txt-lg:  20px;
   --txt-xl:  26px;
@@ -32,24 +28,24 @@
   --txt-4xl: 58px;
   --txt-5xl: 76px;
 
-  /* Interlignes */
-  --inter-serre: 1.05; /* @kind other */
-  --inter-titre: 1.12; /* @kind other */
-  --inter-corps: 1.7;  /* @kind other */
-  --inter-dense: 1.5;  /* @kind other */
 
-  /* Approches (letter-spacing) */
-  --ls-titre: -0.015em;   /* @kind other */
-  --ls-normal: 0;         /* @kind other */
-  --ls-meta:  0.1em;      /* @kind other */
-  --ls-libelle: 0.2em;    /* @kind other */
+  --leading-tight: 1.05;
+  --leading-heading: 1.12;
+  --leading-body: 1.7;
+  --leading-dense: 1.5;
 
-  /* ——— Rôles sémantiques ——— */
-  --type-display:  var(--poids-demi) var(--txt-5xl)/var(--inter-serre) var(--font-sans);
-  --type-titre:    var(--poids-demi) var(--txt-3xl)/var(--inter-titre) var(--font-sans);
-  --type-sous-titre: var(--poids-moyen) var(--txt-xl)/var(--inter-titre) var(--font-sans);
-  --type-corps:    var(--poids-normal) var(--txt-base)/var(--inter-corps) var(--font-sans);
-  --type-corps-sm: var(--poids-normal) var(--txt-sm)/var(--inter-dense) var(--font-sans);
-  --type-cote:     var(--poids-normal) var(--txt-xs)/1.4 var(--font-mono);
-  --type-libelle:  var(--poids-demi) var(--txt-xs)/1.3 var(--font-sans);
+
+  --tracking-heading: -0.015em;
+  --ls-normal: 0;
+  --ls-meta:  0.1em;
+  --tracking-label: 0.1em;
+
+
+  --type-display:  var(--weight-semibold) var(--txt-5xl)/var(--leading-tight) var(--font-sans);
+  --type-heading:    var(--weight-semibold) var(--txt-3xl)/var(--leading-heading) var(--font-sans);
+  --type-subheading: var(--weight-medium) var(--txt-xl)/var(--leading-heading) var(--font-sans);
+  --type-body:    var(--weight-regular) var(--txt-base)/var(--leading-body) var(--font-sans);
+  --type-body-sm: var(--weight-regular) var(--txt-sm)/var(--leading-dense) var(--font-sans);
+  --type-reference:     var(--weight-regular) var(--txt-xs)/1.4 var(--font-mono);
+  --type-label:  var(--weight-semibold) var(--txt-xs)/1.3 var(--font-sans);
 }

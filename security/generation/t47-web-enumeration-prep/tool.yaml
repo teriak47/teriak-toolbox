@@ -1,7 +1,7 @@
 id: t47-web-enumeration-prep
-name: Web Enumeration Prep
+name: T47 Web Enumeration Prep
 description: Generate filename wordlists and prepare web enumeration commands.
-version: 0.1.0
+version: 0.2.0
 author: Teriak47
 classification:
   family: security

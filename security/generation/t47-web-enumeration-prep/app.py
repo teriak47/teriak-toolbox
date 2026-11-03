@@ -38,18 +38,18 @@ class Handler(BaseHTTPRequestHandler):
     def local_request(self):
         valid = {f'127.0.0.1:{self.server.server_port}', f'localhost:{self.server.server_port}'}
         if self.headers.get('Host') not in valid:
-            self.reply(403, {'error': 'Hôte non autorisé.'})
+            self.reply(403, {'error': 'Host not allowed.'})
             return False
         origin = self.headers.get('Origin')
         if origin and origin not in {'http://' + host for host in valid}:
-            self.reply(403, {'error': 'Origine non autorisée.'})
+            self.reply(403, {'error': 'Origin not allowed.'})
             return False
         return True
 
     def static_file(self, base, relative):
         path = (base / relative).resolve()
         if not path.is_relative_to(base.resolve()) or not path.is_file():
-            self.reply(404, {'error': 'Fichier introuvable.'})
+            self.reply(404, {'error': 'File not found.'})
             return
         mime = mimetypes.guess_type(str(path))[0] or 'application/octet-stream'
         if path.suffix in ('.css', '.js', '.html'):
@@ -81,46 +81,46 @@ class Handler(BaseHTTPRequestHandler):
             elif route in ('/', '/home.js', '/shell.css'):
                 self.static_file(ROOT / 'web', 'index.html' if route == '/' else route[1:])
             else:
-                self.reply(404, {'error': 'Page introuvable.'})
+                self.reply(404, {'error': 'Page not found.'})
         except (ValueError, KeyError, TypeError) as exc:
             self.reply(404, {'error': str(exc)})
         except OSError:
-            self.reply(500, {'error': 'Impossible de lire ce fichier.'})
+            self.reply(500, {'error': 'Unable to read this file.'})
 
     def do_POST(self):
         if not self.local_request():
             return
         if not secrets.compare_digest(self.headers.get('X-T47-Token', ''), self.server.token):
-            self.reply(403, {'error': 'Session expirée. Recharge la page.'})
+            self.reply(403, {'error': 'Session expired. Reload the page.'})
             return
         try:
             length = int(self.headers.get('Content-Length', '0'))
             if not 0 < length <= 16384:
-                raise ValueError('Requête vide ou trop grande.')
+                raise ValueError('Request is empty or too large.')
             data = json.loads(self.rfile.read(length))
             if not isinstance(data, dict):
-                raise ValueError('Objet JSON attendu.')
+                raise ValueError('Expected a JSON object.')
             route = urlsplit(self.path).path
             if not route.startswith('/api/'):
-                self.reply(404, {'error': 'Action inconnue.'})
+                self.reply(404, {'error': 'Unknown action.'})
                 return
             _, _, slug, action = route.split('/', 3)
             self.reply(200, self.server.modules[slug].post(action, data))
         except KeyError:
-            self.reply(404, {'error': 'Module inconnu.'})
+            self.reply(404, {'error': 'Unknown module.'})
         except (ValueError, TypeError) as exc:
             self.reply(400, {'error': str(exc)})
         except OSError:
-            self.reply(500, {'error': 'Impossible de lire ou écrire le dossier de listes.'})
+            self.reply(500, {'error': 'Unable to read or write the list directory.'})
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Web Enumeration Prep : mon atelier d’outils local')
+    parser = argparse.ArgumentParser(description='Web Enumeration Prep: local tool workspace')
     parser.add_argument('--port', type=int, default=8765)
     parser.add_argument('--data-dir', type=Path, default=ROOT / 'data')
     args = parser.parse_args()
     server = AppServer(('127.0.0.1', args.port), args.data_dir)
-    print(f'Web Enumeration Prep : http://127.0.0.1:{server.server_port} - Ctrl+C pour arrêter.', flush=True)
+    print(f'Web Enumeration Prep: http://127.0.0.1:{server.server_port} - Ctrl+C to stop.', flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
