@@ -1,0 +1,37 @@
+name: Zircolite SQL generator
+
+on:
+  pull_request:
+    paths:
+      - 'security/forensics/t47-zircolite-sql-generator/**'
+      - '.github/workflows/t47-zircolite-sql-generator.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'security/forensics/t47-zircolite-sql-generator/**'
+      - '.github/workflows/t47-zircolite-sql-generator.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Zircolite SQL generator tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: security/forensics/t47-zircolite-sql-generator
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements-test.txt
+      - run: node --test tests/*.test.cjs
+      - run: python -m unittest discover -s tests -p 'test_*.py' -v
