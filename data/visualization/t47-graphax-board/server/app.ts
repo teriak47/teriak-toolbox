@@ -3,6 +3,7 @@ import path from 'node:path';
 import { Hono } from 'hono';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { getDb } from './db.ts';
+import { APP_VERSION } from './version.ts';
 import { localOnlyGuard } from './security.ts';
 import { projectsRouter } from './routes/projects.ts';
 import { categoriesRouter } from './routes/categories.ts';
@@ -25,7 +26,7 @@ app.onError((err, c) => {
 
 app.get('/api/health', async (c) => {
   await getDb();
-  return c.json({ ok: true, engine: 'surrealdb-embedded-surrealkv' });
+  return c.json({ ok: true, version: APP_VERSION, engine: 'surrealdb-embedded-surrealkv' });
 });
 
 app.route('/api/projects', projectsRouter);

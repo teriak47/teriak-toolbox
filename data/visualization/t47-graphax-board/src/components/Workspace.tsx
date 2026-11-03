@@ -37,6 +37,8 @@ import { getCategoryIcon } from '@/lib/icons';
 import { computeAutoLayout } from '@/lib/layout';
 import { computeConstellationLayout } from '@/lib/forceLayout';
 import { cn } from '@/lib/utils';
+import { AppFooter } from '@/components/AppFooter';
+import logoWhite from '@/ds/assets/logo-white.svg';
 
 const UNCLASSIFIED_FILTER_ID = '__unclassified__';
 
@@ -646,7 +648,7 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
   if (loading) {
     return (
       <div className="h-screen w-screen bg-zinc-950 flex items-center justify-center gap-3 text-zinc-300">
-        <Loader2 className="w-5 h-5 animate-spin text-cyan-400" />
+        <span className="s21-slit" aria-hidden="true" />
         <span className="text-sm">Chargement du graphe depuis SurrealDB…</span>
       </div>
     );
@@ -659,7 +661,7 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
         <button
           type="button"
           onClick={onBack}
-          className="px-4 py-2 rounded-xl bg-zinc-900 border border-zinc-800 text-xs hover:bg-zinc-800"
+          className="px-4 py-2 rounded-xl bg-zinc-900 border border-filet text-xs hover:bg-zinc-800"
         >
           Retour aux projets
         </button>
@@ -672,13 +674,14 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
   return (
     <div className="h-screen w-screen flex flex-col bg-zinc-950 text-zinc-100 overflow-hidden">
       {/* ==================== TOP BAR ==================== */}
-      <header className="h-14 shrink-0 px-4 border-b border-zinc-800 bg-zinc-900/90 backdrop-blur-md flex items-center justify-between gap-4 z-30">
+      <header className="h-14 shrink-0 px-4 border-b border-filet bg-zinc-900/90 flex items-center justify-between gap-4 z-30">
         <div className="flex items-center gap-2.5 min-w-0">
+          <img src={logoWhite} alt="Teriak47" className="w-7 h-7 shrink-0" />
           <button
             type="button"
             onClick={onBack}
             title="Retour au gestionnaire de projets"
-            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-zinc-100 bg-zinc-950 hover:bg-zinc-800 border border-zinc-800 transition-colors shrink-0"
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-zinc-100 bg-zinc-950 hover:bg-zinc-800 border border-filet transition-colors shrink-0"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Projets</span>
@@ -688,7 +691,7 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
             type="button"
             onClick={() => setLeftSidebarOpen((v) => !v)}
             title={leftSidebarOpen ? 'Masquer les filtres' : 'Afficher les filtres et catégories'}
-            className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 border border-transparent hover:border-zinc-700 transition-colors shrink-0"
+            className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 border border-transparent hover:border-filet-fort transition-colors shrink-0"
           >
             {leftSidebarOpen ? (
               <PanelLeftClose className="w-4 h-4" />
@@ -726,10 +729,10 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
             </button>
           )}
 
-          <span className="hidden lg:inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-zinc-950 border border-zinc-800 text-[11px] text-zinc-400 shrink-0">
+          <span className="hidden lg:inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-zinc-950 border border-filet text-xs text-zinc-400 shrink-0">
             {saveState === 'saving' ? (
               <>
-                <Loader2 className="w-3 h-3 animate-spin text-cyan-400" />
+                <span className="s21-slit" aria-hidden="true" />
                 <span>Sauvegarde…</span>
               </>
             ) : saveState === 'error' ? (
@@ -791,7 +794,7 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
                 }
               }}
               placeholder="Rechercher un nœud, une note, une IP, un attribut… (Ctrl+K)"
-              className="w-full pl-8 pr-16 py-1.5 text-xs rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-100 placeholder-zinc-500 focus:border-cyan-500 focus:outline-none transition-colors"
+              className="w-full pl-8 pr-16 py-1.5 text-xs rounded-xl bg-zinc-950 border border-filet text-zinc-100 placeholder-zinc-500 focus:border-cyan-500 focus:outline-none transition-colors"
             />
             {searchQuery ? (
               <button
@@ -802,20 +805,20 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
                 <X className="w-3.5 h-3.5" />
               </button>
             ) : (
-              <kbd className="hidden sm:inline-block absolute right-2.5 px-1.5 py-0.5 text-[10px] font-mono text-zinc-500 bg-zinc-900 border border-zinc-800 rounded">
+              <kbd className="hidden sm:inline-block absolute right-2.5 px-1.5 py-0.5 text-xs font-mono text-zinc-500 bg-zinc-900 border border-filet rounded">
                 Ctrl+K
               </kbd>
             )}
           </div>
 
           {searchFocused && searchQuery.trim().length > 0 && (
-            <div className="absolute left-0 right-0 mt-1.5 rounded-xl bg-zinc-900 border border-zinc-800 shadow-2xl overflow-hidden max-h-72 overflow-y-auto z-50">
+            <div className="absolute left-0 right-0 mt-1.5 rounded-xl bg-zinc-900 border border-filet shadow-2xl overflow-hidden max-h-72 overflow-y-auto z-50">
               {searchMatches.length === 0 ? (
                 <div className="px-3.5 py-3 text-xs text-zinc-400">
                   Aucun indice ne correspond à « {searchQuery} ».
                 </div>
               ) : (
-                <div className="divide-y divide-zinc-800/70">
+                <div className="divide-y divide-filet/70">
                   {searchMatches.map((node) => {
                     const cat = node.categoryId ? categoryMap.get(node.categoryId) : null;
                     return (
@@ -833,7 +836,7 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
                             {node.title}
                           </div>
                           {Object.keys(node.metadata).length > 0 && (
-                            <div className="text-[10.5px] font-mono text-zinc-400 truncate mt-0.5">
+                            <div className="text-xs font-mono text-zinc-400 truncate mt-0.5">
                               {Object.entries(node.metadata)
                                 .slice(0, 2)
                                 .map(([k, v]) => `${k}: ${v}`)
@@ -843,7 +846,7 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
                         </div>
                         {cat && (
                           <span
-                            className="px-2 py-0.5 rounded text-[10px] font-medium shrink-0"
+                            className="px-2 py-0.5 rounded text-xs font-medium shrink-0"
                             style={{
                               backgroundColor: `${cat.color}22`,
                               color: cat.color,
@@ -878,15 +881,15 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
               type="button"
               onClick={() => setLayoutMenuOpen((v) => !v)}
               title="Organiser le graphe"
-              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium bg-zinc-950 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 transition-colors"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium bg-zinc-950 hover:bg-zinc-800 border border-filet text-zinc-300 transition-colors"
             >
               <LayoutGrid className="w-3.5 h-3.5 text-zinc-400" />
               <span className="hidden md:inline">Disposition</span>
             </button>
 
             {layoutMenuOpen && (
-              <div className="absolute right-0 mt-1.5 w-60 rounded-xl bg-zinc-900 border border-zinc-800 shadow-2xl py-1 z-50">
-                <div className="px-3 py-1.5 text-[10.5px] font-medium uppercase tracking-wider text-zinc-500">
+              <div className="absolute right-0 mt-1.5 w-60 rounded-xl bg-zinc-900 border border-filet shadow-2xl py-1 z-50">
+                <div className="px-3 py-1.5 text-xs font-medium uppercase tracking-wider text-zinc-500">
                   Disposition du graphe
                 </div>
                 <button
@@ -921,7 +924,7 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
             type="button"
             onClick={() => void handleExportProject()}
             title="Exporter ce projet en .json"
-            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium bg-zinc-950 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 transition-colors"
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium bg-zinc-950 hover:bg-zinc-800 border border-filet text-zinc-300 transition-colors"
           >
             <Download className="w-3.5 h-3.5 text-zinc-400" />
             <span className="hidden md:inline">Export .json</span>
@@ -933,11 +936,11 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
       <div className="flex-1 flex min-h-0 relative">
         {/* LEFT SIDEBAR: Filters & Custom Categories */}
         {leftSidebarOpen && (
-          <aside className="w-64 shrink-0 h-full bg-zinc-900/90 border-r border-zinc-800 flex flex-col justify-between overflow-hidden z-20">
+          <aside className="w-64 shrink-0 h-full bg-zinc-900/90 border-r border-filet flex flex-col justify-between overflow-hidden z-20">
             <div className="flex-1 overflow-y-auto p-3.5 space-y-5">
               {/* Edge Certainty Filter */}
               <div className="space-y-2">
-                <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
+                <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-zinc-400">
                   <Filter className="w-3 h-3 text-cyan-400" />
                   <span>Filtre des Relations</span>
                 </div>
@@ -964,12 +967,12 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
                       className={cn(
                         'flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition-colors border',
                         edgeFilter === opt.value
-                          ? 'bg-zinc-800 border-zinc-700 text-zinc-100 font-medium'
+                          ? 'bg-zinc-800 border-filet-fort text-zinc-100 font-medium'
                           : 'bg-transparent border-transparent text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-200'
                       )}
                     >
                       <span>{opt.label}</span>
-                      <span className="text-[10.5px] font-mono text-zinc-500">{opt.count}</span>
+                      <span className="text-xs font-mono text-zinc-500">{opt.count}</span>
                     </button>
                   ))}
                 </div>
@@ -978,7 +981,7 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
               {/* Categories List & Toggles */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
                     Catégories ({categories.length})
                   </span>
                   <button
@@ -987,7 +990,7 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
                       setEditingCategory(null);
                       setCategoryModalOpen(true);
                     }}
-                    className="inline-flex items-center gap-0.5 text-[11px] font-medium text-cyan-400 hover:text-cyan-300"
+                    className="inline-flex items-center gap-0.5 text-xs font-medium text-cyan-400 hover:text-cyan-300"
                   >
                     <Plus className="w-3 h-3" />
                     <span>Ajouter</span>
@@ -998,7 +1001,7 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
                   <button
                     type="button"
                     onClick={() => setHiddenCategoryIds(new Set())}
-                    className="w-full py-1 px-2 rounded-md bg-cyan-500/10 border border-cyan-500/30 text-[11px] text-cyan-300 hover:bg-cyan-500/15 transition-colors"
+                    className="w-full py-1 px-2 rounded-md bg-cyan-500/10 border border-cyan-500/30 text-xs text-cyan-300 hover:bg-cyan-500/15 transition-colors"
                   >
                     Réafficher toutes les catégories ({hiddenCategoryIds.size} masquée
                     {hiddenCategoryIds.size > 1 ? 's' : ''})
@@ -1039,7 +1042,7 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
                         </button>
 
                         <div className="flex items-center gap-1 shrink-0">
-                          <span className="text-[10.5px] font-mono text-zinc-500 px-1">
+                          <span className="text-xs font-mono text-zinc-500 px-1">
                             {count}
                           </span>
                           <button
@@ -1082,10 +1085,10 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
                         onClick={() => toggleCategoryVisibility(UNCLASSIFIED_FILTER_ID)}
                         className="flex items-center gap-2 min-w-0 flex-1 text-left"
                       >
-                        <span className="w-2.5 h-2.5 rounded-full bg-zinc-500 ml-1" />
+                        <span className="s21-slit s21-slit--dim ml-1" aria-hidden="true" />
                         <span className="text-xs text-zinc-400 truncate">Non classé</span>
                       </button>
-                      <span className="text-[10.5px] font-mono text-zinc-500 px-1">
+                      <span className="text-xs font-mono text-zinc-500 px-1">
                         {unclassifiedCount}
                       </span>
                     </div>
@@ -1095,12 +1098,12 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
             </div>
 
             {/* Updated Constellation Shortcuts Legend */}
-            <div className="p-3 border-t border-zinc-800 bg-zinc-950/60 space-y-1 text-[10.5px] text-zinc-500">
+            <div className="p-3 border-t border-filet bg-zinc-950/60 space-y-1 text-xs text-zinc-500">
               <div>
                 <strong className="text-zinc-300">Double-clic fond :</strong> créer un nœud
               </div>
               <div>
-                <strong className="text-zinc-300">Anneau halo / Shift+glisser :</strong> relier
+                <strong className="text-zinc-300">Cadre autour du nœud / Shift+glisser :</strong> relier
               </div>
               <div>
                 <strong className="text-zinc-300">Tirer dans le vide :</strong> créer nœud relié
@@ -1165,6 +1168,8 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
       </div>
 
       {/* Category Create/Edit Modal */}
+      <AppFooter />
+
       <CategoryModal
         isOpen={categoryModalOpen}
         initialCategory={editingCategory}

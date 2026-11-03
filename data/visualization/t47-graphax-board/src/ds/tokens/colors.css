@@ -1,0 +1,141 @@
+/* Warm bistre neutrals, a cold blue accent and labeled semantic colors. */
+
+:root, .s21-sombre {
+  --logo-dark-display: inline-block;
+  --logo-light-display: none;
+  /* Warm bistre neutrals. */
+  --bistre-0:  oklch(0.135 0.008 64);   /* Deepest surface. */
+  --bistre-1:  oklch(0.165 0.009 66);   /* Application background. */
+  --bistre-2:  oklch(0.205 0.011 70);   /* Card surface. */
+  --bistre-3:  oklch(0.245 0.012 72);   /* Raised surface. */
+  --bistre-4:  oklch(0.340 0.012 78);   /* Subtle border. */
+  --bistre-5:  oklch(0.560 0.014 80);   /* Strong border and muted text. */
+
+  /* Ivory and ink. */
+  --ivoire-1:  oklch(0.915 0.018 85);
+  --ivoire-2:  oklch(0.805 0.016 82);
+  --encre:     oklch(0.180 0.012 70);   /* Dark text on light backgrounds and print. */
+
+  /* Text on dark backgrounds. */
+  --txt-1:     oklch(0.885 0.018 85);   /* Headings and strong text. */
+  --txt-2:     oklch(0.660 0.014 80);   /* Body text. */
+  --txt-3:     oklch(0.640 0.012 78);   /* Readable metadata and captions. */
+
+  /* Single cold blue accent. */
+  --bleu-clair: oklch(0.840 0.090 228);
+  --bleu:       oklch(0.760 0.125 228); /* Canonical accent. */
+  --bleu-fonce: oklch(0.620 0.130 230);
+  --bleu-sourd: oklch(0.430 0.060 230); /* Muted accent backgrounds. */
+
+  /* Reserved warm warning color. */
+  --ocre-clair: oklch(0.860 0.080 80);
+  --ocre:       oklch(0.800 0.095 80); /* Canonical warning color. */
+  --ocre-fonce: oklch(0.660 0.100 78);
+
+  /* Semantic aliases. */
+  --surface-app:     var(--bistre-1);
+  --surface-puits:   var(--bistre-0);
+  --surface-carte:   var(--bistre-2);
+  --surface-haute:   var(--bistre-3);
+
+  --texte-fort:      var(--txt-1);
+  --texte:           var(--txt-2);
+  --texte-faible:    var(--txt-3);
+  --texte-sur-accent: var(--encre);
+
+  --filet:           var(--bistre-4);
+  --filet-fort:      var(--bistre-5);
+
+  --accent:          var(--bleu);
+  --accent-fort:     var(--bleu-clair);
+  --accent-sourd:    var(--bleu-sourd);
+
+  /* Status colors for active, warning and closed states. */
+  --etat-actif:      var(--bleu);
+  --avert:           var(--ocre);   /* Requires attention. */
+  --etat-attente:    var(--txt-3);
+  --etat-clos:       var(--txt-3);
+
+  /* Distinct data series colors. */
+  --serie-1: var(--accent);
+  --serie-2: oklch(0.640 0.060 230);
+  --serie-3: var(--bistre-5);
+  --serie-4: oklch(0.700 0.012 80);
+  --serie-5: var(--ivoire-2);
+}
+
+/* Light theme and print. */
+:root[data-theme="clair"],
+.s21-clair {
+  --logo-dark-display: none;
+  --logo-light-display: inline-block;
+  --surface-app:     #ffffff;
+  --surface-puits:   #f7f7f5;
+  --surface-carte:   #ffffff;
+  --surface-haute:   #f3f2ef;
+
+  --texte-fort:      var(--encre);
+  --texte:           oklch(0.34 0.012 72);
+  --texte-faible:    #5a5249;
+  --texte-sur-accent: var(--ivoire-1);
+
+  --filet:           #d7d0c6;
+  --filet-fort:      #b9afa1;
+
+  --accent:          var(--encre);
+  --accent-fort:     var(--encre);
+  --accent-sourd:    #f3f2ef;
+
+  --avert:           var(--texte-fort); /* Monochrome document palette. */
+
+  --etat-actif:      var(--encre);
+  --etat-attente:    var(--texte-faible);
+  --etat-clos:       var(--texte-faible);
+  --serie-1: var(--encre);
+  --serie-2: #31586d;
+  --serie-3: #766f64;
+  --serie-4: #4b6170;
+  --serie-5: #45413c;
+}
+
+@media print {
+  :root, :root[data-theme="clair"], .s21-clair, .s21-sombre {
+    --logo-dark-display: none; --logo-light-display: inline-block;
+    --texte-sur-accent: #fff;
+    --surface-app: #fff; --surface-puits: #fff; --surface-carte: #fff; --surface-haute: #fff;
+    --texte-fort: #161310; --texte: #2d2823; --texte-faible: #5a5249;
+    --filet: #c9c1b4; --filet-fort: #8c8475;
+    --accent: #161310; --accent-fort: #161310; --accent-sourd: #f3f2ef;
+    --avert: #161310;
+    --etat-actif: #161310; --etat-attente: #5a5249; --etat-clos: #5a5249;
+    --serie-1: #161310; --serie-2: #45413c; --serie-3: #766f64;
+    --serie-4: #5a5249; --serie-5: #34302b;
+  }
+}
+
+/* Semantic colors. */
+:root, .s21-sombre {
+  --info: var(--bleu);
+  --succes: oklch(0.77 0.105 155);
+  --attention: oklch(0.80 0.115 68);
+  --erreur: oklch(0.74 0.13 25);
+  --code-fond: var(--bistre-0);
+  --code-commande: var(--bleu-clair);
+  --code-valeur: var(--ocre-clair);
+  --code-commentaire: oklch(0.70 0.055 155);
+}
+:root[data-theme="clair"], .s21-clair {
+  --info: oklch(0.48 0.11 228); --succes: oklch(0.44 0.09 155);
+  --attention: oklch(0.48 0.10 68); --erreur: oklch(0.48 0.14 25);
+  --code-fond: #f7f7f5;
+  --code-commande: var(--texte-fort);
+  --code-valeur: var(--texte-fort);
+  --code-commentaire: var(--texte-faible);
+}
+@media print {
+  :root, :root[data-theme="clair"], .s21-clair, .s21-sombre {
+    --info: #161310; --succes: #161310; --attention: #161310; --erreur: #161310;
+    --code-fond: #f7f7f5; --code-commande: #161310;
+    --code-valeur: #161310; --code-commentaire: #5a5249;
+  }
+}

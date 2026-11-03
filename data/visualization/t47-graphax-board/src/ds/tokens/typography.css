@@ -1,0 +1,52 @@
+/* Chakra Petch provides angular headings and body text; Fragment Mono is used for archive identifiers and metadata. */
+
+:root {
+  --font-sans: 'Chakra Petch', 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'Fragment Mono', ui-monospace, 'SFMono-Regular', monospace;
+  --font-document: Calibri, Carlito, 'Segoe UI', Arial, sans-serif;
+  --doc-corps: 11pt;
+  --doc-legende: 9pt;
+  --doc-code: 9pt;
+
+  /* Chakra Petch weights. */
+  --poids-leger: 300;  /* @kind other */
+  --poids-normal: 400; /* @kind other */
+  --poids-moyen: 500;  /* @kind other */
+  --poids-demi: 600;   /* @kind other */
+  --poids-gras: 700;   /* @kind other */
+
+  /* Type scale based on 16 pixels. */
+  /* Compact text roles have a 12-pixel minimum. */
+  --txt-2xs: 12px;
+  --txt-xs:  12px;
+  --txt-sm:  13.5px;
+  --txt-base: 16px;
+  --txt-md:  17px;
+  --txt-lg:  20px;
+  --txt-xl:  26px;
+  --txt-2xl: 34px;
+  --txt-3xl: 44px;
+  --txt-4xl: 58px;
+  --txt-5xl: 76px;
+
+  /* Line heights. */
+  --inter-serre: 1.05; /* @kind other */
+  --inter-titre: 1.12; /* @kind other */
+  --inter-corps: 1.7;  /* @kind other */
+  --inter-dense: 1.5;  /* @kind other */
+
+  /* Letter spacing. */
+  --ls-titre: -0.015em;   /* @kind other */
+  --ls-normal: 0;         /* @kind other */
+  --ls-meta:  0.1em;      /* @kind other */
+  --ls-libelle: 0.1em;    /* @kind other */
+
+  /* Semantic type roles. */
+  --type-display:  var(--poids-demi) var(--txt-5xl)/var(--inter-serre) var(--font-sans);
+  --type-titre:    var(--poids-demi) var(--txt-3xl)/var(--inter-titre) var(--font-sans);
+  --type-sous-titre: var(--poids-moyen) var(--txt-xl)/var(--inter-titre) var(--font-sans);
+  --type-corps:    var(--poids-normal) var(--txt-base)/var(--inter-corps) var(--font-sans);
+  --type-corps-sm: var(--poids-normal) var(--txt-sm)/var(--inter-dense) var(--font-sans);
+  --type-cote:     var(--poids-normal) var(--txt-xs)/1.4 var(--font-mono);
+  --type-libelle:  var(--poids-demi) var(--txt-xs)/1.3 var(--font-sans);
+}

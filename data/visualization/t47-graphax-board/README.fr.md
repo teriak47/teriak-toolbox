@@ -33,11 +33,17 @@ pnpm build
 pnpm start
 ```
 
+## Design et version
+
+L'interface suit le design system SECTION 21 des projets Teriak47 : surfaces sombres bistre, un seul accent bleu froid, angles droits avec coupes à 21°, liens en segments droits, fentes d'œil pour les états et signature de pied. Chakra Petch et Fragment Mono (OFL-1.1, fournies par `@fontsource`) sont chargées localement : rien n'est téléchargé. Les tokens sont dans `src/ds/`. Les couleurs et formes de catégories des projets existants sont conservées ; les anciennes formes arrondies sont dessinées en carrés.
+
+La version affichée dans le pied de page vient de `package.json`, qui doit correspondre à `tool.yaml` (vérifié par `pnpm test`). `/api/health` la renvoie aussi.
+
 ## Raccourcis & Interactions sur le Canevas
 
 - **Double-clic sur le fond du canevas :** Crée instantanément un nœud aux coordonnées du curseur.
 - **Glisser-déposer un nœud :** Positionnement libre sauvegardé automatiquement dans SurrealDB (`positionX`, `positionY`).
-- **Glisser depuis une poignée d'un nœud vers un autre :** Crée une relation graphe native avec saisie directe du label sur la flèche.
+- **Glisser depuis le cadre autour d'un nœud vers un autre :** Crée une relation graphe native avec saisie directe du label sur la flèche.
 - **Double-clic sur le label d'une flèche :** Modifie le texte de la relation directement sur le graphe.
 - **Clic sur un nœud ou un lien :** Ouvre le panneau latéral d'inspection à droite (catégorie, métadonnées libres clé/valeur, notes complètes en Markdown avec aperçu rendu, trait plein vs pointillés d'hypothèse, orientation).
 - **`Ctrl + K` :** Recherche instantanée avec centrage automatique de la caméra sur l'indice sélectionné.

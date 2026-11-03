@@ -1,0 +1,12 @@
+/* Chakra Petch and Fragment Mono are bundled locally (@fontsource, OFL-1.1): Graphax works offline and downloads nothing. */
+
+@import "@fontsource/chakra-petch/latin-400.css";
+@import "@fontsource/chakra-petch/latin-ext-400.css";
+@import "@fontsource/chakra-petch/latin-500.css";
+@import "@fontsource/chakra-petch/latin-ext-500.css";
+@import "@fontsource/chakra-petch/latin-600.css";
+@import "@fontsource/chakra-petch/latin-ext-600.css";
+@import "@fontsource/chakra-petch/latin-700.css";
+@import "@fontsource/chakra-petch/latin-ext-700.css";
+@import "@fontsource/fragment-mono/latin-400.css";
+@import "@fontsource/fragment-mono/latin-ext-400.css";

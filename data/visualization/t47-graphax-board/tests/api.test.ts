@@ -268,3 +268,21 @@ describe('database location', () => {
     }
   });
 });
+
+describe('versioning', () => {
+  it('keeps package.json and tool.yaml on the same version', () => {
+    const toolDir = path.resolve(import.meta.dirname, '..');
+    const pkg = JSON.parse(fs.readFileSync(path.join(toolDir, 'package.json'), 'utf-8'));
+    const yaml = fs.readFileSync(path.join(toolDir, 'tool.yaml'), 'utf-8');
+    const yamlVersion = /^version:\s*(\S+)/m.exec(yaml)?.[1];
+    assert.match(pkg.version, /^\d+\.\d+\.\d+$/);
+    assert.equal(yamlVersion, pkg.version);
+  });
+
+  it('reports the version on the health endpoint', async () => {
+    const pkg = JSON.parse(
+      fs.readFileSync(path.resolve(import.meta.dirname, '..', 'package.json'), 'utf-8')
+    );
+    assert.equal((await call('GET', '/api/health')).json.version, pkg.version);
+  });
+});

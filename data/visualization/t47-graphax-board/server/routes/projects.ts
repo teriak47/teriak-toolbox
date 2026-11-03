@@ -361,7 +361,7 @@ projectsRouter.post('/import', async (c) => {
     await db.create(toRecordId('category', newCatId)).content({
       projectId: newProjectId,
       name: String(cat.name || 'Catégorie'),
-      color: String(cat.color || '#38bdf8'),
+      color: String(cat.color || '#47c0ef'),
       icon: cat.icon || 'tag',
       shape: cat.shape || 'rounded',
     });

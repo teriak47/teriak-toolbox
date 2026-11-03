@@ -1,37 +1,92 @@
 @import "tailwindcss";
+@import "./ds/styles.css";
+
+/* SECTION 21 through Tailwind: the utility classes keep their names but resolve to the
+   warm bistre neutrals, the single cold blue accent and the semantic colors of the
+   design system. Corners are never rounded and shadows stay minimal. */
+@theme {
+  --font-sans: 'Chakra Petch', 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'Fragment Mono', ui-monospace, 'SFMono-Regular', monospace;
+
+  --radius-xs: 0;
+  --radius-sm: 0;
+  --radius-md: 0;
+  --radius-lg: 0;
+  --radius-xl: 0;
+  --radius-2xl: 0;
+  --radius-3xl: 0;
+  --radius-4xl: 0;
+
+  --shadow-xs: none;
+  --shadow-sm: none;
+  --shadow-md: none;
+  --shadow-lg: none;
+  --shadow-xl: none;
+  --shadow-2xl: var(--ombre-portee);
+
+  --color-filet: var(--filet);
+  --color-filet-fort: var(--filet-fort);
+
+  --color-zinc-50: var(--ivoire-1);
+  --color-zinc-100: var(--ivoire-1);
+  --color-zinc-200: var(--txt-1);
+  --color-zinc-300: var(--ivoire-2);
+  --color-zinc-400: var(--txt-2);
+  --color-zinc-500: var(--txt-3);
+  --color-zinc-600: var(--bistre-5);
+  --color-zinc-700: var(--bistre-4);
+  --color-zinc-800: var(--bistre-3);
+  --color-zinc-900: var(--bistre-2);
+  --color-zinc-950: var(--bistre-1);
+
+  --color-cyan-200: var(--bleu-clair);
+  --color-cyan-300: var(--bleu-clair);
+  --color-cyan-400: var(--bleu);
+  --color-cyan-500: var(--bleu);
+  --color-cyan-600: var(--bleu-fonce);
+  --color-cyan-700: var(--bleu-sourd);
+  --color-cyan-800: oklch(0.34 0.05 230);
+  --color-cyan-900: oklch(0.27 0.04 230);
+  --color-cyan-950: oklch(0.22 0.03 230);
+
+  --color-emerald-300: var(--succes);
+  --color-emerald-400: var(--succes);
+  --color-emerald-500: var(--succes);
+  --color-rose-200: var(--erreur);
+  --color-rose-300: var(--erreur);
+  --color-rose-400: var(--erreur);
+  --color-rose-500: var(--erreur);
+  --color-rose-600: var(--erreur);
+  --color-rose-950: oklch(0.24 0.05 25);
+  --color-red-300: var(--erreur);
+  --color-red-400: var(--erreur);
+  --color-amber-200: var(--attention);
+  --color-amber-300: var(--attention);
+  --color-amber-400: var(--attention);
+  --color-amber-500: var(--attention);
+  --color-purple-400: var(--serie-4);
+  --color-purple-500: var(--serie-4);
+}
 
 @layer base {
-  :root {
-    color-scheme: dark;
-  }
-
   * {
     scrollbar-width: thin;
-    scrollbar-color: #27272a transparent;
+    scrollbar-color: var(--bistre-4) transparent;
   }
 
-  *::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
-  }
-
-  *::-webkit-scrollbar-track {
-    background: transparent;
-  }
-
-  *::-webkit-scrollbar-thumb {
-    background-color: #27272a;
-    border-radius: 9999px;
-  }
-
-  *::-webkit-scrollbar-thumb:hover {
-    background-color: #3f3f46;
+  button,
+  a,
+  input,
+  textarea,
+  select {
+    transition-duration: var(--duree);
+    transition-timing-function: var(--ease);
   }
 }
 
 /* Markdown rendered notes styling inside Inspector */
 .markdown-preview {
-  color: #e4e4e7;
+  color: var(--txt-1);
   font-size: 0.875rem;
   line-height: 1.6;
 }
@@ -39,7 +94,7 @@
 .markdown-preview h1,
 .markdown-preview h2,
 .markdown-preview h3 {
-  color: #fafafa;
+  color: var(--texte-fort);
   font-weight: 600;
   margin-top: 1rem;
   margin-bottom: 0.5rem;
@@ -48,7 +103,7 @@
 
 .markdown-preview h1 {
   font-size: 1.15rem;
-  border-bottom: 1px solid #27272a;
+  border-bottom: 1px solid var(--filet);
   padding-bottom: 0.35rem;
 }
 
@@ -58,7 +113,7 @@
 
 .markdown-preview h3 {
   font-size: 0.92rem;
-  color: #cbd5e1;
+  color: var(--ivoire-2);
 }
 
 .markdown-preview p {
@@ -82,20 +137,18 @@
 }
 
 .markdown-preview code {
-  background: #18181b;
-  border: 1px solid #27272a;
-  color: #67e8f9;
+  background: var(--code-fond);
+  border: 1px solid var(--filet);
+  color: var(--code-commande);
   padding: 0.1rem 0.35rem;
-  border-radius: 0.3rem;
   font-size: 0.8rem;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-family: var(--font-mono);
 }
 
 .markdown-preview pre {
-  background: #09090b;
-  border: 1px solid #27272a;
+  background: var(--code-fond);
+  border: 1px solid var(--filet);
   padding: 0.75rem;
-  border-radius: 0.5rem;
   overflow-x: auto;
   margin-bottom: 0.75rem;
 }
@@ -104,19 +157,18 @@
   background: transparent;
   border: none;
   padding: 0;
-  color: #e4e4e7;
+  color: var(--txt-1);
 }
 
 .markdown-preview blockquote {
-  border-left: 3px solid #06b6d4;
+  border-left: 3px solid var(--accent);
   padding-left: 0.75rem;
-  color: #a1a1aa;
-  font-style: italic;
+  color: var(--texte);
   margin-bottom: 0.75rem;
 }
 
 .markdown-preview a {
-  color: #38bdf8;
+  color: var(--accent);
   text-decoration: underline;
 }
 
@@ -129,12 +181,12 @@
 
 .markdown-preview th,
 .markdown-preview td {
-  border: 1px solid #27272a;
+  border: 1px solid var(--filet);
   padding: 0.35rem 0.5rem;
   text-align: left;
 }
 
 .markdown-preview th {
-  background: #18181b;
-  color: #f4f4f5;
+  background: var(--surface-carte);
+  color: var(--texte-fort);
 }

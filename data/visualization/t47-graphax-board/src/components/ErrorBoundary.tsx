@@ -35,7 +35,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
       <div className="h-screen w-screen bg-zinc-950 flex items-center justify-center p-6">
         <div className="max-w-lg w-full rounded-2xl bg-zinc-900 border border-rose-500/40 p-5 shadow-2xl space-y-3">
           <p className="text-sm font-semibold text-rose-300">Une erreur inattendue est survenue</p>
-          <pre className="text-[11px] font-mono text-zinc-400 whitespace-pre-wrap break-words max-h-48 overflow-auto bg-zinc-950 rounded-lg p-3 border border-zinc-800">
+          <pre className="text-xs font-mono text-zinc-400 whitespace-pre-wrap break-words max-h-48 overflow-auto bg-zinc-950 rounded-lg p-3 border border-filet">
             {this.state.error.message}
             {'\n'}
             {this.state.error.stack?.split('\n').slice(1, 6).join('\n')}

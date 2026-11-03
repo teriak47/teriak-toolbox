@@ -38,26 +38,24 @@ export const CATEGORY_ICON_MAP: Record<CategoryIconName, { icon: LucideIcon; lab
   tag: { icon: Tag, label: 'Étiquette générique' },
 };
 
+// SECTION 21 palette: cold accent, labelled semantic tones and cool neutrals
 export const CATEGORY_COLORS: string[] = [
-  '#38bdf8', // Sky
-  '#06b6d4', // Cyan
-  '#10b981', // Emerald
-  '#84cc16', // Lime
-  '#eab308', // Yellow
-  '#f59e0b', // Amber
-  '#f97316', // Orange
-  '#ef4444', // Red
-  '#f43f5e', // Rose
-  '#ec4899', // Pink
-  '#a855f7', // Purple
-  '#6366f1', // Indigo
+  '#47c0ef', // blue
+  '#89d7f9', // light blue
+  '#0093c5', // dark blue
+  '#7bc897', // success
+  '#deb775', // ochre
+  '#efaf69', // attention
+  '#f28881', // error
+  '#c4bfb4', // ivory
+  '#908b84', // neutral
+  '#6693aa', // cool series
 ];
 
+// Legacy "rounded" and "pill" values stay valid in saved data and are drawn as squares
 export const CATEGORY_SHAPES: Array<{ value: CategoryShape; label: string; radiusClass: string }> = [
-  { value: 'rounded', label: 'Cercle', radiusClass: 'rounded-full' },
-  { value: 'sharp', label: 'Carré', radiusClass: 'rounded-md' },
-  { value: 'pill', label: 'Orbe', radiusClass: 'rounded-full' },
-  { value: 'cut', label: 'Hexagone', radiusClass: 'rounded-lg' },
+  { value: 'sharp', label: 'Carré', radiusClass: '' },
+  { value: 'cut', label: 'Coin coupé', radiusClass: 's21-coupe-2' },
 ];
 
 export function getCategoryIcon(name?: CategoryIconName | null): LucideIcon {
@@ -66,14 +64,5 @@ export function getCategoryIcon(name?: CategoryIconName | null): LucideIcon {
 }
 
 export function getShapeRadiusClass(shape?: CategoryShape | null): string {
-  switch (shape) {
-    case 'sharp':
-      return 'rounded-sm';
-    case 'pill':
-      return 'rounded-2xl';
-    case 'cut':
-      return 'rounded-md';
-    default:
-      return 'rounded-xl';
-  }
+  return shape === 'cut' ? 's21-coupe-2' : '';
 }
