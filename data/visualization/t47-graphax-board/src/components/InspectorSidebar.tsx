@@ -200,6 +200,19 @@ export function InspectorSidebar({
     }, 350);
   };
 
+  // Send the not-yet-saved label/notes together with the reversal: the reversal replaces
+  // the link (new id), so a separate delayed save would target a link that no longer exists
+  const reverseSelectedEdge = (edgeId: string) => {
+    if (edgeTimerRef.current) {
+      clearTimeout(edgeTimerRef.current);
+      edgeTimerRef.current = null;
+    }
+    const pending =
+      pendingEdgeFlushRef.current?.edgeId === edgeId ? pendingEdgeFlushRef.current.patch : {};
+    pendingEdgeFlushRef.current = null;
+    void onUpdateEdge(edgeId, { ...pending, reverse: true });
+  };
+
   const rowsToMetadata = (
     rows: Array<{ id: string; key: string; value: string }>
   ): NodeMetadata => {
@@ -537,7 +550,7 @@ export function InspectorSidebar({
             {selectedEdge.directed && (
               <button
                 type="button"
-                onClick={() => void onUpdateEdge(selectedEdge.id, { reverse: true })}
+                onClick={() => reverseSelectedEdge(selectedEdge.id)}
                 className="w-full inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs text-zinc-300 transition-colors"
               >
                 <ArrowLeftRight className="w-3.5 h-3.5 text-cyan-400" />

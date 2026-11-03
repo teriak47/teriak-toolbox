@@ -99,12 +99,14 @@ edgesRouter.patch('/edges/:id', async (c) => {
     }
 
     const current = mapEdge(existing);
-    await db.query('DELETE $rid;', { rid: relRef }).collect();
 
+    // Delete and recreate in one transaction so a failure cannot lose the edge
     const newId = generateId();
-    const [recreated] = await db
-      .query<[Record<string, unknown> | undefined]>(
-        `RELATE ONLY $from -> $relId -> $to CONTENT {
+    const results = await db
+      .query<[undefined, unknown, Record<string, unknown> | undefined, undefined]>(
+        `BEGIN TRANSACTION;
+        DELETE $rid;
+        RELATE ONLY $from -> $relId -> $to CONTENT {
           projectId: $projectId,
           label: $label,
           style: $style,
@@ -114,8 +116,10 @@ edgesRouter.patch('/edges/:id', async (c) => {
           targetHandle: $targetHandle,
           createdAt: $createdAt,
           updatedAt: $now
-        };`,
+        };
+        COMMIT TRANSACTION;`,
         {
+          rid: relRef,
           from: toRecordId('entity', current.targetNodeId),
           relId: toRecordId('relation', newId),
           to: toRecordId('entity', current.sourceNodeId),
@@ -131,6 +135,7 @@ edgesRouter.patch('/edges/:id', async (c) => {
         }
       )
       .collect();
+    const recreated = results[2];
 
     if (!recreated) {
       return c.json({ error: 'Erreur lors de l’inversion du lien.' }, 500);

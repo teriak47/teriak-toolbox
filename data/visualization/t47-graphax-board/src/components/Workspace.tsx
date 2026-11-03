@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlignHorizontalJustifyCenter,
   AlignVerticalJustifyCenter,
+  AlertTriangle,
   ArrowLeft,
   CheckCircle2,
   Download,
@@ -56,7 +57,89 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
   const [relations, setRelations] = useState<GraphEdge[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [saveState, setSaveState] = useState<'saved' | 'saving'>('saved');
+  const [saveState, setSaveState] = useState<'saved' | 'saving' | 'error'>('saved');
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  // Save tracking: in-flight count, failed operations kept for retry, and a per-edge
+  // queue so a reversal can never overtake a label edit on the same link
+  const inFlightSavesRef = useRef(0);
+  const failedSavesRef = useRef(new Map<string, () => Promise<unknown>>());
+  const nodePatchesRef = useRef(new Map<string, Record<string, unknown>>());
+  const edgeQueueRef = useRef<Promise<unknown>>(Promise.resolve());
+  const edgeAliasRef = useRef(new Map<string, string>());
+
+  const unretryableErrorRef = useRef(false);
+
+  const settleSaveState = useCallback(() => {
+    if (inFlightSavesRef.current > 0) return;
+    const failed = failedSavesRef.current.size > 0 || unretryableErrorRef.current;
+    setSaveState(failed ? 'error' : 'saved');
+    if (!failed) setSaveError(null);
+  }, []);
+
+  // Runs one persistence call. A failure is reported, never hidden as "saved".
+  // `retryKey` keeps the operation so "Réessayer" can replay it; `rethrow` lets
+  // a caller (e.g. a modal) stay open on failure.
+  const runSave = useCallback(
+    async <T,>(
+      op: () => Promise<T>,
+      opts: { retryKey?: string; rethrow?: boolean } = {}
+    ): Promise<T | undefined> => {
+      inFlightSavesRef.current += 1;
+      setSaveState('saving');
+      try {
+        const result = await op();
+        if (opts.retryKey) failedSavesRef.current.delete(opts.retryKey);
+        return result;
+      } catch (err) {
+        console.error('[Graphax] Enregistrement impossible :', err);
+        if (opts.retryKey) failedSavesRef.current.set(opts.retryKey, op);
+        else unretryableErrorRef.current = true;
+        setSaveError(err instanceof Error ? err.message : 'Erreur inconnue.');
+        if (opts.rethrow) throw err;
+        return undefined;
+      } finally {
+        inFlightSavesRef.current -= 1;
+        settleSaveState();
+      }
+    },
+    [settleSaveState]
+  );
+
+  const retryFailedSaves = useCallback(async () => {
+    const pending = [...failedSavesRef.current.entries()];
+    unretryableErrorRef.current = false;
+    for (const [retryKey, op] of pending) {
+      await runSave(op, { retryKey });
+    }
+    settleSaveState();
+  }, [runSave, settleSaveState]);
+
+  const dismissSaveError = useCallback(() => {
+    unretryableErrorRef.current = false;
+    settleSaveState();
+  }, [settleSaveState]);
+
+  // Serialize operations on links; ids replaced by a reversal are mapped to the new id
+  const enqueueEdgeOp = useCallback(<T,>(op: () => Promise<T>): Promise<T> => {
+    const next = edgeQueueRef.current.then(op);
+    edgeQueueRef.current = next.catch(() => undefined);
+    return next;
+  }, []);
+
+  const resolveEdgeId = useCallback((edgeId: string): string => {
+    let current = edgeId;
+    while (edgeAliasRef.current.has(current)) current = edgeAliasRef.current.get(current)!;
+    return current;
+  }, []);
+
+  // Warn before closing the tab while changes are unsaved
+  useEffect(() => {
+    if (saveState === 'saved') return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [saveState]);
 
   // Selection & inline editing state
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -185,28 +268,23 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
       const defaultCategory =
         categories.find((c) => !hiddenCategoryIds.has(c.id))?.id ?? categories[0]?.id ?? null;
 
-      setSaveState('saving');
-      try {
-        const { node } = await api.createNode(projectId, {
+      const created = await runSave(() =>
+        api.createNode(projectId, {
           title: 'Nouvel indice',
           categoryId: defaultCategory,
           positionX: Math.round(positionX),
           positionY: Math.round(positionY),
           content: '',
           metadata: {},
-        });
-        setEntities((prev) => [...prev, node]);
-        setSelectedEdgeId(null);
-        setSelectedNodeId(node.id);
-        return node;
-      } catch (err) {
-        console.error('[Graphax] Création du nœud impossible :', err);
-        return null;
-      } finally {
-        setSaveState('saved');
-      }
+        })
+      );
+      if (!created) return null;
+      setEntities((prev) => [...prev, created.node]);
+      setSelectedEdgeId(null);
+      setSelectedNodeId(created.node.id);
+      return created.node;
     },
-    [projectId, categories, hiddenCategoryIds]
+    [projectId, categories, hiddenCategoryIds, runSave]
   );
 
   const handleCreateNodeCenter = useCallback(() => {
@@ -222,24 +300,22 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
       if (!sourceNodeId || !targetNodeId || sourceNodeId === targetNodeId) return;
       const defaultStyle: EdgeStyle = edgeFilter === 'dashed' ? 'dashed' : 'solid';
 
-      setSaveState('saving');
-      try {
-        const { edge } = await api.createEdge(projectId, {
+      const created = await runSave(() =>
+        api.createEdge(projectId, {
           sourceNodeId,
           targetNodeId,
           label: '',
           style: defaultStyle,
           directed: true,
-        });
-        setRelations((prev) => [...prev, edge]);
-        setSelectedNodeId(null);
-        setSelectedEdgeId(edge.id);
-        setAutoEditEdgeId(edge.id);
-      } finally {
-        setSaveState('saved');
-      }
+        })
+      );
+      if (!created) return;
+      setRelations((prev) => [...prev, created.edge]);
+      setSelectedNodeId(null);
+      setSelectedEdgeId(created.edge.id);
+      setAutoEditEdgeId(created.edge.id);
     },
-    [projectId, edgeFilter]
+    [projectId, edgeFilter, runSave]
   );
 
   // Dragging a link wire into empty space -> spawns a new node already linked!
@@ -249,8 +325,7 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
         categories.find((c) => !hiddenCategoryIds.has(c.id))?.id ?? categories[0]?.id ?? null;
       const defaultStyle: EdgeStyle = edgeFilter === 'dashed' ? 'dashed' : 'solid';
 
-      setSaveState('saving');
-      try {
+      const created = await runSave(async () => {
         const { node } = await api.createNode(projectId, {
           title: 'Nouvel indice',
           categoryId: defaultCategory,
@@ -259,22 +334,28 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
           content: '',
           metadata: {},
         });
-        const { edge } = await api.createEdge(projectId, {
-          sourceNodeId,
-          targetNodeId: node.id,
-          label: '',
-          style: defaultStyle,
-          directed: true,
-        });
-        setEntities((prev) => [...prev, node]);
-        setRelations((prev) => [...prev, edge]);
-        setSelectedEdgeId(null);
-        setSelectedNodeId(node.id);
-      } finally {
-        setSaveState('saved');
-      }
+        try {
+          const { edge } = await api.createEdge(projectId, {
+            sourceNodeId,
+            targetNodeId: node.id,
+            label: '',
+            style: defaultStyle,
+            directed: true,
+          });
+          return { node, edge };
+        } catch (err) {
+          // Do not leave an orphan node behind when the link could not be saved
+          await api.deleteNode(node.id).catch(() => undefined);
+          throw err;
+        }
+      });
+      if (!created) return;
+      setEntities((prev) => [...prev, created.node]);
+      setRelations((prev) => [...prev, created.edge]);
+      setSelectedEdgeId(null);
+      setSelectedNodeId(created.node.id);
     },
-    [projectId, categories, hiddenCategoryIds, edgeFilter]
+    [projectId, categories, hiddenCategoryIds, edgeFilter, runSave]
   );
 
   // Persist single node position
@@ -283,14 +364,11 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
       setEntities((prev) =>
         prev.map((n) => (n.id === nodeId ? { ...n, positionX: posX, positionY: posY } : n))
       );
-      setSaveState('saving');
-      try {
-        await api.updateNodePosition(nodeId, posX, posY);
-      } finally {
-        setSaveState('saved');
-      }
+      await runSave(() => api.updateNodePosition(nodeId, posX, posY), {
+        retryKey: `position:${nodeId}`,
+      });
     },
-    []
+    [runSave]
   );
 
   // Persist batch node positions (from live physics or layout)
@@ -304,30 +382,32 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
           return p ? { ...n, positionX: p.positionX, positionY: p.positionY } : n;
         })
       );
-      setSaveState('saving');
-      try {
-        await api.updateBatchPositions(projectId, positions);
-      } finally {
-        setSaveState('saved');
-      }
+      await runSave(() => api.updateBatchPositions(projectId, positions), {
+        retryKey: `positions:${projectId}`,
+      });
     },
-    [projectId]
+    [projectId, runSave]
   );
 
   // Commit inline edge label
-  const handleCommitEdgeLabel = useCallback(async (edgeId: string, newLabel: string) => {
-    setAutoEditEdgeId((curr) => (curr === edgeId ? null : curr));
-    setRelations((prev) =>
-      prev.map((e) => (e.id === edgeId ? { ...e, label: newLabel } : e))
-    );
-    setSaveState('saving');
-    try {
-      const { edge } = await api.updateEdge(edgeId, { label: newLabel });
-      setRelations((prev) => prev.map((e) => (e.id === edgeId ? edge : e)));
-    } finally {
-      setSaveState('saved');
-    }
-  }, []);
+  const handleCommitEdgeLabel = useCallback(
+    async (edgeId: string, newLabel: string) => {
+      setAutoEditEdgeId((curr) => (curr === edgeId ? null : curr));
+      setRelations((prev) =>
+        prev.map((e) => (e.id === edgeId ? { ...e, label: newLabel } : e))
+      );
+      await runSave(
+        () =>
+          enqueueEdgeOp(async () => {
+            const currentId = resolveEdgeId(edgeId);
+            const { edge } = await api.updateEdge(currentId, { label: newLabel });
+            setRelations((prev) => prev.map((e) => (e.id === currentId ? edge : e)));
+          }),
+        { retryKey: `edge:${edgeId}:label` }
+      );
+    },
+    [runSave, enqueueEdgeOp, resolveEdgeId]
+  );
 
   // Node updates from Inspector
   const handleUpdateNode = useCallback(
@@ -343,15 +423,19 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
       setEntities((prev) =>
         prev.map((n) => (n.id === nodeId ? { ...n, ...patch } : n))
       );
-      setSaveState('saving');
-      try {
-        const { node } = await api.updateNode(nodeId, patch);
-        setEntities((prev) => prev.map((n) => (n.id === nodeId ? node : n)));
-      } finally {
-        setSaveState('saved');
-      }
+      // Merge with any earlier patch that failed, so a retry never loses a field
+      const merged = { ...(nodePatchesRef.current.get(nodeId) ?? {}), ...patch };
+      nodePatchesRef.current.set(nodeId, merged);
+      await runSave(
+        async () => {
+          const { node } = await api.updateNode(nodeId, merged);
+          nodePatchesRef.current.delete(nodeId);
+          setEntities((prev) => prev.map((n) => (n.id === nodeId ? node : n)));
+        },
+        { retryKey: `node:${nodeId}` }
+      );
     },
-    []
+    [runSave]
   );
 
   const handleDeleteNode = useCallback(async (nodeId: string) => {
@@ -361,13 +445,8 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
     );
     setSelectedNodeId((curr) => (curr === nodeId ? null : curr));
 
-    setSaveState('saving');
-    try {
-      await api.deleteNode(nodeId);
-    } finally {
-      setSaveState('saved');
-    }
-  }, []);
+    await runSave(() => api.deleteNode(nodeId), { retryKey: `delete-node:${nodeId}` });
+  }, [runSave]);
 
   // Edge updates from Inspector
   const handleUpdateEdge = useCallback(
@@ -386,35 +465,39 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
           prev.map((e) => (e.id === edgeId ? { ...e, ...patch } : e))
         );
       }
-      setSaveState('saving');
-      try {
-        const { edge, replacedId } = await api.updateEdge(edgeId, patch);
-        if (replacedId) {
-          setRelations((prev) =>
-            prev.map((e) => (e.id === replacedId ? edge : e))
-          );
-          setSelectedEdgeId(edge.id);
-        } else {
-          setRelations((prev) => prev.map((e) => (e.id === edgeId ? edge : e)));
+      await runSave(
+        () =>
+          enqueueEdgeOp(async () => {
+            const currentId = resolveEdgeId(edgeId);
+            const { edge, replacedId } = await api.updateEdge(currentId, patch);
+            if (replacedId) {
+              edgeAliasRef.current.set(replacedId, edge.id);
+              setRelations((prev) => prev.map((e) => (e.id === replacedId ? edge : e)));
+              setSelectedEdgeId((curr) => (curr === replacedId ? edge.id : curr));
+            } else {
+              setRelations((prev) => prev.map((e) => (e.id === currentId ? edge : e)));
+            }
+          }),
+        {
+          // A reversal is not replayed: it would flip the link a second time
+          retryKey: patch.reverse
+            ? undefined
+            : `edge:${edgeId}:${Object.keys(patch).sort().join(',')}`,
         }
-      } finally {
-        setSaveState('saved');
-      }
+      );
     },
-    []
+    [runSave, enqueueEdgeOp, resolveEdgeId]
   );
 
   const handleDeleteEdge = useCallback(async (edgeId: string) => {
     setRelations((prev) => prev.filter((e) => e.id !== edgeId));
     setSelectedEdgeId((curr) => (curr === edgeId ? null : curr));
 
-    setSaveState('saving');
-    try {
-      await api.deleteEdge(edgeId);
-    } finally {
-      setSaveState('saved');
-    }
-  }, []);
+    await runSave(
+      () => enqueueEdgeOp(() => api.deleteEdge(resolveEdgeId(edgeId))),
+      { retryKey: `delete-edge:${edgeId}` }
+    );
+  }, [runSave, enqueueEdgeOp, resolveEdgeId]);
 
   // Category CRUD
   const handleSaveCategory = async (data: {
@@ -423,38 +506,38 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
     icon: CategoryIconName;
     shape: CategoryShape;
   }) => {
-    setSaveState('saving');
-    try {
-      if (editingCategory) {
-        const { category } = await api.updateCategory(editingCategory.id, data);
-        setCategories((prev) =>
-          prev.map((c) => (c.id === category.id ? category : c))
-        );
-      } else {
-        const { category } = await api.createCategory(projectId, data);
-        setCategories((prev) => [...prev, category]);
-      }
-    } finally {
-      setSaveState('saved');
-    }
+    await runSave(
+      async () => {
+        if (editingCategory) {
+          const { category } = await api.updateCategory(editingCategory.id, data);
+          setCategories((prev) =>
+            prev.map((c) => (c.id === category.id ? category : c))
+          );
+        } else {
+          const { category } = await api.createCategory(projectId, data);
+          setCategories((prev) => [...prev, category]);
+        }
+      },
+      { rethrow: true }
+    );
   };
 
   const handleDeleteCategory = async (categoryId: string) => {
-    setSaveState('saving');
-    try {
-      await api.deleteCategory(categoryId);
-      setCategories((prev) => prev.filter((c) => c.id !== categoryId));
-      setEntities((prev) =>
-        prev.map((n) => (n.categoryId === categoryId ? { ...n, categoryId: null } : n))
-      );
-      setHiddenCategoryIds((prev) => {
-        const next = new Set(prev);
-        next.delete(categoryId);
-        return next;
-      });
-    } finally {
-      setSaveState('saved');
-    }
+    await runSave(
+      async () => {
+        await api.deleteCategory(categoryId);
+        setCategories((prev) => prev.filter((c) => c.id !== categoryId));
+        setEntities((prev) =>
+          prev.map((n) => (n.categoryId === categoryId ? { ...n, categoryId: null } : n))
+        );
+        setHiddenCategoryIds((prev) => {
+          const next = new Set(prev);
+          next.delete(categoryId);
+          return next;
+        });
+      },
+      { rethrow: true }
+    );
   };
 
   // Layouts: Constellation (Force) or Hierarchical (Dagre)
@@ -523,13 +606,13 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
       setProjectNameDraft(project.name);
       return;
     }
-    setSaveState('saving');
-    try {
-      const { project: updated } = await api.updateProject(project.id, { name: trimmed });
-      setProject(updated);
-    } finally {
-      setSaveState('saved');
-    }
+    await runSave(
+      async () => {
+        const { project: updated } = await api.updateProject(project.id, { name: trimmed });
+        setProject(updated);
+      },
+      { retryKey: `project-name:${project.id}` }
+    );
   };
 
   const toggleCategoryVisibility = (catId: string) => {
@@ -648,6 +731,33 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
               <>
                 <Loader2 className="w-3 h-3 animate-spin text-cyan-400" />
                 <span>Sauvegarde…</span>
+              </>
+            ) : saveState === 'error' ? (
+              <>
+                <AlertTriangle className="w-3 h-3 text-red-400" />
+                <span
+                  className="text-red-300 truncate max-w-[220px]"
+                  title={saveError ?? undefined}
+                >
+                  Échec de l'enregistrement
+                </span>
+                {failedSavesRef.current.size > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => void retryFailedSaves()}
+                    className="underline text-cyan-300 hover:text-cyan-200"
+                  >
+                    Réessayer
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={dismissSaveError}
+                  title="Masquer le message"
+                  className="text-zinc-500 hover:text-zinc-300"
+                >
+                  <X className="w-3 h-3" />
+                </button>
               </>
             ) : (
               <>
