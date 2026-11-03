@@ -1,93 +1,204 @@
 <!doctype html>
-<html lang="fr">
+<html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; img-src 'none'; base-uri 'none'; form-action 'none'">
-<title>Requêtes SQL · Zircolite</title>
-<style>
-:root{color-scheme:dark;--bg:#0c151a;--panel:#142129;--border:#30434e;--text:#e7edf0;--muted:#a9bbc4;--accent:#74d9ce;--error:#ffa99c;font:15px/1.5 "Segoe UI",sans-serif}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text)}main{max-width:1280px;margin:auto;padding:32px 24px}header{display:flex;justify-content:space-between;gap:24px;align-items:center;margin-bottom:24px}h1{font-size:28px;line-height:1.2;margin:4px 0 12px}h2{font-size:18px;margin:0}p{margin:8px 0 16px}.eyebrow{color:var(--accent);font-size:12px;letter-spacing:.12em;text-transform:uppercase}.muted,small{color:var(--muted)}.layout{display:grid;grid-template-columns:minmax(300px,420px) minmax(0,1fr);gap:20px}.panel{border:1px solid var(--border);background:var(--panel);padding:22px;border-radius:8px}.field{display:grid;gap:6px;margin-bottom:17px}label,legend{font-weight:600}input,select,textarea,button{font:inherit}input,select,textarea{width:100%;background:#0d1920;color:var(--text);border:1px solid #49606e;border-radius:4px;padding:10px}input:focus,select:focus,textarea:focus,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}.pair{display:grid;grid-template-columns:1fr 1fr;gap:12px}.controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center}button{background:#20353f;color:var(--text);border:1px solid #49606e;border-radius:4px;padding:9px 13px;cursor:pointer}button.primary{background:var(--accent);color:#092321;border-color:var(--accent);font-weight:700}button:hover{filter:brightness(1.12)}button:disabled{opacity:.45;cursor:default}.output-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px}textarea{font:13px/1.65 Consolas,"Cascadia Mono",monospace;min-height:520px;resize:vertical;white-space:pre;overflow:auto;tab-size:4}#reason{padding:12px 15px;border-left:3px solid var(--accent);background:#0e1b22;margin:18px 0}#error{color:var(--error);margin-bottom:10px;white-space:pre-wrap}#status{min-height:24px;color:var(--accent)}[hidden]{display:none!important}footer{color:var(--muted);font-size:13px;margin-top:24px}a{color:var(--accent)}.tip{font-size:13px;margin:12px 0 0}fieldset{border:0;padding:0;margin:0}legend{margin-bottom:8px}#scope{font-size:13px;color:var(--muted);overflow-wrap:anywhere}.check{display:flex;gap:10px;align-items:center;font-weight:400}.check input{width:auto}@media(max-width:800px){main{padding:20px 14px}.layout{grid-template-columns:1fr}header{display:block}.panel{padding:17px}textarea{min-height:380px}.pair{grid-template-columns:1fr}.output-head{align-items:flex-start;flex-wrap:wrap}}
-</style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; img-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>T47 Zircolite SQL Generator</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: oklch(0.165 0.009 66);
+      --well: oklch(0.135 0.008 64);
+      --panel: oklch(0.205 0.011 70);
+      --raised: oklch(0.245 0.012 72);
+      --line: oklch(0.340 0.012 78);
+      --line-strong: oklch(0.560 0.014 80);
+      --text: oklch(0.885 0.018 85);
+      --muted: oklch(0.76 0.014 80);
+      --accent: oklch(0.760 0.125 228);
+      --accent-hover: oklch(0.840 0.090 228);
+      --ink: oklch(0.180 0.012 70);
+      --error: oklch(0.74 0.13 25);
+      --font-sans: "Chakra Petch", "Segoe UI", system-ui, sans-serif;
+      --font-mono: "Fragment Mono", "Cascadia Mono", Consolas, monospace;
+      font: 16px/1.5 var(--font-sans);
+    }
+    *, *::before, *::after { box-sizing: border-box; border-radius: 0; }
+    body { margin: 0; background: var(--bg); color: var(--text); }
+    main { max-width: 1280px; margin: auto; padding: 32px 24px 48px; }
+    .site-header { display: flex; justify-content: space-between; gap: 24px; align-items: flex-start; margin-bottom: 24px; padding-bottom: 20px; border-bottom: 1px solid var(--line-strong); }
+    h1 { font-size: clamp(1.7rem, 3vw, 2.25rem); line-height: 1.15; margin: 5px 0 10px; }
+    h2 { font-size: 1.2rem; line-height: 1.3; margin: 0; }
+    p { margin: 8px 0 16px; }
+    .eyebrow { color: var(--accent); font: 12px/1.4 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; }
+    .eyebrow::before { content: ''; display: inline-block; width: 12px; height: 4px; margin-right: 8px; vertical-align: middle; background: currentColor; transform: skewX(-21deg); }
+    .muted, small { color: var(--muted); }
+    small { display: block; font-size: 13px; line-height: 1.45; }
+    .layout { display: grid; grid-template-columns: minmax(290px, 420px) minmax(0, 1fr); gap: 20px; align-items: start; }
+    .panel { border: 1px solid var(--line); background: var(--panel); padding: 22px; min-width: 0; }
+    .field { display: grid; gap: 6px; margin-bottom: 17px; min-width: 0; }
+    label, legend { font-weight: 600; }
+    input, select, textarea, button { font: inherit; }
+    input, select, textarea { width: 100%; background: var(--well); color: var(--text); border: 1px solid var(--line-strong); padding: 10px; }
+    input::placeholder { color: var(--muted); opacity: 1; }
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+    button { background: var(--raised); color: var(--text); border: 1px solid var(--line-strong); padding: 9px 13px; cursor: pointer; }
+    button.primary { background: var(--accent); color: var(--ink); border-color: var(--accent); font-weight: 700; }
+    button:hover:not(:disabled) { border-color: var(--accent); }
+    button.primary:hover:not(:disabled) { background: var(--accent-hover); }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    .output-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+    textarea { font: 13px/1.65 var(--font-mono); min-height: 520px; resize: vertical; white-space: pre; overflow: auto; tab-size: 4; }
+    #reason { padding: 12px 15px; border-left: 3px solid var(--accent); background: var(--well); margin: 18px 0; }
+    #error { color: var(--error); margin-bottom: 10px; white-space: pre-wrap; }
+    #status { min-height: 24px; color: var(--accent); }
+    [hidden] { display: none !important; }
+    footer { color: var(--muted); font-size: 13px; margin-top: 24px; }
+    a { color: var(--accent); }
+    .tip { font-size: 14px; margin: 12px 0 0; }
+    fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+    legend { margin-bottom: 8px; }
+    #scope { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+    @media (max-width: 800px) {
+      main { padding: 20px 14px 36px; }
+      .layout { grid-template-columns: 1fr; }
+      .site-header { display: block; }
+      .panel { padding: 17px; }
+      textarea { min-height: 380px; }
+      .pair { grid-template-columns: 1fr; }
+      .output-head { align-items: flex-start; flex-wrap: wrap; }
+    }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition-duration: 0s !important; animation-duration: 0s !important; } }
+  </style>
 </head>
 <body>
 <main>
-<header><div><div class="eyebrow">DFIR / Zircolite Viewer</div><h1>Requêtes SQL pour Zircolite</h1><p class="muted">Choisir une recherche, préciser les critères, copier dans le Viewer → SQL.</p></div><button id="example" type="button">Charger un exemple fictif</button></header>
-<div class="layout">
-<form id="form" class="panel" novalidate>
-<div class="field"><label for="mode">Que chercher ?</label><select id="mode">
-<option value="shares">Accès aux partages · synthèse</option><option value="rules">Règles déclenchées · synthèse</option><option value="ruleEvents">Événements d’une règle</option><option value="start">Lancement d’un processus par GUID</option><option value="children">Enfants directs d’un processus</option><option value="files">Fichiers créés par un processus</option><option value="network">Réseau et DNS d’un processus</option><option value="logons">Authentifications réussies et échouées</option><option value="event">Événement par RecordID</option>
-</select></div>
-<div class="field"><label for="machine">Machine <span class="muted">· facultatif</span></label><input id="machine" placeholder="fileserver.example.test" autocomplete="off"><small>Nom complet de Computer. Vide : toutes les machines.</small></div>
-<fieldset id="ruleFields"><div class="field"><label for="rule">Titre de règle</label><input id="rule" placeholder="Example detection rule" autocomplete="off"></div><div class="pair"><div class="field"><label for="match">Correspondance</label><select id="match"><option value="exact">Titre exact</option><option value="contains">Le titre contient</option></select></div><div class="field" id="levelField"><label for="level">Niveau minimum</label><select id="level"><option value="">Tous les niveaux</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="critical">Critical</option></select></div></div><small id="ruleHelp"></small></fieldset>
-<div class="field" id="guidField" hidden><label for="guid">GUID du processus</label><input id="guid" placeholder="{xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx}" autocomplete="off"><small>ProcessGuid de l’acteur, pas le Guid du fournisseur.</small></div>
-<div class="field" id="ipField" hidden><label for="ip">IP source <span class="muted">· facultatif</span></label><input id="ip" placeholder="192.0.2.10" autocomplete="off"></div>
-<fieldset id="eventFields" hidden><div class="field"><label for="channel">Canal</label><input id="channel" placeholder="Microsoft-Windows-Sysmon/Operational" autocomplete="off"></div><div class="pair"><div class="field"><label for="eventId">EventID</label><input id="eventId" inputmode="numeric" placeholder="11"></div><div class="field"><label for="recordId">EventRecordID</label><input id="recordId" inputmode="numeric" placeholder="12345"></div></div></fieldset>
-<fieldset><legend>Période · UTC</legend><div class="field"><label for="after">À partir de · inclus</label><input id="after" type="datetime-local" step="1"></div><div class="field"><label for="before">Avant · exclu</label><input id="before" type="datetime-local" step="1"></div><small>Vide : aucune borne. Les heures saisies sont déjà en UTC.</small></fieldset>
-<div class="pair" style="margin-top:18px"><div class="field"><label for="limit">Maximum de lignes</label><input id="limit" type="number" min="1" max="5000" value="50"></div><div class="field"><label for="order">Ordre</label><select id="order"><option value="time">Premières traces</option><option value="rare">Moins fréquentes</option></select></div></div>
-<div class="controls"><button type="button" id="clearDates">Effacer la période</button><button type="button" id="resetForm">Tout réinitialiser</button></div>
-</form>
-<section class="panel" aria-label="Requête générée"><div class="output-head"><h2>Requête à copier</h2><button id="copy" class="primary" type="button">Copier le SQL</button></div><div id="error" role="alert" hidden></div><textarea id="sql" readonly aria-label="Code SQL généré" spellcheck="false" wrap="off"></textarea><p id="status" role="status" aria-live="polite"></p><div id="reason"></div><p id="scope"></p><p class="tip">Coller dans <strong>Zircolite Viewer → SQL</strong>, puis Run. Les filtres d’Explore ne s’appliquent pas à cette requête. Quand <code>_zl_uid</code> est présent, son lien permet d’ouvrir le JSON.</p></section>
-</div>
-<footer>Fonctionne hors ligne. Aucun fichier de logs n’est ouvert ; aucune requête n’est exécutée ici. <a href="https://github.com/wagga40/Zircolite/blob/master/docs/Viewer.md" target="_blank" rel="noopener noreferrer">Documentation du Viewer</a></footer>
+  <header class="site-header">
+    <div>
+      <div class="eyebrow">DFIR / Zircolite Viewer</div>
+      <h1>T47 Zircolite SQL Generator</h1>
+      <p class="muted">Choose a search, set its criteria, and copy it to Viewer → SQL.</p>
+    </div>
+    <button id="example" type="button">Load fictional example</button>
+  </header>
+
+  <div class="layout">
+    <form id="form" class="panel" novalidate aria-label="Query criteria">
+      <div class="field">
+        <label for="mode">What are you looking for?</label>
+        <select id="mode">
+          <option value="shares">Share access · summary</option>
+          <option value="rules">Matched rules · summary</option>
+          <option value="ruleEvents">Events for a rule</option>
+          <option value="start">Process start by GUID</option>
+          <option value="children">Direct child processes</option>
+          <option value="files">Files created by a process</option>
+          <option value="network">Process network and DNS activity</option>
+          <option value="logons">Successful and failed logons</option>
+          <option value="event">Event by RecordID</option>
+        </select>
+      </div>
+      <div class="field"><label for="machine">Machine <span class="muted">· optional</span></label><input id="machine" placeholder="fileserver.example.test" autocomplete="off"><small>Full Computer name. Leave empty for all machines.</small></div>
+      <fieldset id="ruleFields">
+        <div class="field"><label for="rule">Rule title</label><input id="rule" placeholder="Example detection rule" autocomplete="off"></div>
+        <div class="pair">
+          <div class="field"><label for="match">Match</label><select id="match"><option value="exact">Exact title</option><option value="contains">Title contains</option></select></div>
+          <div class="field" id="levelField"><label for="level">Minimum level</label><select id="level"><option value="">All levels</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="critical">Critical</option></select></div>
+        </div>
+        <small id="ruleHelp"></small>
+      </fieldset>
+      <div class="field" id="guidField" hidden><label for="guid">Process GUID</label><input id="guid" placeholder="{xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx}" autocomplete="off"><small>ProcessGuid of the process, not the provider GUID.</small></div>
+      <div class="field" id="ipField" hidden><label for="ip">Source IP <span class="muted">· optional</span></label><input id="ip" placeholder="192.0.2.10" autocomplete="off"></div>
+      <fieldset id="eventFields" hidden>
+        <div class="field"><label for="channel">Channel</label><input id="channel" placeholder="Microsoft-Windows-Sysmon/Operational" autocomplete="off"></div>
+        <div class="pair"><div class="field"><label for="eventId">EventID</label><input id="eventId" inputmode="numeric" placeholder="11"></div><div class="field"><label for="recordId">EventRecordID</label><input id="recordId" inputmode="numeric" placeholder="12345"></div></div>
+      </fieldset>
+      <fieldset>
+        <legend>Time range · UTC</legend>
+        <div class="field"><label for="after">From · inclusive</label><input id="after" type="datetime-local" step="1"></div>
+        <div class="field"><label for="before">Before · exclusive</label><input id="before" type="datetime-local" step="1"></div>
+        <small>Leave empty for no bound. Enter times directly in UTC.</small>
+      </fieldset>
+      <div class="pair" style="margin-top:18px"><div class="field"><label for="limit">Maximum rows</label><input id="limit" type="number" min="1" max="5000" value="50"></div><div class="field"><label for="order">Order</label><select id="order"><option value="time">Earliest events</option><option value="rare">Least frequent</option></select></div></div>
+      <div class="controls"><button type="button" id="clearDates">Clear time range</button><button type="button" id="resetForm">Reset all</button></div>
+    </form>
+
+    <section class="panel" aria-labelledby="output-title">
+      <div class="output-head"><h2 id="output-title">Query to copy</h2><button id="copy" class="primary" type="button">Copy SQL</button></div>
+      <div id="error" role="alert" hidden></div>
+      <textarea id="sql" readonly aria-label="Generated SQL" spellcheck="false" wrap="off"></textarea>
+      <p id="status" role="status" aria-live="polite"></p>
+      <div id="reason"></div>
+      <p id="scope"></p>
+      <p class="tip">Paste into <strong>Zircolite Viewer → SQL</strong>, then run it. Explore filters do not apply to this query. When present, the <code>_zl_uid</code> link opens the event JSON.</p>
+    </section>
+  </div>
+  <footer>Runs offline. No log files are opened and no queries are executed here. <a href="https://github.com/wagga40/Zircolite/blob/master/docs/Viewer.md" target="_blank" rel="noopener noreferrer">Viewer documentation</a></footer>
 </main>
 <script id="generator">
 'use strict';
 (() => {
 const descriptions = {
- shares:'Regrouper les accès Security 5145 par compte, IP source et partage. Le nombre de chemins distincts aide à repérer un accès massif sans lire chaque événement. Cette synthèse ne fournit pas encore la commande.',
- rules:'Voir quelles règles ont réellement déclenché, sur quelles machines et à quelles heures. Le niveau et la rareté servent au tri ; ils ne remplacent pas la lecture des preuves.',
- ruleEvents:'Ouvrir les événements correspondant à un titre de règle, avec leurs identifiants et leur source. Plusieurs règles peuvent signaler le même événement.',
- start:'Retrouver la création Sysmon 1 de l’instance exacte pour lire sa commande et son parent. Une borne de début trop récente pourrait masquer son lancement.',
- children:'Retrouver les créations Sysmon 1 dont ParentProcessGuid correspond à cette instance. Ce sont uniquement ses enfants directs.',
- files:'Retrouver les créations Sysmon 11 attribuées à ce ProcessGuid et lire TargetFileName, notamment pour confirmer le chemin de sortie d’un dump.',
- network:'Retrouver les connexions Sysmon 3 et requêtes DNS Sysmon 22 du processus exact. Aucun résultat signifie seulement qu’aucune trace correspondante n’a été trouvée dans le package.',
- logons:'Retrouver Security 4624 et 4625 et lire le compte, le type de connexion et l’adresse source sur la machine qui les journalise.',
- event:'Retrouver un événement par machine, canal, EventID et EventRecordID. Un RecordID seul n’est pas un identifiant global.'
+ shares:'Group Security 5145 share access by account, source IP and share. The number of distinct paths can help identify broad access without reading every event. This summary does not show the command.',
+ rules:'Find which rules matched, on which machines and when. Severity and rarity help sort results; they do not replace review of the evidence.',
+ ruleEvents:'Find events matching a rule title, with their identifiers and source. Several rules can match the same event.',
+ start:'Find the Sysmon 1 creation event for the exact process instance to inspect its command and parent. A start time that is too recent could hide the launch.',
+ children:'Find Sysmon 1 creation events whose ParentProcessGuid matches this instance. These are direct children only.',
+ files:'Find Sysmon 11 file creations attributed to this ProcessGuid and inspect TargetFileName, for example to confirm a dump output path.',
+ network:'Find Sysmon 3 network connections and Sysmon 22 DNS queries for the exact process. No result only means that no matching trace was found in the package.',
+ logons:'Find Security 4624 and 4625 events and inspect the account, logon type and source address on the machine that recorded them.',
+ event:'Find an event by machine, channel, EventID and EventRecordID. A RecordID alone is not globally unique.'
 };
 const literal = value => "'" + String(value).replace(/'/g,"''") + "'";
 const exact = (field,value) => `LOWER(CAST(${field} AS VARCHAR)) = LOWER(${literal(value)})`;
 const contains = (field,value) => `${field} ILIKE ${literal('%'+value.replace(/!/g,'!!').replace(/%/g,'!%').replace(/_/g,'!_')+'%')} ESCAPE '!'`;
 function timestamp(value) {
  if (!value) return '';
- if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,6})?)?$/.test(value)) throw Error('Utiliser une date et une heure UTC complètes.');
+ if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,6})?)?$/.test(value)) throw Error('Enter a complete UTC date and time.');
  const parts=value.split('T'), d=parts[0].split('-').map(Number), t=parts[1].split(':');
  const year=d[0],month=d[1],day=d[2];
  const days=[31,(year%4===0&&(year%100!==0||year%400===0))?29:28,31,30,31,30,31,31,30,31,30,31];
- if(month<1||month>12||day<1||day>days[month-1]||+t[0]>23||+t[1]>59||(t[2]&&+t[2]>=60)) throw Error('La date ou l’heure saisie est invalide.');
+ if(month<1||month>12||day<1||day>days[month-1]||+t[0]>23||+t[1]>59||(t[2]&&+t[2]>=60)) throw Error('The date or time is invalid.');
  return parts[0]+' '+parts[1]+(t.length===2?':00':'');
 }
 function build(config) {
  const c=Object.fromEntries(Object.entries(config).map(([k,v])=>[k,typeof v==='string'?v.trim():v]));
- if(!Object.hasOwn(descriptions,c.mode)) throw Error('Choisir un modèle de recherche.');
- if(!/^\d+$/.test(String(c.limit))||+c.limit<1||+c.limit>5000) throw Error('Le maximum de lignes doit être un entier de 1 à 5 000.');
+ if(!Object.hasOwn(descriptions,c.mode)) throw Error('Choose a search template.');
+ if(!/^\d+$/.test(String(c.limit))||+c.limit<1||+c.limit>5000) throw Error('Maximum rows must be an integer from 1 to 5,000.');
  const after=timestamp(c.after),before=timestamp(c.before);
- if(after&&before&&after>=before) throw Error('La borne « avant » doit être postérieure à la borne de début.');
+ const comparableTimestamp = value => {
+  const [seconds, fraction = ''] = value.split('.');
+  return seconds + '.' + fraction.padEnd(6, '0');
+ };
+ if(after&&before&&comparableTimestamp(after)>=comparableTimestamp(before)) throw Error('The end time must be later than the start time.');
  const where=[];
  if(c.machine) where.push(exact('e.Computer',c.machine));
  if(after) where.push(`e._zl_time >= TIMESTAMP ${literal(after)}`);
  if(before) where.push(`e._zl_time < TIMESTAMP ${literal(before)}`);
  let select='',from='FROM events e',tail='',distinct='';
  const usesRules=['rules','ruleEvents'].includes(c.mode)||(c.mode==='shares'&&c.rule);
- if(c.mode==='ruleEvents'&&!c.rule) throw Error('Indiquer le titre de règle à rechercher.');
+ if(c.mode==='ruleEvents'&&!c.rule) throw Error('Enter the rule title to search for.');
  if(usesRules){
   from+='\nJOIN hits h USING (_zl_uid)\nJOIN rules r USING (rule_idx)';
   if(c.rule) where.push(c.match==='contains'?contains('r.title',c.rule):exact('r.title',c.rule));
  }
- const base=['e._zl_uid','e._zl_time AS heure_utc','e.Computer','e.Channel','e.EventID'];
+ const base=['e._zl_uid','e._zl_time AS time_utc','e.Computer','e.Channel','e.EventID'];
  const references=['e.EventRecordID','e.OriginalLogfile'];
  if(c.mode==='rules'){
   const levels={low:['low','medium','high','critical'],medium:['medium','high','critical'],high:['high','critical'],critical:['critical']};
-  if(c.level){if(!Object.hasOwn(levels,c.level))throw Error('Niveau inconnu.');where.push(`LOWER(r.level) IN (${levels[c.level].map(literal).join(', ')})`);}
-  select=['r.title AS regle','r.level AS niveau','e.Computer AS machine','COUNT(DISTINCT e._zl_uid) AS evenements','MIN(e._zl_time) AS premiere_trace_utc','MAX(e._zl_time) AS derniere_trace_utc'];
-  tail='GROUP BY r.title, r.level, e.Computer\nORDER BY '+(c.order==='rare'?'evenements, premiere_trace_utc':'premiere_trace_utc, regle');
+  if(c.level){if(!Object.hasOwn(levels,c.level))throw Error('Unknown level.');where.push(`LOWER(r.level) IN (${levels[c.level].map(literal).join(', ')})`);}
+  select=['r.title AS rule_title','r.level AS rule_level','e.Computer AS machine','COUNT(DISTINCT e._zl_uid) AS event_count','MIN(e._zl_time) AS first_seen_utc','MAX(e._zl_time) AS last_seen_utc'];
+  tail='GROUP BY r.title, r.level, e.Computer\nORDER BY '+(c.order==='rare'?'event_count, first_seen_utc':'first_seen_utc, rule_title');
  }else if(c.mode==='shares'){
   where.push("e.Channel = 'Security'","CAST(e.EventID AS VARCHAR) = '5145'");
-  select=['e.Computer AS machine','e.SubjectDomainName','e.SubjectUserName','e.IpAddress AS ip_source','e.ShareName AS partage','COUNT(DISTINCT e._zl_uid) AS acces','COUNT(DISTINCT e.RelativeTargetName) AS chemins_distincts','MIN(e._zl_time) AS premiere_trace_utc','MAX(e._zl_time) AS derniere_trace_utc'];
-  tail='GROUP BY e.Computer, e.SubjectDomainName, e.SubjectUserName,\n         e.IpAddress, e.ShareName\nORDER BY '+(c.order==='rare'?'acces, premiere_trace_utc':'premiere_trace_utc');
+  select=['e.Computer AS machine','e.SubjectDomainName','e.SubjectUserName','e.IpAddress AS source_ip','e.ShareName AS share_name','COUNT(DISTINCT e._zl_uid) AS access_count','COUNT(DISTINCT e.RelativeTargetName) AS distinct_paths','MIN(e._zl_time) AS first_seen_utc','MAX(e._zl_time) AS last_seen_utc'];
+  tail='GROUP BY e.Computer, e.SubjectDomainName, e.SubjectUserName,\n         e.IpAddress, e.ShareName\nORDER BY '+(c.order==='rare'?'access_count, first_seen_utc':'first_seen_utc');
  }else if(['start','children','files','network'].includes(c.mode)){
-  if(!/^\{?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\}?$/i.test(c.guid||''))throw Error('Indiquer un ProcessGuid valide (8-4-4-4-12 caractères hexadécimaux).');
-  if((c.guid.startsWith('{'))!==c.guid.endsWith('}'))throw Error('Le GUID doit avoir deux accolades, ou aucune.');
+  if(!/^\{?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\}?$/i.test(c.guid||''))throw Error('Enter a valid ProcessGuid (8-4-4-4-12 hexadecimal characters).');
+  if((c.guid.startsWith('{'))!==c.guid.endsWith('}'))throw Error('The GUID must have both braces or neither.');
   const guid='{'+c.guid.replace(/[{}]/g,'')+'}';
   where.push("e.Channel = 'Microsoft-Windows-Sysmon/Operational'");
   where.push(c.mode==='network'?"CAST(e.EventID AS VARCHAR) IN ('3', '22')":`CAST(e.EventID AS VARCHAR) = '${c.mode==='files'?'11':'1'}'`);
@@ -100,7 +211,7 @@ function build(config) {
   if(c.ip)where.push(exact('e.IpAddress',c.ip));
   select=[...base,'e.TargetDomainName','e.TargetUserName','e.LogonType','e.IpAddress','e.TargetLogonId',...references];
  }else if(c.mode==='event'){
-  if(!c.machine||!c.channel||!/^\d+$/.test(c.eventId||'')||!/^\d+$/.test(c.recordId||''))throw Error('Pour un événement précis, remplir machine, canal, EventID et EventRecordID.');
+  if(!c.machine||!c.channel||!/^\d+$/.test(c.eventId||'')||!/^\d+$/.test(c.recordId||''))throw Error('For a specific event, enter a machine, channel, EventID and EventRecordID.');
   where.push(exact('e.Channel',c.channel),`CAST(e.EventID AS VARCHAR) = ${literal(c.eventId)}`,`CAST(e.EventRecordID AS VARCHAR) = ${literal(c.recordId)}`);
   select=[...base,...references];
  }else{distinct='DISTINCT ';select=[...base,...references];}
@@ -116,11 +227,11 @@ function update(){
  const c=values(),rules=['shares','rules','ruleEvents'].includes(c.mode),guid=['start','children','files','network'].includes(c.mode);
  $('ruleFields').hidden=!rules;$('guidField').hidden=!guid;$('ipField').hidden=c.mode!=='logons';$('eventFields').hidden=c.mode!=='event';$('levelField').hidden=c.mode!=='rules';
  $('order').disabled=!['rules','shares'].includes(c.mode);$('reason').textContent=descriptions[c.mode];
- $('ruleHelp').textContent=c.mode==='ruleEvents'?'Titre obligatoire.':c.mode==='shares'?'Vide : tous les accès 5145 du périmètre.':'Vide : toutes les règles déclenchées.';
+ $('ruleHelp').textContent=c.mode==='ruleEvents'?'A title is required.':c.mode==='shares'?'Leave empty for all 5145 access events in scope.':'Leave empty for all matching rules.';
  $('status').textContent='';
  try{
   $('sql').value=build(c);$('error').hidden=true;$('copy').disabled=false;
-  const scope=[c.machine||'Toutes les machines',c.after?'Depuis '+c.after.replace('T',' ')+' UTC':'Début libre',c.before?'Avant '+c.before.replace('T',' ')+' UTC':'Fin libre',`Au maximum ${c.limit} lignes${['rules','shares'].includes(c.mode)?' de synthèse':''}`];
+  const scope=[c.machine||'All machines',c.after?'From '+c.after.replace('T',' ')+' UTC':'No start bound',c.before?'Before '+c.before.replace('T',' ')+' UTC':'No end bound',`At most ${c.limit} ${['rules','shares'].includes(c.mode)?'summary ':''}rows`];
   $('scope').textContent=scope.join(' · ');
  }catch(e){$('sql').value='';$('error').textContent=e.message;$('error').hidden=false;$('copy').disabled=true;$('scope').textContent='';}
 }
@@ -132,8 +243,8 @@ $('mode').addEventListener('change',()=>{$('after').value='';$('before').value='
 $('example').addEventListener('click',example);$('resetForm').addEventListener('click',reset);
 $('clearDates').addEventListener('click',()=>{$('after').value='';$('before').value='';update();});
 $('copy').addEventListener('click',async()=>{
- try{await navigator.clipboard.writeText($('sql').value);$('status').textContent='SQL copié.';}
- catch(e){$('sql').focus();$('sql').select();let copied=false;try{copied=document.execCommand('copy');}catch(ignore){}$('status').textContent=copied?'SQL copié.':'SQL sélectionné : appuyer sur Ctrl+C.';}
+ try{await navigator.clipboard.writeText($('sql').value);$('status').textContent='SQL copied.';}
+ catch(e){$('sql').focus();$('sql').select();let copied=false;try{copied=document.execCommand('copy');}catch(ignore){}$('status').textContent=copied?'SQL copied.':'SQL selected: press Ctrl+C.';}
 });
 example();
 })();
