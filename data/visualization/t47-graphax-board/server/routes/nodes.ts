@@ -3,6 +3,7 @@ import { getDb, generateId, toRecordId } from '../db.ts';
 import { mapNode, sanitizeMetadata, touchProject } from '../mappers.ts';
 import { categoryInProject, nodesInProject, projectExists } from '../guards.ts';
 import { optString, readBody } from '../validation.ts';
+import { MAX_RESTORE_RECORDS } from '../../shared/types.ts';
 
 const UNKNOWN_CATEGORY = "Cette catégorie n'existe pas dans ce projet.";
 
@@ -215,7 +216,7 @@ nodesRouter.patch('/projects/:projectId/positions', async (c) => {
 
 // Delete several nodes of a project and all their links, in one transaction (multiple
 // selection). Ids of other projects or of missing nodes are ignored.
-const MAX_BATCH_DELETE = 2000;
+const MAX_BATCH_DELETE = MAX_RESTORE_RECORDS;
 
 nodesRouter.post('/projects/:projectId/nodes/delete', async (c) => {
   const projectId = c.req.param('projectId');
@@ -234,6 +235,18 @@ nodesRouter.post('/projects/:projectId/nodes/delete', async (c) => {
   }
   const owned = [...(await nodesInProject(db, projectId, ids))];
   if (owned.length > 0) {
+    // Nodes plus their links must fit in one restore, so that the deletion can be undone
+    const [links] = await db
+      .query<[number]>('RETURN count(SELECT id FROM relation WHERE in IN $nids OR out IN $nids);', {
+        nids: owned.map((id) => toRecordId('entity', id)),
+      })
+      .collect();
+    if (owned.length + Number(links ?? 0) > MAX_RESTORE_RECORDS) {
+      return c.json(
+        { error: `Trop d’éléments à supprimer en une fois (plus de ${MAX_RESTORE_RECORDS} nœuds et liens).` },
+        400
+      );
+    }
     await db
       .query(
         `

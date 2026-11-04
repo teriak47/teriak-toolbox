@@ -755,6 +755,25 @@ describe('batch node deletion', () => {
     assert.equal((await call('POST', `/api/projects/${projectId}/nodes/delete`, {})).status, 400);
     assert.equal((await call('POST', '/api/projects/nope/nodes/delete', { ids: [c] })).status, 404);
   });
+
+  it('refuses a deletion too large to be undone in one restore', async () => {
+    const { MAX_RESTORE_RECORDS } = await import('../shared/types.ts');
+    const projectId = await createProject('Suppression trop grande');
+    const db = await getDb();
+    const ids = Array.from({ length: MAX_RESTORE_RECORDS }, (_, i) => `big${i}`);
+    await db
+      .query('INSERT INTO entity $rows;', {
+        rows: ids.map((id) => ({ id, projectId, title: 'n', content: '', positionX: 0, positionY: 0, metadata: {} })),
+      })
+      .collect();
+    const hub = await createNode(projectId, 'Hub');
+    await call('POST', `/api/projects/${projectId}/edges`, { sourceNodeId: hub, targetNodeId: ids[0] });
+    const res = await call('POST', `/api/projects/${projectId}/nodes/delete`, { ids: [...ids.slice(0, MAX_RESTORE_RECORDS - 1), hub] });
+    assert.equal(res.status, 400);
+    assert.match(res.json.error, /Trop d’éléments/);
+    const ok = await call('POST', `/api/projects/${projectId}/nodes/delete`, { ids: ids.slice(1, 10) });
+    assert.equal(ok.json.deleted, 9);
+  });
 });
 
 describe('restore (undo of deletions)', () => {

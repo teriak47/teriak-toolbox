@@ -30,6 +30,7 @@ import type {
   NodeMetadata,
   Project,
 } from '@shared/types';
+import { MAX_RESTORE_RECORDS } from '@shared/types';
 import { api, type CategoryInput, type RestoreSnapshot } from '@/api/client';
 import { GraphCanvas, type GraphCanvasHandle } from '@/components/GraphCanvas';
 import {
@@ -911,6 +912,14 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
       if (nodeIds.length === 1) return handleDeleteNode(nodeIds[0]);
       const replaying = historyRef.current.isApplying;
       const snapshot = nodesSnapshot(nodeIds);
+      // The whole deletion must fit in one restore, otherwise it could not be undone
+      const size = (snapshot?.nodes?.length ?? 0) + (snapshot?.edges?.length ?? 0);
+      if (size > MAX_RESTORE_RECORDS) {
+        setHistoryNotice(
+          `Trop d’éléments pour une seule suppression (${size} nœuds et liens, ${MAX_RESTORE_RECORDS} au plus) : supprimez en plusieurs fois.`
+        );
+        return false;
+      }
       const ids = new Set(nodeIds);
       setEntities((prev) => prev.filter((n) => !ids.has(n.id)));
       setRelations((prev) =>
