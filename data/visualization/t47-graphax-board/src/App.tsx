@@ -74,7 +74,7 @@ export function App() {
     return (
       <ErrorBoundary key={`ws-${activeProjectId}-${resetKey}`} onReset={() => setResetKey((k) => k + 1)}>
         <Suspense fallback={<WorkspaceLoading />}>
-          <Workspace projectId={activeProjectId} onBack={backToDashboard} />
+          <Workspace projectId={activeProjectId} onBack={backToDashboard} onOpenProject={openProject} />
         </Suspense>
       </ErrorBoundary>
     );

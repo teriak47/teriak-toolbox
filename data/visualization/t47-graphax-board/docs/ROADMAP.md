@@ -48,7 +48,7 @@ Effort: **S** small, **M** medium, **L** large.
 | A4 | Moved to V4 | Neighbourhood focus and shortest path | | |
 | A5 | Moved to V4 | Timeline view | | |
 | A6 | Planned | Export the graph as PNG or SVG, and a Markdown report | Sharing and delivering an investigation | M |
-| A7 | Planned | Automatic backups and project snapshots | The README asks users to keep backups; the tool could do it | S |
+| A7 | Done | Project snapshots: the server writes a project's export bundle to `data/snapshots/<project id>/` automatically every 30 minutes when the project changed (`GRAPHAX_AUTO_SNAPSHOT_MINUTES`, `0` turns it off; the 10 latest are kept), and on demand from the "Instantanés" window (up to 50 kept). A snapshot is restored as a new project, leaving the current one untouched, and can be deleted. The files use the export format, so they can also be imported from the project list, even after the project was deleted. The export and import code moved to `server/bundles.ts`, shared by both. | The README asks users to keep backups; the tool could do it | S |
 | A8 | Planned | Duplicate a project; copy and paste nodes | Everyday convenience | S |
 | A9 | Planned | Front-end tests (Vitest and Playwright) in CI | Only the API is tested today | M |
 

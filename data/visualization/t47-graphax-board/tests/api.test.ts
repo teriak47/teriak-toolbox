@@ -10,8 +10,9 @@ process.env.GRAPHAX_DATA_DIR = dataDir;
 process.env.PORT = '3456';
 
 const { app } = await import('../server/app.ts');
-const { closeDb, getDb, recoverLegacyDatabase, surrealKvUrl } = await import('../server/db.ts');
+const { closeDb, getDb, recoverLegacyDatabase, surrealKvUrl, toRecordId } = await import('../server/db.ts');
 const { insertProjectGraph } = await import('../server/bulk.ts');
+const { runAutoSnapshots, AUTO_SNAPSHOTS_KEPT } = await import('../server/snapshots.ts');
 
 const HOST = '127.0.0.1:3456';
 
@@ -861,6 +862,63 @@ describe('restore (undo of deletions)', () => {
     assert.equal((await call('POST', `/api/projects/${projectId}/restore`, { nodes: [{ id: 'a b' }] })).status, 400);
     assert.equal((await call('POST', `/api/projects/${projectId}/restore`, {})).status, 400);
     assert.equal((await call('POST', '/api/projects/nope/restore', { nodes: [{ id: 'x1' }] })).status, 404);
+  });
+});
+
+describe('project snapshots', () => {
+  it('takes, lists, restores as a new project and deletes snapshots', async () => {
+    const projectId = await createProject('Instantanés');
+    await createNode(projectId, 'Avant');
+    const taken = await call('POST', `/api/projects/${projectId}/snapshots`);
+    assert.equal(taken.status, 201);
+    assert.equal(taken.json.snapshot.kind, 'manual');
+    assert.equal(taken.json.snapshot.nodeCount, 1);
+    await createNode(projectId, 'Après', 100);
+
+    const list = (await call('GET', `/api/projects/${projectId}/snapshots`)).json.snapshots;
+    assert.equal(list.length, 1);
+    const name = list[0].name;
+
+    const restored = await call('POST', `/api/projects/${projectId}/snapshots/${name}/restore`);
+    assert.equal(restored.status, 201);
+    assert.match(restored.json.project.name, /^Instantanés \(instantané du /);
+    const copy = (await call('GET', `/api/projects/${restored.json.project.id}`)).json;
+    assert.deepEqual(copy.nodes.map((n: { title: string }) => n.title), ['Avant']);
+    // The project itself is left as it is
+    assert.equal((await call('GET', `/api/projects/${projectId}`)).json.nodes.length, 2);
+
+    assert.equal((await call('DELETE', `/api/projects/${projectId}/snapshots/${name}`)).status, 200);
+    assert.equal((await call('GET', `/api/projects/${projectId}/snapshots`)).json.snapshots.length, 0);
+  });
+
+  it('refuses unknown projects and snapshot names that are not snapshot files', async () => {
+    const projectId = await createProject('Instantanés refus');
+    assert.equal((await call('GET', '/api/projects/nope/snapshots')).status, 404);
+    assert.equal((await call('POST', '/api/projects/nope/snapshots')).status, 404);
+    for (const name of ['..%2F..%2Fgraphax.db', 'x.json', '2026-01-01T00-00-00-000Z_auto.json']) {
+      assert.equal((await call('POST', `/api/projects/${projectId}/snapshots/${name}/restore`)).status, 404, name);
+      assert.equal((await call('DELETE', `/api/projects/${projectId}/snapshots/${name}`)).status, 404, name);
+    }
+  });
+
+  it('snapshots changed projects automatically and keeps only the latest ones', async () => {
+    const projectId = await createProject('Instantanés auto');
+    const db = await getDb();
+    assert.ok((await runAutoSnapshots(db)).includes(projectId));
+    // Unchanged since: no new snapshot
+    assert.ok(!(await runAutoSnapshots(db)).includes(projectId));
+    // A change whose date is older than the snapshot file (it landed while the snapshot was
+    // being written) still differs from the revision captured in it: snapshotted again
+    await db.query('UPDATE $pid SET updatedAt = "2000-01-01T00:00:00.000Z";', { pid: toRecordId('project', projectId) }).collect();
+    assert.ok((await runAutoSnapshots(db)).includes(projectId));
+    assert.ok(!(await runAutoSnapshots(db)).includes(projectId));
+    for (let i = 0; i < AUTO_SNAPSHOTS_KEPT + 2; i++) {
+      await createNode(projectId, `N${i}`, i * 10);
+      await runAutoSnapshots(db);
+    }
+    const list = (await call('GET', `/api/projects/${projectId}/snapshots`)).json.snapshots;
+    assert.equal(list.length, AUTO_SNAPSHOTS_KEPT);
+    assert.equal(list[0].nodeCount, AUTO_SNAPSHOTS_KEPT + 2, 'newest first');
   });
 });
 

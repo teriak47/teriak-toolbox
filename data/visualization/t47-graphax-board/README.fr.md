@@ -64,7 +64,9 @@ L'API n'écoute que sur `127.0.0.1`, n'envoie aucun en-tête CORS et refuse les 
 
 ## Données locales
 
-Les données sont stockées dans `data/` à la racine de l'outil, quel que soit le dossier depuis lequel le serveur est lancé ; `GRAPHAX_DATA_DIR` permet de choisir un autre emplacement. Ce dossier est exclu de Git et ne doit pas être publié. Exportez et sauvegardez vos projets séparément au besoin.
+Les données sont stockées dans `data/` à la racine de l'outil, quel que soit le dossier depuis lequel le serveur est lancé ; `GRAPHAX_DATA_DIR` permet de choisir un autre emplacement. Ce dossier est exclu de Git et ne doit pas être publié.
+
+Instantanés : toutes les 30 minutes, le serveur enregistre chaque projet modifié dans `data/snapshots/<id du projet>/` et garde les 10 derniers (`GRAPHAX_AUTO_SNAPSHOT_MINUTES` règle l'intervalle, `0` les désactive). Le bouton « Instantanés » d'un projet en prend un à la demande, en restaure un comme nouveau projet (le projet courant n'est pas modifié) ou en supprime un. Les fichiers ont le format d'export : on peut aussi les importer depuis la liste des projets, même après la suppression du projet. Ils restent dans le même dossier `data/` : gardez une copie ailleurs pour les projets importants.
 
 Les corrections, optimisations et ajouts prévus sont listés dans la [feuille de route](docs/ROADMAP.md) (en anglais).
 
