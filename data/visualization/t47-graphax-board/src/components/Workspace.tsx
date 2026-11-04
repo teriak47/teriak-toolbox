@@ -807,7 +807,12 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
   // Deletions are not undoable yet: entries about a node or link deleted since are skipped
   actionsRef.current = {
     updateNode: async (nodeId, patch) => {
-      if (entitiesRef.current.some((n) => n.id === nodeId)) await handleUpdateNode(nodeId, patch);
+      if (!entitiesRef.current.some((n) => n.id === nodeId)) return;
+      // A category deleted since cannot be given back: the node is left without one, as the
+      // deletion would have done had the node still used it
+      const gone =
+        patch.categoryId && !categoriesRef.current.some((c) => c.id === patch.categoryId);
+      await handleUpdateNode(nodeId, gone ? { ...patch, categoryId: null } : patch);
     },
     updateEdge: async (edgeId, patch) => {
       if (relationsRef.current.some((e) => e.id === edgeId)) await handleUpdateEdge(edgeId, patch);
@@ -820,8 +825,9 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
     reorderCategories: applyCategoryOrder,
   };
 
-  const undo = useCallback(() => {
-    // Edits still waiting in the inspector are saved first, so they are what gets undone
+  // Edits still waiting in the inspector are saved (and recorded) first: before an undo
+  // they are what gets undone, and before a redo they drop the redo list, as any new edit does
+  const flushPendingEdits = useCallback(() => {
     const nodeId = selectedNodeIdRef.current;
     if (nodeId) {
       const pending = takePendingEditRef.current?.(nodeId) ?? {};
@@ -831,16 +837,21 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
     if (pendingEdge && Object.keys(pendingEdge.patch).length > 0) {
       void handleUpdateEdge(pendingEdge.edgeId, pendingEdge.patch);
     }
+  }, [handleUpdateNode, handleUpdateEdge]);
+
+  const undo = useCallback(() => {
+    flushPendingEdits();
     const label = historyRef.current.undo();
     setHistoryVersion((v) => v + 1);
     if (label) setHistoryNotice(`Annulé : ${label}`);
-  }, [handleUpdateNode, handleUpdateEdge]);
+  }, [flushPendingEdits]);
 
   const redo = useCallback(() => {
+    flushPendingEdits();
     const label = historyRef.current.redo();
     setHistoryVersion((v) => v + 1);
     if (label) setHistoryNotice(`Rétabli : ${label}`);
-  }, []);
+  }, [flushPendingEdits]);
 
   useEffect(() => {
     if (!historyNotice) return;
