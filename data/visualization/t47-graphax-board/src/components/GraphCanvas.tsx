@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import type { Category, CategoryShape, GraphEdge, GraphNode } from '@shared/types';
 import { getCategoryIcon } from '@/lib/icons';
+import { cardEntries } from '@/lib/metadata';
 import { cn } from '@/lib/utils';
 import { useViewport } from '@/hooks/useViewport';
 import { computeEdgeGeometry, edgeLabelHalfSize } from '@/lib/edgeGeometry';
@@ -1072,9 +1073,14 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
                   !linkingWire) ||
                 (hasSearch && !isSearchHit);
 
-              const metaEntries = Object.entries(nodeMeta);
+              // Empty fields (a category's default keys not filled yet) are not details
+              const metaEntries = Object.entries(nodeMeta).filter(([, v]) => String(v ?? '').trim());
               const hasDetails = nodeContent.trim().length > 0 || metaEntries.length > 0;
-              const firstMeta = metaEntries[0];
+              // Values chosen in the category for the card, then the first other value on hover
+              const card = cardEntries(cat, nodeMeta);
+              const cardLine = card.map((e) => e.value).join(' · ');
+              const shownKeys = new Set(card.map((e) => e.key));
+              const firstMeta = metaEntries.find(([k]) => !shownKeys.has(k));
 
               const startWireFromNode = (clientX: number, clientY: number, isClick = false) => {
                 const world = screenToWorld(clientX, clientY);
@@ -1276,10 +1282,29 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
                       {nodeTitle.length > 34 ? `${nodeTitle.slice(0, 32)}…` : nodeTitle}
                     </text>
 
+                    {/* Card values chosen in the category, always shown */}
+                    {cardLine && (
+                      <text
+                        y={15}
+                        textAnchor="middle"
+                        fill={color}
+                        fontSize={12}
+                        fontFamily="var(--font-mono)"
+                        style={{
+                          paintOrder: 'stroke',
+                          stroke: 'var(--surface-puits)',
+                          strokeWidth: 4,
+                        }}
+                      >
+                        <title>{card.map((e) => `${e.key} : ${e.value}`).join('\n')}</title>
+                        {cardLine.length > 34 ? `${cardLine.slice(0, 32)}…` : cardLine}
+                      </text>
+                    )}
+
                     {/* Subtle tactical subtitle on hover/selection if metadata exists */}
                     {firstMeta && (isHovered || isSelected) && (
                       <text
-                        y={15}
+                        y={cardLine ? 30 : 15}
                         textAnchor="middle"
                         fill="var(--texte)"
                         fontSize={12}

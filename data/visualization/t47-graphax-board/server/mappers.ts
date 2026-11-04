@@ -9,6 +9,7 @@ import {
   type GraphNode,
   type NodeMetadata,
   type Project,
+  normalizeCategoryKeys,
 } from '../shared/types.ts';
 import { extractId, toRecordId } from './db.ts';
 import { isCategoryIcon, isCategoryShape, normalizeColor } from './validation.ts';
@@ -32,6 +33,7 @@ export function mapCategory(raw: Record<string, unknown>): Category {
     color: normalizeColor(raw.color) ?? DEFAULT_CATEGORY_COLOR,
     icon: isCategoryIcon(raw.icon) ? raw.icon : DEFAULT_CATEGORY_ICON,
     shape: isCategoryShape(raw.shape) ? raw.shape : DEFAULT_CATEGORY_SHAPE,
+    ...normalizeCategoryKeys(raw.metadataKeys, raw.cardKeys),
   };
 }
 

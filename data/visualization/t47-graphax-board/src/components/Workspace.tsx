@@ -21,20 +21,23 @@ import {
 } from 'lucide-react';
 import type {
   Category,
-  CategoryIconName,
-  CategoryShape,
   EdgeStyle,
   GraphEdge,
   GraphNode,
   NodeMetadata,
   Project,
 } from '@shared/types';
-import { api } from '@/api/client';
+import { api, type CategoryInput } from '@/api/client';
 import { GraphCanvas, type GraphCanvasHandle } from '@/components/GraphCanvas';
 import { INSPECTOR_SAVE_DELAY_MS, InspectorSidebar } from '@/components/InspectorSidebar';
 import { downloadProjectExport } from '@/lib/exportProject';
 import { useSaveQueue } from '@/hooks/useSaveQueue';
-import { matchesMetadataQuery, parseMetadataQuery } from '@/lib/metadata';
+import {
+  collectMetadataKeys,
+  matchesMetadataQuery,
+  parseMetadataQuery,
+  withCategoryKeys,
+} from '@/lib/metadata';
 import { CategoryModal } from '@/components/CategoryModal';
 import { getCategoryIcon } from '@/lib/icons';
 import { computeConstellationLayout } from '@/lib/forceLayout';
@@ -223,6 +226,12 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
     });
   }, [entities, searchQuery, categoryMap]);
 
+  // Keys used in the project, offered when editing a category's default keys
+  const projectMetadataKeys = useMemo(
+    () => (categoryModalOpen ? collectMetadataKeys(entities) : []),
+    [categoryModalOpen, entities]
+  );
+
   const searchMatchIds = useMemo(
     () => new Set(searchMatches.map((n) => n.id)),
     [searchMatches]
@@ -234,6 +243,8 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
       const defaultCategory =
         categories.find((c) => !hiddenCategoryIds.has(c.id))?.id ?? categories[0]?.id ?? null;
 
+      // A new node starts with the category's default keys, empty
+      const metadata = withCategoryKeys(categories.find((c) => c.id === defaultCategory), {});
       const created = await runSave(() =>
         api.createNode(projectId, {
           title: 'Nouvel indice',
@@ -241,7 +252,7 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
           positionX: Math.round(positionX),
           positionY: Math.round(positionY),
           content: '',
-          metadata: {},
+          metadata,
         })
       );
       if (!created) return null;
@@ -291,6 +302,7 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
         categories.find((c) => !hiddenCategoryIds.has(c.id))?.id ?? categories[0]?.id ?? null;
       const defaultStyle: EdgeStyle = edgeFilter === 'dashed' ? 'dashed' : 'solid';
 
+      const metadata = withCategoryKeys(categories.find((c) => c.id === defaultCategory), {});
       const created = await runSave(async () => {
         const { node } = await api.createNode(projectId, {
           title: 'Nouvel indice',
@@ -298,7 +310,7 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
           positionX: worldX,
           positionY: worldY,
           content: '',
-          metadata: {},
+          metadata,
         });
         try {
           const { edge } = await api.createEdge(projectId, {
@@ -543,12 +555,7 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
   }, [runSave, enqueueEdgeOp, resolveEdgeId]);
 
   // Category CRUD
-  const handleSaveCategory = async (data: {
-    name: string;
-    color: string;
-    icon: CategoryIconName;
-    shape: CategoryShape;
-  }) => {
+  const handleSaveCategory = async (data: CategoryInput) => {
     await runSave(
       async () => {
         if (editingCategory) {
@@ -1262,6 +1269,7 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
         onClose={() => setCategoryModalOpen(false)}
         onSave={handleSaveCategory}
         onDelete={handleDeleteCategory}
+        knownKeys={projectMetadataKeys}
       />
     </div>
   );

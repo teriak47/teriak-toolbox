@@ -170,8 +170,42 @@ export function parseMetadataQuery(query: string): MetadataQuery | null {
   return { key: foldText(key), value: foldText(refang(value)) };
 }
 
+// An empty field (a default key not filled yet) never matches, not even "Clé:"
 export function matchesMetadataQuery(metadata: NodeMetadata | undefined, query: MetadataQuery): boolean {
-  return Object.entries(metadata ?? {}).some(
-    ([k, v]) => foldText(k).includes(query.key) && foldText(refang(v)).includes(query.value)
-  );
+  return Object.entries(metadata ?? {}).some(([k, v]) => {
+    const value = foldText(refang(v));
+    return value !== '' && foldText(k).includes(query.key) && value.includes(query.value);
+  });
+}
+
+// ---- Category default keys (V6) ----
+
+type CategoryKeys = { metadataKeys?: string[]; cardKeys?: string[] } | null | undefined;
+
+// Default keys of the category that the node does not have yet (case and accents ignored)
+export function missingCategoryKeys(category: CategoryKeys, metadata: NodeMetadata | undefined): string[] {
+  const present = new Set(Object.keys(metadata ?? {}).map(foldText));
+  return (category?.metadataKeys ?? []).filter((k) => !present.has(foldText(k)));
+}
+
+// Metadata with the category's missing default keys added, empty, after the existing ones
+export function withCategoryKeys(category: CategoryKeys, metadata: NodeMetadata | undefined): NodeMetadata {
+  const out: NodeMetadata = { ...(metadata ?? {}) };
+  for (const key of missingCategoryKeys(category, metadata)) out[key] = '';
+  return out;
+}
+
+// Values shown on the node card: the category's card keys that hold a value, in their order
+export function cardEntries(
+  category: CategoryKeys,
+  metadata: NodeMetadata | undefined
+): Array<{ key: string; value: string }> {
+  const entries = Object.entries(metadata ?? {});
+  const out: Array<{ key: string; value: string }> = [];
+  for (const cardKey of category?.cardKeys ?? []) {
+    const folded = foldText(cardKey);
+    const found = entries.find(([k, v]) => foldText(k) === folded && v.trim());
+    if (found) out.push({ key: found[0], value: found[1].trim() });
+  }
+  return out;
 }

@@ -10,6 +10,7 @@ import {
   type ProjectExportBundle,
   type ProjectGraphPayload,
   type ProjectPreset,
+  normalizeCategoryKeys,
 } from '../../shared/types.ts';
 import {
   isCategoryIcon,
@@ -143,6 +144,7 @@ projectsRouter.post('/demo', async (c) => {
       positionX: -20,
       positionY: -95,
       metadata: {
+        Famille: 'ChimeraLoader',
         'SHA-256': '9f86d081884c7d659a2f...',
         Langage: 'Rust / C++',
         Fiabilité: 'Confirmé (A1)',
@@ -350,6 +352,7 @@ projectsRouter.post('/import', async (c) => {
       color: normalizeColor(cat.color) ?? DEFAULT_CATEGORY_COLOR,
       icon: isCategoryIcon(cat.icon) ? cat.icon : DEFAULT_CATEGORY_ICON,
       shape: isCategoryShape(cat.shape) ? cat.shape : DEFAULT_CATEGORY_SHAPE,
+      ...normalizeCategoryKeys(cat.metadataKeys, cat.cardKeys),
     };
   });
 

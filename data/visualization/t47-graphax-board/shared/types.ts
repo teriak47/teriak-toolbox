@@ -39,6 +39,47 @@ export const DEFAULT_CATEGORY_COLOR = '#47c0ef';
 export const DEFAULT_CATEGORY_ICON: CategoryIconName = 'tag';
 export const DEFAULT_CATEGORY_SHAPE: CategoryShape = 'sharp';
 
+// Default metadata keys of a category: added (empty) to its nodes, a few shown on the node card
+export const MAX_CATEGORY_KEYS = 12;
+export const MAX_CARD_KEYS = 2;
+export const MAX_METADATA_KEY_LENGTH = 60;
+
+// Clean list of keys: strings only, trimmed, shortened, without duplicates (case and accents
+// ignored), at most `max`. Anything that is not an array gives an empty list.
+export function normalizeKeyList(input: unknown, max: number): string[] {
+  if (!Array.isArray(input)) return [];
+  const seen = new Set<string>();
+  const keys: string[] = [];
+  for (const item of input) {
+    if (typeof item !== 'string') continue;
+    const key = item.trim().slice(0, MAX_METADATA_KEY_LENGTH).trim();
+    const folded = foldKey(key);
+    if (!key || seen.has(folded)) continue;
+    seen.add(folded);
+    keys.push(key);
+    if (keys.length >= max) break;
+  }
+  return keys;
+}
+
+// Default keys and card keys of a category; card keys are kept only when they are default keys
+export function normalizeCategoryKeys(
+  metadataKeys: unknown,
+  cardKeys: unknown
+): { metadataKeys: string[]; cardKeys: string[] } {
+  const keys = normalizeKeyList(metadataKeys, MAX_CATEGORY_KEYS);
+  const byFolded = new Map(keys.map((k) => [foldKey(k), k]));
+  const card = normalizeKeyList(cardKeys, MAX_CATEGORY_KEYS)
+    .map((k) => byFolded.get(foldKey(k)))
+    .filter((k): k is string => k !== undefined)
+    .slice(0, MAX_CARD_KEYS);
+  return { metadataKeys: keys, cardKeys: card };
+}
+
+function foldKey(key: string): string {
+  return key.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+
 export type EdgeStyle = 'solid' | 'dashed';
 
 export type ProjectPreset = 'osint' | 'lore' | 'research' | 'empty';
@@ -61,6 +102,10 @@ export interface Category {
   color: string;
   icon: CategoryIconName;
   shape: CategoryShape;
+  /** Keys added, empty, to the category's nodes */
+  metadataKeys: string[];
+  /** Keys whose values are shown under the node title (among metadataKeys, at most 2) */
+  cardKeys: string[];
 }
 
 export type NodeMetadata = Record<string, string>;

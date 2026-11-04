@@ -8,6 +8,9 @@ import {
   DEFAULT_CATEGORY_SHAPE,
   type CategoryIconName,
   type CategoryShape,
+  MAX_CATEGORY_KEYS,
+  normalizeCategoryKeys,
+  normalizeKeyList,
 } from '../../shared/types.ts';
 import {
   isCategoryIcon,
@@ -17,7 +20,28 @@ import {
   readBody,
 } from '../validation.ts';
 
-type CategoryBody = { name: string; color: string; icon: CategoryIconName; shape: CategoryShape };
+type CategoryBody = {
+  name: string;
+  color: string;
+  icon: CategoryIconName;
+  shape: CategoryShape;
+  metadataKeys: string[];
+  cardKeys: string[];
+};
+
+// Default keys and card keys that were sent; a value that is not a list is a 400
+function readCategoryKeys(
+  body: Partial<Record<keyof CategoryBody, unknown>>
+): { error: string } | { metadataKeys?: string[]; cardKeys?: string[] } {
+  const out: { metadataKeys?: string[]; cardKeys?: string[] } = {};
+  for (const field of ['metadataKeys', 'cardKeys'] as const) {
+    const value = body[field];
+    if (value === undefined) continue;
+    if (!Array.isArray(value)) return { error: 'Liste de clés invalide.' };
+    out[field] = normalizeKeyList(value, MAX_CATEGORY_KEYS);
+  }
+  return out;
+}
 
 // Checks the colour, icon and shape that were sent; missing fields are left undefined
 function readCategoryStyle(
@@ -55,6 +79,8 @@ categoriesRouter.post('/projects/:projectId/categories', async (c) => {
   }
   const style = readCategoryStyle(body);
   if ('error' in style) return c.json({ error: style.error }, 400);
+  const keys = readCategoryKeys(body);
+  if ('error' in keys) return c.json({ error: keys.error }, 400);
 
   const db = await getDb();
   if (!(await projectExists(db, projectId))) {
@@ -68,6 +94,7 @@ categoriesRouter.post('/projects/:projectId/categories', async (c) => {
     color: style.color ?? DEFAULT_CATEGORY_COLOR,
     icon: style.icon ?? DEFAULT_CATEGORY_ICON,
     shape: style.shape ?? DEFAULT_CATEGORY_SHAPE,
+    ...normalizeCategoryKeys(keys.metadataKeys, keys.cardKeys),
   });
 
   await touchProject(db, projectId);
@@ -86,6 +113,8 @@ categoriesRouter.patch('/categories/:id', async (c) => {
   const body = await readBody<CategoryBody>(c);
   const style = readCategoryStyle(body);
   if ('error' in style) return c.json({ error: style.error }, 400);
+  const keys = readCategoryKeys(body);
+  if ('error' in keys) return c.json({ error: keys.error }, 400);
 
   const db = await getDb();
   const sets: string[] = [];
@@ -108,6 +137,15 @@ categoriesRouter.patch('/categories/:id', async (c) => {
   if (style.shape) {
     sets.push('shape = $shape');
     params.shape = style.shape;
+  }
+  // Card keys are read back among the default keys (see mapCategory)
+  if (keys.metadataKeys) {
+    sets.push('metadataKeys = $metadataKeys');
+    params.metadataKeys = keys.metadataKeys;
+  }
+  if (keys.cardKeys) {
+    sets.push('cardKeys = $cardKeys');
+    params.cardKeys = keys.cardKeys;
   }
 
   if (sets.length === 0) {
