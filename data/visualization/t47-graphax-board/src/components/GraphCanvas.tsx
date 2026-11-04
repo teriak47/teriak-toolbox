@@ -1463,9 +1463,11 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
           const menuNode = nodes.find((n) => n.id === nodeMenu.nodeId);
           if (!menuNode) return null;
           const rect = containerRef.current?.getBoundingClientRect();
-          // Keep the menu inside the canvas
+          // Keep the menu inside the canvas; a long list scrolls instead of being cut
+          const maxHeight = Math.max(120, (rect?.height ?? 0) - 16);
+          const height = Math.min(maxHeight, (categories.length + 2) * 30 + 40);
           const left = Math.min(nodeMenu.x, (rect?.width ?? 0) - 236);
-          const top = Math.min(nodeMenu.y, (rect?.height ?? 0) - (categories.length + 2) * 30 - 40);
+          const top = Math.min(nodeMenu.y, (rect?.height ?? 0) - height - 8);
           const item = (categoryId: string | null, label: string, color: string) => {
             const current = menuNode.categoryId === categoryId;
             return (
@@ -1494,8 +1496,8 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
               onClick={(e) => e.stopPropagation()}
               onDoubleClick={(e) => e.stopPropagation()}
               onContextMenu={(e) => e.preventDefault()}
-              style={{ left: Math.max(8, left), top: Math.max(8, top) }}
-              className="absolute z-30 w-56 py-1 rounded-xl bg-zinc-900 border border-filet-fort shadow-2xl"
+              style={{ left: Math.max(8, left), top: Math.max(8, top), maxHeight }}
+              className="absolute z-30 w-56 py-1 overflow-y-auto rounded-xl bg-zinc-900 border border-filet-fort shadow-2xl"
             >
               <p className="px-2.5 pt-1 pb-1.5 text-[11px] uppercase tracking-wider text-zinc-500 truncate">
                 Catégorie de « {String(menuNode.title ?? '')} »

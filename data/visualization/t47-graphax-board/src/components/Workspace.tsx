@@ -499,18 +499,32 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
   );
 
   // New category order from the sidebar (drag and drop or arrow keys)
+  // Category order: the latest wanted order, and a queue so saves never overlap. Each save
+  // sends the latest order; an answer is applied only if no newer order was asked meanwhile.
+  const categoryOrderRef = useRef<{ ids: string[]; version: number } | null>(null);
+  const categoryOrderVersionRef = useRef(0);
+  const categoryOrderQueueRef = useRef<Promise<unknown>>(Promise.resolve());
+
   const handleReorderCategories = useCallback(
     async (from: number, to: number) => {
       if (from === to) return;
       const next = moveItem(categories, from, to);
       setCategories(next);
+      categoryOrderVersionRef.current += 1;
+      categoryOrderRef.current = { ids: next.map((c) => c.id), version: categoryOrderVersionRef.current };
       await runSave(
-        async () => {
-          const { categories: saved } = await api.reorderCategories(
-            projectId,
-            next.map((c) => c.id)
-          );
-          setCategories(saved);
+        () => {
+          const op = categoryOrderQueueRef.current.then(async () => {
+            const wanted = categoryOrderRef.current;
+            if (!wanted) return; // already saved by an earlier queued save
+            const { categories: saved } = await api.reorderCategories(projectId, wanted.ids);
+            if (categoryOrderRef.current?.version === wanted.version) {
+              categoryOrderRef.current = null;
+              setCategories(saved);
+            }
+          });
+          categoryOrderQueueRef.current = op.catch(() => undefined);
+          return op;
         },
         { retryKey: 'category-order' }
       );
