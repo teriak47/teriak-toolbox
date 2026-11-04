@@ -714,26 +714,34 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
       const { reverse, ...fields } = patch;
       const hasFields = Object.keys(fields).length > 0;
 
+      // A reversal is not applied optimistically: it is recorded only once the server has
+      // done it, otherwise undoing it would flip a link that never changed. An undo or redo
+      // replaying it must not be recorded, so this is decided now, before any await.
+      const replaying = historyRef.current.isApplying;
       const edge = relationsRef.current.find((e) => e.id === resolveEdgeId(edgeId));
-      if (edge) {
+      const record = (withReverse: boolean) => {
+        if (!edge || replaying) return;
         const keys = Object.keys(fields) as Array<keyof typeof fields>;
+        if (!withReverse && keys.length === 0) return;
         const before = Object.fromEntries(
           keys.map((k) => [k, edge[k] ?? (k === 'color' ? null : k === 'notes' ? '' : edge[k])])
         ) as typeof fields;
         recordHistory({
-          label: edgeEditLabel(patch),
-          mergeKey: reverse ? undefined : `edge:${edgeId}:${[...keys].sort().join(',')}`,
+          label: edgeEditLabel(withReverse ? patch : fields),
+          mergeKey: withReverse ? undefined : `edge:${edgeId}:${[...keys].sort().join(',')}`,
           // Undoing a reversal reverses the link again (its id changes each time)
           undo: () =>
             void actionsRef.current?.updateEdge(
               resolveEdgeId(edgeId),
-              reverse ? { ...before, reverse: true } : before
+              withReverse ? { ...before, reverse: true } : before
             ),
-          redo: () => void actionsRef.current?.updateEdge(resolveEdgeId(edgeId), patch),
+          redo: () =>
+            void actionsRef.current?.updateEdge(resolveEdgeId(edgeId), withReverse ? patch : fields),
         });
-      }
+      };
 
       if (!reverse) {
+        record(false);
         setRelations((prev) =>
           prev.map((e) => (e.id === edgeId ? { ...e, ...fields } : e))
         );
@@ -777,6 +785,9 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
           return true as const;
         })
       );
+      // Done: the reversal (with its fields) can be undone. Failed: only the fields, which
+      // stay queued for the retry, are recorded
+      record(Boolean(reversed));
       // A reversal is not replayed (it would flip the link twice), but its fields are
       if (!reversed && edgePatchesRef.current.has(startId)) {
         keepForRetry(`edge:${startId}`, () => edgeFieldsOp(startId));
