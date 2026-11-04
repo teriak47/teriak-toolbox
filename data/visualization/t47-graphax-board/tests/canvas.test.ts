@@ -64,11 +64,18 @@ describe('edge geometry', () => {
     const [plain] = computeEdgeGeometry([node('a', 0, 0), node('b', 200, 0)], [edge('e', 'a', 'b')], pos, radius);
     const [tip, base1, base2] = tips(plain.midArrowPoints);
     assert.ok(tip[0] > base1[0] && tip[0] > base2[0], 'points towards the target');
-    assert.ok(Math.abs((base1[0] + tip[0]) / 2 - 100) < 10, 'near the middle without a label');
+    // Unlabelled links show a "+ label" placeholder in the middle on hover: stay clear of it
+    const placeholder = edgeLabelHalfSize('');
+    for (const [x, y] of tips(plain.midArrowPoints)) {
+      assert.ok(
+        !(Math.abs(x - plain.mx) < placeholder.halfWidth && Math.abs(y - plain.my) < placeholder.halfHeight),
+        `arrow point ${x},${y} is under the "+ label" placeholder`
+      );
+    }
 
     // The arrow must stay clear of the label box, for short and long labels and slopes
     let checked = 0;
-    for (const [label, bx, by] of [['relation', 200, 0], ['connaît', 200, 0], ['communique avec', 300, 0], ['lien', 160, 120]] as const) {
+    for (const [label, bx, by] of [['', 200, 0], ['relation', 200, 0], ['connaît', 200, 0], ['communique avec', 300, 0], ['lien', 160, 120], ['', 160, 120]] as const) {
       const [geo] = computeEdgeGeometry([node('a', 0, 0), node('b', bx, by)], [{ ...edge('e', 'a', 'b'), label }], pos, () => 30);
       if (!geo.midArrowPoints) continue;
       checked++;
@@ -79,7 +86,7 @@ describe('edge geometry', () => {
       }
     }
 
-    assert.ok(checked >= 3, `only ${checked} labelled links had a mid arrow`);
+    assert.ok(checked >= 5, `only ${checked} labelled links had a mid arrow`);
 
     // No room before the label: the mid arrow is skipped rather than hidden
     const [cramped] = computeEdgeGeometry(

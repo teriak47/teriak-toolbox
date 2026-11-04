@@ -24,8 +24,10 @@ const MID_ARROW_HALF_WIDTH = 4.5;
 // Space kept between the mid arrow and the label box or the link start
 const MID_ARROW_GAP = 4;
 
-// Half size of the box drawn behind a link label (the canvas draws it from this too)
+// Half size of the box drawn at the middle of a link: the label, or for an unlabelled link
+// the "+ label" placeholder shown on hover and selection (the canvas draws both from this)
 export function edgeLabelHalfSize(label: string): { halfWidth: number; halfHeight: number } {
+  if (!label) return { halfWidth: 34, halfHeight: 9 };
   return { halfWidth: label.length * 3.7 + 10, halfHeight: 10.5 };
 }
 // Triangle pointing along (ux, uy) with its tip at (tipX, tipY)
@@ -167,14 +169,14 @@ export function computeEdgeGeometry(
       // Distance from the segment start to the label centre (the bend, or the middle)
       const labelCentre = bent ? segLen : segLen / 2;
       const { halfWidth, halfHeight } = edgeLabelHalfSize(edge.label ?? '');
-      const labelExit = edge.label
-        ? Math.min(
-            Math.abs(mux) > 1e-6 ? halfWidth / Math.abs(mux) : Infinity,
-            Math.abs(muy) > 1e-6 ? halfHeight / Math.abs(muy) : Infinity
-          )
-        : 0;
-      const freeEnd = edge.label ? labelCentre - labelExit - MID_ARROW_GAP : labelCentre;
-      const midDist = edge.label ? freeEnd / 2 : bent ? segLen / 2 : segLen / 2;
+      // The middle always holds a box (label or placeholder), so the arrow never moves
+      // between rest and hover
+      const labelExit = Math.min(
+        Math.abs(mux) > 1e-6 ? halfWidth / Math.abs(mux) : Infinity,
+        Math.abs(muy) > 1e-6 ? halfHeight / Math.abs(muy) : Infinity
+      );
+      const freeEnd = labelCentre - labelExit - MID_ARROW_GAP;
+      const midDist = freeEnd / 2;
       const fits = freeEnd >= MID_ARROW_LENGTH + MID_ARROW_GAP * 2;
       const midArrowPoints = fits
         ? arrowTriangle(

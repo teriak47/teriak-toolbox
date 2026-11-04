@@ -932,10 +932,10 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
                       ) : (
                         <g>
                           <rect
-                            x={-34}
-                            y={-9}
-                            width={68}
-                            height={18}
+                            x={-edgeLabelHalfSize('').halfWidth}
+                            y={-edgeLabelHalfSize('').halfHeight}
+                            width={edgeLabelHalfSize('').halfWidth * 2}
+                            height={edgeLabelHalfSize('').halfHeight * 2}
                             fill="var(--surface-carte)"
                             stroke="var(--filet-fort)"
                             strokeWidth={1}
