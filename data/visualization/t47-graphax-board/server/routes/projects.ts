@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { getDb, generateId, toRecordId } from '../db.ts';
 import { mapCategory, mapEdge, mapNode, mapProject, sanitizeMetadata } from '../mappers.ts';
 import { PRESET_CATEGORIES } from '../presets.ts';
+import { insertProjectGraph } from '../bulk.ts';
 import type {
   ProjectExportBundle,
   ProjectGraphPayload,
@@ -73,28 +74,24 @@ projectsRouter.post('/', async (c) => {
   const now = new Date().toISOString();
   const preset: ProjectPreset = body.preset && body.preset in PRESET_CATEGORIES ? body.preset : 'osint';
 
-  const created = await db.create(toRecordId('project', id)).content({
+  const projectRecord = {
+    id,
     name,
     description: (body.description ?? '').trim(),
     createdAt: now,
     updatedAt: now,
+  };
+  const presetDefs = PRESET_CATEGORIES[preset];
+
+  await insertProjectGraph(db, {
+    project: projectRecord,
+    categories: presetDefs.map((def) => ({ ...def, id: generateId() })),
+    nodes: [],
+    edges: [],
   });
 
-  const presetDefs = PRESET_CATEGORIES[preset];
-  for (const catDef of presetDefs) {
-    const catId = generateId();
-    await db.create(toRecordId('category', catId)).content({
-      projectId: id,
-      name: catDef.name,
-      color: catDef.color,
-      icon: catDef.icon,
-      shape: catDef.shape,
-    });
-  }
-
   const project = {
-    ...mapProject((created ?? {}) as Record<string, unknown>),
-    id,
+    ...projectRecord,
     categoryCount: presetDefs.length,
     nodeCount: 0,
     edgeCount: 0,
@@ -109,27 +106,11 @@ projectsRouter.post('/demo', async (c) => {
   const projectId = generateId();
   const now = new Date().toISOString();
 
-  await db.create(toRecordId('project', projectId)).content({
-    name: 'Opération Chimère — Enquête Cyber & Intrusion',
-    description:
-      "Analyse croisée d'une compromission supply-chain : corrélation d'infrastructures C2, artefacts malveillants, acteurs menaçants et hypothèses d'attribution.",
-    createdAt: now,
-    updatedAt: now,
-  });
-
   const catDefs = PRESET_CATEGORIES.osint;
-  const catIds: Record<string, string> = {};
-  for (const def of catDefs) {
-    const cid = generateId();
-    catIds[def.name] = cid;
-    await db.create(toRecordId('category', cid)).content({
-      projectId,
-      name: def.name,
-      color: def.color,
-      icon: def.icon,
-      shape: def.shape,
-    });
-  }
+  const categories = catDefs.map((def) => ({ ...def, id: generateId() }));
+  const catIds: Record<string, string> = Object.fromEntries(
+    categories.map((cat) => [cat.name, cat.id])
+  );
 
   const demoNodes = [
     {
@@ -232,22 +213,9 @@ projectsRouter.post('/demo', async (c) => {
     },
   ];
 
-  const nodeIds: Record<string, string> = {};
-  for (const n of demoNodes) {
-    const nid = generateId();
-    nodeIds[n.key] = nid;
-    await db.create(toRecordId('entity', nid)).content({
-      projectId,
-      categoryId: n.categoryId,
-      title: n.title,
-      content: n.content,
-      positionX: n.positionX,
-      positionY: n.positionY,
-      metadata: n.metadata,
-      createdAt: now,
-      updatedAt: now,
-    });
-  }
+  const nodeIds: Record<string, string> = Object.fromEntries(
+    demoNodes.map((n) => [n.key, generateId()])
+  );
 
   const demoEdges = [
     { from: 'actor', to: 'malware', label: 'développe probable', style: 'dashed', directed: true },
@@ -260,34 +228,37 @@ projectsRouter.post('/demo', async (c) => {
     { from: 'actor', to: 'theory', label: 'vecteur supposé', style: 'dashed', directed: false },
   ];
 
-  for (const e of demoEdges) {
-    const eid = generateId();
-    await db
-      .query(
-        `RELATE ONLY $from -> $relId -> $to CONTENT {
-          projectId: $projectId,
-          label: $label,
-          style: $style,
-          directed: $directed,
-          notes: '',
-          sourceHandle: NONE,
-          targetHandle: NONE,
-          createdAt: $now,
-          updatedAt: $now
-        };`,
-        {
-          from: toRecordId('entity', nodeIds[e.from]),
-          relId: toRecordId('relation', eid),
-          to: toRecordId('entity', nodeIds[e.to]),
-          projectId,
-          label: e.label,
-          style: e.style,
-          directed: e.directed,
-          now,
-        }
-      )
-      .collect();
-  }
+  await insertProjectGraph(db, {
+    project: {
+      id: projectId,
+      name: 'Opération Chimère — Enquête Cyber & Intrusion',
+      description:
+        "Analyse croisée d'une compromission supply-chain : corrélation d'infrastructures C2, artefacts malveillants, acteurs menaçants et hypothèses d'attribution.",
+      createdAt: now,
+      updatedAt: now,
+    },
+    categories,
+    nodes: demoNodes.map(({ key, metadata, ...n }) => ({
+      ...n,
+      metadata: sanitizeMetadata(metadata),
+      id: nodeIds[key],
+      createdAt: now,
+      updatedAt: now,
+    })),
+    edges: demoEdges.map((e) => ({
+      id: generateId(),
+      sourceNodeId: nodeIds[e.from],
+      targetNodeId: nodeIds[e.to],
+      label: e.label,
+      style: e.style,
+      directed: e.directed,
+      notes: '',
+      sourceHandle: null,
+      targetHandle: null,
+      createdAt: now,
+      updatedAt: now,
+    })),
+  });
 
   return c.json({ projectId }, 201);
 });
@@ -347,94 +318,77 @@ projectsRouter.post('/import', async (c) => {
   const newProjectId = generateId();
   const now = new Date().toISOString();
 
-  await db.create(toRecordId('project', newProjectId)).content({
+  // Every record gets a fresh id so an import never collides with existing data
+  const project = {
+    id: newProjectId,
     name: String(bundle.project.name || 'Projet importé').trim(),
     description: String(bundle.project.description || '').trim(),
-    createdAt: bundle.project.createdAt || now,
+    createdAt: String(bundle.project.createdAt || now),
     updatedAt: now,
-  });
+  };
 
   const categoryIdMap = new Map<string, string>();
-  for (const cat of bundle.categories ?? []) {
-    const newCatId = generateId();
-    categoryIdMap.set(cat.id, newCatId);
-    await db.create(toRecordId('category', newCatId)).content({
-      projectId: newProjectId,
+  const categories = (Array.isArray(bundle.categories) ? bundle.categories : []).map((cat) => {
+    const id = generateId();
+    categoryIdMap.set(cat.id, id);
+    return {
+      id,
       name: String(cat.name || 'Catégorie'),
       color: String(cat.color || '#47c0ef'),
-      icon: cat.icon || 'tag',
-      shape: cat.shape || 'rounded',
-    });
-  }
+      icon: String(cat.icon || 'tag'),
+      shape: String(cat.shape || 'rounded'),
+    };
+  });
 
   const nodeIdMap = new Map<string, string>();
-  for (const node of bundle.nodes) {
-    const newNodeId = generateId();
-    nodeIdMap.set(node.id, newNodeId);
-    const mappedCatId = node.categoryId ? (categoryIdMap.get(node.categoryId) ?? null) : null;
-    await db.create(toRecordId('entity', newNodeId)).content({
-      projectId: newProjectId,
-      categoryId: mappedCatId,
+  const nodes = bundle.nodes.map((node) => {
+    const id = generateId();
+    nodeIdMap.set(node.id, id);
+    return {
+      id,
+      categoryId: node.categoryId ? (categoryIdMap.get(node.categoryId) ?? null) : null,
       title: String(node.title || 'Indice'),
       content: String(node.content || ''),
       positionX: Number.isFinite(Number(node.positionX)) ? Number(node.positionX) : 0,
       positionY: Number.isFinite(Number(node.positionY)) ? Number(node.positionY) : 0,
       metadata: sanitizeMetadata(node.metadata),
-      createdAt: node.createdAt || now,
+      createdAt: String(node.createdAt || now),
       updatedAt: now,
-    });
-  }
+    };
+  });
 
-  let importedEdges = 0;
-  for (const edge of bundle.edges) {
-    const newSource = nodeIdMap.get(edge.sourceNodeId);
-    const newTarget = nodeIdMap.get(edge.targetNodeId);
-    if (!newSource || !newTarget) continue;
+  // Links whose ends are not in the bundle are skipped
+  const edges = bundle.edges.flatMap((edge) => {
+    const sourceNodeId = nodeIdMap.get(edge.sourceNodeId);
+    const targetNodeId = nodeIdMap.get(edge.targetNodeId);
+    if (!sourceNodeId || !targetNodeId) return [];
+    return [
+      {
+        id: generateId(),
+        sourceNodeId,
+        targetNodeId,
+        label: String(edge.label ?? ''),
+        style: edge.style === 'dashed' ? 'dashed' : 'solid',
+        directed: edge.directed !== false,
+        notes: String(edge.notes ?? ''),
+        sourceHandle: edge.sourceHandle ?? null,
+        targetHandle: edge.targetHandle ?? null,
+        createdAt: String(edge.createdAt || now),
+        updatedAt: now,
+      },
+    ];
+  });
 
-    const newEdgeId = generateId();
-    await db
-      .query(
-        `RELATE ONLY $from -> $relId -> $to CONTENT {
-          projectId: $projectId,
-          label: $label,
-          style: $style,
-          directed: $directed,
-          notes: $notes,
-          sourceHandle: $sourceHandle,
-          targetHandle: $targetHandle,
-          createdAt: $createdAt,
-          updatedAt: $now
-        };`,
-        {
-          from: toRecordId('entity', newSource),
-          relId: toRecordId('relation', newEdgeId),
-          to: toRecordId('entity', newTarget),
-          projectId: newProjectId,
-          label: String(edge.label ?? ''),
-          style: edge.style === 'dashed' ? 'dashed' : 'solid',
-          directed: edge.directed !== false,
-          notes: String(edge.notes ?? ''),
-          sourceHandle: edge.sourceHandle ?? null,
-          targetHandle: edge.targetHandle ?? null,
-          createdAt: edge.createdAt || now,
-          now,
-        }
-      )
-      .collect();
-    importedEdges++;
-  }
+  // One transaction: a failed import leaves no partial project behind
+  await insertProjectGraph(db, { project, categories, nodes, edges });
 
   return c.json(
     {
       project: {
-        id: newProjectId,
-        name: String(bundle.project.name || 'Projet importé').trim(),
-        description: String(bundle.project.description || '').trim(),
-        createdAt: bundle.project.createdAt || now,
-        updatedAt: now,
-        categoryCount: categoryIdMap.size,
-        nodeCount: nodeIdMap.size,
-        edgeCount: importedEdges,
+        ...project,
+        categoryCount: categories.length,
+        nodeCount: nodes.length,
+        edgeCount: edges.length,
       },
     },
     201
@@ -520,10 +474,12 @@ projectsRouter.delete('/:id', async (c) => {
   await db
     .query(
       `
+      BEGIN TRANSACTION;
       DELETE relation WHERE projectId = $projectId;
       DELETE entity WHERE projectId = $projectId;
       DELETE category WHERE projectId = $projectId;
       DELETE $pid;
+      COMMIT TRANSACTION;
     `,
       {
         projectId,

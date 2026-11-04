@@ -113,8 +113,10 @@ categoriesRouter.delete('/categories/:id', async (c) => {
   await db
     .query(
       `
+      BEGIN TRANSACTION;
       UPDATE entity SET categoryId = NONE WHERE categoryId = $catIdStr;
       DELETE $cid;
+      COMMIT TRANSACTION;
     `,
       {
         catIdStr: id,

@@ -10,7 +10,8 @@ process.env.GRAPHAX_DATA_DIR = dataDir;
 process.env.PORT = '3456';
 
 const { app } = await import('../server/app.ts');
-const { closeDb, recoverLegacyDatabase, surrealKvUrl } = await import('../server/db.ts');
+const { closeDb, getDb, recoverLegacyDatabase, surrealKvUrl } = await import('../server/db.ts');
+const { insertProjectGraph } = await import('../server/bulk.ts');
 
 const HOST = '127.0.0.1:3456';
 
@@ -187,6 +188,104 @@ describe('JSON export and import', () => {
   it('rejects an invalid bundle', async () => {
     const { status } = await call('POST', '/api/projects/import', { hello: 'world' });
     assert.equal(status, 400);
+  });
+});
+
+describe('atomic writes', () => {
+  it('creates a preset project with its categories', async () => {
+    const { status, json } = await call('POST', '/api/projects', {
+      name: 'Preset',
+      preset: 'osint',
+    });
+    assert.equal(status, 201);
+    const graph = await call('GET', `/api/projects/${json.project.id}`);
+    assert.equal(graph.json.categories.length, json.project.categoryCount);
+    assert.ok(graph.json.categories.length > 0);
+  });
+
+  it('creates the demo project in full', async () => {
+    const { status, json } = await call('POST', '/api/projects/demo');
+    assert.equal(status, 201);
+    const graph = await call('GET', `/api/projects/${json.projectId}`);
+    assert.equal(graph.json.nodes.length, 7);
+    assert.equal(graph.json.edges.length, 8);
+    assert.ok(graph.json.nodes.every((n: { categoryId: string | null }) => n.categoryId));
+  });
+
+  it('imports categories, keeps node categories and skips dangling links', async () => {
+    const bundle = {
+      format: 'graphax-project',
+      version: 1,
+      project: { id: 'old', name: 'Import fictif', description: '' },
+      categories: [{ id: 'c1', name: 'Personne', color: '#47c0ef', icon: 'user', shape: 'sharp' }],
+      nodes: [
+        { id: 'n1', categoryId: 'c1', title: 'A', content: '', positionX: 0, positionY: 0, metadata: { Clé: 'v' } },
+        { id: 'n2', categoryId: null, title: 'B', content: '', positionX: 10, positionY: 0, metadata: {} },
+      ],
+      edges: [
+        { id: 'e1', sourceNodeId: 'n1', targetNodeId: 'n2', label: 'connaît', style: 'dashed', directed: true },
+        { id: 'e2', sourceNodeId: 'n1', targetNodeId: 'missing', label: 'orphelin' },
+      ],
+    };
+    const imported = await call('POST', '/api/projects/import', bundle);
+    assert.equal(imported.status, 201);
+    assert.equal(imported.json.project.edgeCount, 1);
+
+    const graph = await call('GET', `/api/projects/${imported.json.project.id}`);
+    const [category] = graph.json.categories;
+    const a = graph.json.nodes.find((n: { title: string }) => n.title === 'A');
+    assert.equal(a.categoryId, category.id);
+    assert.deepEqual(a.metadata, { Clé: 'v' });
+    assert.equal(graph.json.edges.length, 1);
+    assert.equal(graph.json.edges[0].style, 'dashed');
+    assert.equal(graph.json.edges[0].sourceNodeId, a.id);
+  });
+
+  it('stores nothing when one record of a project fails', async () => {
+    const now = new Date().toISOString();
+    const node = {
+      id: 'dupnode',
+      categoryId: null,
+      title: 'Doublon',
+      content: '',
+      positionX: 0,
+      positionY: 0,
+      metadata: {},
+      createdAt: now,
+      updatedAt: now,
+    };
+    await assert.rejects(
+      insertProjectGraph(await getDb(), {
+        project: { id: 'halfproject', name: 'Partiel', description: '', createdAt: now, updatedAt: now },
+        categories: [{ id: 'halfcat', name: 'Cat', color: '#47c0ef', icon: 'tag', shape: 'sharp' }],
+        nodes: [node, node],
+        edges: [],
+      })
+    );
+    assert.equal((await call('GET', '/api/projects/halfproject')).status, 404);
+    const { json } = await call('GET', '/api/projects');
+    assert.ok(!json.projects.some((p: { id: string }) => p.id === 'halfproject'));
+    const [leftovers] = await (await getDb())
+      .query<[unknown[]]>("SELECT * FROM category WHERE projectId = 'halfproject';")
+      .collect();
+    assert.equal(leftovers.length, 0);
+  });
+
+  it('deletes a project with all its records', async () => {
+    const projectId = await createProject('À supprimer');
+    const a = await createNode(projectId, 'A');
+    const b = await createNode(projectId, 'B');
+    await call('POST', `/api/projects/${projectId}/edges`, { sourceNodeId: a, targetNodeId: b });
+    assert.equal((await call('DELETE', `/api/projects/${projectId}`)).status, 200);
+
+    const [entities, relations] = await (await getDb())
+      .query<[unknown[], unknown[]]>(
+        'SELECT * FROM entity WHERE projectId = $p; SELECT * FROM relation WHERE projectId = $p;',
+        { p: projectId }
+      )
+      .collect();
+    assert.equal(entities.length, 0);
+    assert.equal(relations.length, 0);
   });
 });
 

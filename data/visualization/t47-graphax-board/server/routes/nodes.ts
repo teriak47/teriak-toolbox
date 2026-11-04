@@ -194,8 +194,10 @@ nodesRouter.delete('/nodes/:id', async (c) => {
   await db
     .query(
       `
+      BEGIN TRANSACTION;
       DELETE relation WHERE in = $nid OR out = $nid;
       DELETE $nid;
+      COMMIT TRANSACTION;
     `,
       {
         nid: nodeRef,
