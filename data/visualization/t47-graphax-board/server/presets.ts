@@ -1,4 +1,4 @@
-import type { Category, CategoryIconName, CategoryShape, ProjectPreset } from '../shared/types.ts';
+import type { CategoryIconName, CategoryShape, ProjectPreset } from '../shared/types.ts';
 
 export interface PresetCategoryDef {
   name: string;
@@ -34,14 +34,3 @@ export const PRESET_CATEGORIES: Record<ProjectPreset, PresetCategoryDef[]> = {
   ],
   empty: [],
 };
-
-export function normalizeCategoryRecord(raw: Record<string, unknown>, idExtractor: (v: unknown) => string): Category {
-  return {
-    id: idExtractor(raw.id),
-    projectId: String(raw.projectId ?? ''),
-    name: String(raw.name ?? 'Sans nom'),
-    color: String(raw.color ?? '#47c0ef'),
-    icon: (raw.icon as CategoryIconName) || 'tag',
-    shape: (raw.shape as CategoryShape) || 'sharp',
-  };
-}

@@ -11,9 +11,9 @@ Application locale d'investigation, d'OSINT/Cyber, d'analyse de lore et de reche
 ## Architecture Technique
 
 - **Frontend :** React 19 + TypeScript + Vite 8 + Tailwind CSS v4
-- **Moteur de Graphe :** `@xyflow/react` (React Flow v12) — cartes d'indices personnalisées, poignées multidirectionnelles libres, édition directe des labels sur les flèches, mini-map, alignement optionnel (`@dagrejs/dagre`)
+- **Moteur de Graphe :** canevas SVG développé pour Graphax (`src/components/GraphCanvas.tsx`) — cartes d'indices personnalisées, liens tirés depuis le cadre d'un nœud, édition directe des labels sur les flèches, mini-map, simulation de forces optionnelle et mise en page hiérarchique (`@dagrejs/dagre`)
 - **Backend Local :** Node.js + Hono (`http://127.0.0.1:3456`)
-- **Base de Données 100% Locale :** **SurrealDB Embedded** (`@surrealdb/node` avec moteur persistant sur disque `surrealkv://` dans `./data/graphax.db`, relations graphe natives `RELATE`)
+- **Base de Données 100% Locale :** **SurrealDB Embedded** (`@surrealdb/node` et son moteur natif `@surrealdb/node-native`, stockage persistant sur disque `surrealkv://` dans `./data/graphax.db`, relations graphe natives `RELATE`)
 
 ## Démarrage Rapide
 

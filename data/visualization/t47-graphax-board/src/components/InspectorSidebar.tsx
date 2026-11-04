@@ -45,6 +45,9 @@ interface InspectorSidebarProps {
   onOpenNewCategory: () => void;
 }
 
+// Delay before typed edits in the inspector are sent to the API
+export const INSPECTOR_SAVE_DELAY_MS = 350;
+
 const METADATA_PRESETS: Array<{ key: string; defaultVal: string }> = [
   { key: 'Fiabilité', defaultVal: 'Confirmé' },
   { key: 'Statut', defaultVal: 'Actif' },
@@ -181,7 +184,7 @@ export function InspectorSidebar({
     if (nodeTimerRef.current) clearTimeout(nodeTimerRef.current);
     nodeTimerRef.current = setTimeout(() => {
       flushPendingNode();
-    }, 350);
+    }, INSPECTOR_SAVE_DELAY_MS);
   };
 
   const scheduleEdgePatch = (
@@ -197,7 +200,7 @@ export function InspectorSidebar({
     if (edgeTimerRef.current) clearTimeout(edgeTimerRef.current);
     edgeTimerRef.current = setTimeout(() => {
       flushPendingEdge();
-    }, 350);
+    }, INSPECTOR_SAVE_DELAY_MS);
   };
 
   // Send the not-yet-saved label/notes together with the reversal: the reversal replaces

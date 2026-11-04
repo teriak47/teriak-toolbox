@@ -8,6 +8,13 @@ Graphax is a local interactive graph board for investigations, research, and sto
 
 Reversing a link now keeps pending edits, and a failed save is reported with a retry action instead of showing "saved". Deleting the selected node or link with the Delete or Backspace key now asks for confirmation first. Creating, importing and deleting a project, a category or a node is now done in a single transaction, so a failure leaves no partial data, and the API refuses links, nodes and categories that refer to a missing project, node or category, or to another project. Request bodies are validated and limited to 2 MB (50 MB for an import). The remaining review items (see the repository issue tracker) are still open, so keep exported backups of important projects.
 
+## Architecture
+
+- **Front end:** React 19, TypeScript, Vite 8 and Tailwind CSS v4.
+- **Graph canvas:** an SVG canvas written for Graphax (`src/components/GraphCanvas.tsx`), with custom node cards, links drawn from a node's frame, inline link labels, a mini-map, an optional force simulation and a hierarchical layout (`@dagrejs/dagre`).
+- **Local back end:** Node.js and Hono on `http://127.0.0.1:3456`.
+- **Local database:** embedded SurrealDB (`@surrealdb/node` with its native engine `@surrealdb/node-native`), stored on disk with `surrealkv://` in `data/graphax.db`, using native graph relations (`RELATE`).
+
 ## Run locally
 
 Requires Node.js 22.18 or later and pnpm. The transfer was built with Node.js 22 and pnpm 12. From this directory:

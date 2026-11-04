@@ -3,10 +3,13 @@ import { getDb, generateId, toRecordId } from '../db.ts';
 import { mapCategory, mapEdge, mapNode, mapProject, sanitizeMetadata } from '../mappers.ts';
 import { PRESET_CATEGORIES } from '../presets.ts';
 import { insertProjectGraph } from '../bulk.ts';
-import type {
-  ProjectExportBundle,
-  ProjectGraphPayload,
-  ProjectPreset,
+import {
+  DEFAULT_CATEGORY_COLOR,
+  DEFAULT_CATEGORY_ICON,
+  DEFAULT_CATEGORY_SHAPE,
+  type ProjectExportBundle,
+  type ProjectGraphPayload,
+  type ProjectPreset,
 } from '../../shared/types.ts';
 import {
   isCategoryIcon,
@@ -349,9 +352,9 @@ projectsRouter.post('/import', async (c) => {
     return {
       id,
       name: (optString(cat.name) ?? '').trim() || 'Catégorie',
-      color: normalizeColor(cat.color) ?? '#47c0ef',
-      icon: isCategoryIcon(cat.icon) ? cat.icon : 'tag',
-      shape: isCategoryShape(cat.shape) ? cat.shape : 'rounded',
+      color: normalizeColor(cat.color) ?? DEFAULT_CATEGORY_COLOR,
+      icon: isCategoryIcon(cat.icon) ? cat.icon : DEFAULT_CATEGORY_ICON,
+      shape: isCategoryShape(cat.shape) ? cat.shape : DEFAULT_CATEGORY_SHAPE,
     };
   });
 

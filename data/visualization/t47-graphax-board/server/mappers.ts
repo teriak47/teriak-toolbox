@@ -1,15 +1,17 @@
 import type { Surreal } from 'surrealdb';
-import type {
-  Category,
-  CategoryIconName,
-  CategoryShape,
-  EdgeStyle,
-  GraphEdge,
-  GraphNode,
-  NodeMetadata,
-  Project,
+import {
+  DEFAULT_CATEGORY_COLOR,
+  DEFAULT_CATEGORY_ICON,
+  DEFAULT_CATEGORY_SHAPE,
+  type Category,
+  type EdgeStyle,
+  type GraphEdge,
+  type GraphNode,
+  type NodeMetadata,
+  type Project,
 } from '../shared/types.ts';
 import { extractId, toRecordId } from './db.ts';
+import { isCategoryIcon, isCategoryShape, normalizeColor } from './validation.ts';
 
 export function mapProject(raw: Record<string, unknown>): Project {
   return {
@@ -26,9 +28,10 @@ export function mapCategory(raw: Record<string, unknown>): Category {
     id: extractId(raw.id),
     projectId: String(raw.projectId ?? ''),
     name: String(raw.name ?? 'Catégorie'),
-    color: String(raw.color ?? '#38bdf8'),
-    icon: (raw.icon as CategoryIconName) || 'tag',
-    shape: (raw.shape as CategoryShape) || 'rounded',
+    // Older records may hold any value: unknown ones fall back to the defaults
+    color: normalizeColor(raw.color) ?? DEFAULT_CATEGORY_COLOR,
+    icon: isCategoryIcon(raw.icon) ? raw.icon : DEFAULT_CATEGORY_ICON,
+    shape: isCategoryShape(raw.shape) ? raw.shape : DEFAULT_CATEGORY_SHAPE,
   };
 }
 

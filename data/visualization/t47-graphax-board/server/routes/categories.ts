@@ -2,7 +2,13 @@ import { Hono } from 'hono';
 import { getDb, generateId, toRecordId } from '../db.ts';
 import { mapCategory, touchProject } from '../mappers.ts';
 import { projectExists } from '../guards.ts';
-import type { CategoryIconName, CategoryShape } from '../../shared/types.ts';
+import {
+  DEFAULT_CATEGORY_COLOR,
+  DEFAULT_CATEGORY_ICON,
+  DEFAULT_CATEGORY_SHAPE,
+  type CategoryIconName,
+  type CategoryShape,
+} from '../../shared/types.ts';
 import {
   isCategoryIcon,
   isCategoryShape,
@@ -59,9 +65,9 @@ categoriesRouter.post('/projects/:projectId/categories', async (c) => {
   const created = await db.create(toRecordId('category', id)).content({
     projectId,
     name,
-    color: style.color ?? '#47c0ef',
-    icon: style.icon ?? 'tag',
-    shape: style.shape ?? 'sharp',
+    color: style.color ?? DEFAULT_CATEGORY_COLOR,
+    icon: style.icon ?? DEFAULT_CATEGORY_ICON,
+    shape: style.shape ?? DEFAULT_CATEGORY_SHAPE,
   });
 
   await touchProject(db, projectId);

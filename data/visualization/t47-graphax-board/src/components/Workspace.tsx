@@ -31,7 +31,8 @@ import type {
 } from '@shared/types';
 import { api } from '@/api/client';
 import { GraphCanvas, type GraphCanvasHandle } from '@/components/GraphCanvas';
-import { InspectorSidebar } from '@/components/InspectorSidebar';
+import { INSPECTOR_SAVE_DELAY_MS, InspectorSidebar } from '@/components/InspectorSidebar';
+import { downloadProjectExport } from '@/lib/exportProject';
 import { CategoryModal } from '@/components/CategoryModal';
 import { getCategoryIcon } from '@/lib/icons';
 import { computeAutoLayout } from '@/lib/layout';
@@ -168,6 +169,11 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
   const [layoutMenuOpen, setLayoutMenuOpen] = useState(false);
   const [editingProjectName, setEditingProjectName] = useState(false);
   const [projectNameDraft, setProjectNameDraft] = useState('');
+  const [exporting, setExporting] = useState(false);
+  const [exportNotice, setExportNotice] = useState<{
+    kind: 'error' | 'warning';
+    message: string;
+  } | null>(null);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -665,23 +671,40 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
     canvasRef.current?.centerOnPoint(node.positionX, node.positionY, 1.35);
   };
 
-  // Export JSON directly from workspace
+  // Export JSON directly from workspace. The file is built by the API, so recent edits are
+  // given time to reach it first: the inspector's typing delay, then any save in flight.
   const handleExportProject = async () => {
-    if (!project) return;
-    const bundle = await api.exportProject(project.id);
-    const slug = project.name
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-|-$/g, '');
-    const blob = new Blob([JSON.stringify(bundle, null, 2)], {
-      type: 'application/json',
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `graphax-${slug || 'projet'}-${new Date().toISOString().slice(0, 10)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+    if (!project || exporting) return;
+    setExporting(true);
+    setExportNotice(null);
+    try {
+      await new Promise((r) => setTimeout(r, INSPECTOR_SAVE_DELAY_MS + 50));
+      const deadline = Date.now() + 10_000;
+      while (inFlightSavesRef.current > 0 && Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      const unsaved =
+        inFlightSavesRef.current > 0 ||
+        failedSavesRef.current.size > 0 ||
+        unretryableErrorRef.current;
+
+      await downloadProjectExport(project.id, project.name);
+      if (unsaved) {
+        setExportNotice({
+          kind: 'warning',
+          message:
+            "Export effectué, mais certaines modifications ne sont pas enregistrées : elles ne figurent pas dans le fichier. Réessayez l'enregistrement puis exportez à nouveau.",
+        });
+      }
+    } catch (err) {
+      console.error('[Graphax] Export impossible :', err);
+      setExportNotice({
+        kind: 'error',
+        message: `Export impossible : ${err instanceof Error ? err.message : 'erreur inconnue.'}`,
+      });
+    } finally {
+      setExporting(false);
+    }
   };
 
   const commitProjectTitle = async () => {
@@ -1007,14 +1030,45 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
           <button
             type="button"
             onClick={() => void handleExportProject()}
+            disabled={exporting}
+            aria-busy={exporting}
             title="Exporter ce projet en .json"
-            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium bg-zinc-950 hover:bg-zinc-800 border border-filet text-zinc-300 transition-colors"
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium bg-zinc-950 hover:bg-zinc-800 border border-filet text-zinc-300 transition-colors disabled:opacity-60 disabled:cursor-wait"
           >
-            <Download className="w-3.5 h-3.5 text-zinc-400" />
-            <span className="hidden md:inline">Export .json</span>
+            {exporting ? (
+              <Loader2 className="w-3.5 h-3.5 text-zinc-400 animate-spin" />
+            ) : (
+              <Download className="w-3.5 h-3.5 text-zinc-400" />
+            )}
+            <span className="hidden md:inline">{exporting ? 'Export…' : 'Export .json'}</span>
           </button>
         </div>
       </header>
+
+      {exportNotice && (
+        <div
+          role="alert"
+          className={cn(
+            'shrink-0 flex items-center justify-between gap-3 px-4 py-2 text-xs border-b z-20',
+            exportNotice.kind === 'error'
+              ? 'bg-rose-950/60 border-rose-500/40 text-rose-200'
+              : 'bg-amber-950/50 border-amber-500/40 text-amber-200'
+          )}
+        >
+          <span className="flex items-center gap-2 min-w-0">
+            <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+            <span>{exportNotice.message}</span>
+          </span>
+          <button
+            type="button"
+            onClick={() => setExportNotice(null)}
+            title="Masquer le message"
+            className="shrink-0 text-zinc-400 hover:text-zinc-200"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* ==================== MAIN WORKSPACE BODY ==================== */}
       <div className="flex-1 flex min-h-0 relative">

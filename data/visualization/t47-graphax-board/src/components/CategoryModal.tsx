@@ -1,6 +1,13 @@
 import { useEffect, useState } from 'react';
 import { Trash2, X } from 'lucide-react';
-import type { Category, CategoryIconName, CategoryShape } from '@shared/types';
+import {
+  DEFAULT_CATEGORY_COLOR,
+  DEFAULT_CATEGORY_ICON,
+  DEFAULT_CATEGORY_SHAPE,
+  type Category,
+  type CategoryIconName,
+  type CategoryShape,
+} from '@shared/types';
 import {
   CATEGORY_COLORS,
   CATEGORY_ICON_MAP,
@@ -30,18 +37,18 @@ export function CategoryModal({
   onDelete,
 }: CategoryModalProps) {
   const [name, setName] = useState('');
-  const [color, setColor] = useState('#47c0ef');
-  const [icon, setIcon] = useState<CategoryIconName>('tag');
-  const [shape, setShape] = useState<CategoryShape>('sharp');
+  const [color, setColor] = useState(DEFAULT_CATEGORY_COLOR);
+  const [icon, setIcon] = useState<CategoryIconName>(DEFAULT_CATEGORY_ICON);
+  const [shape, setShape] = useState<CategoryShape>(DEFAULT_CATEGORY_SHAPE);
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
       setName(initialCategory?.name ?? '');
-      setColor(initialCategory?.color ?? '#47c0ef');
-      setIcon(initialCategory?.icon ?? 'tag');
-      setShape(initialCategory?.shape ?? 'sharp');
+      setColor(initialCategory?.color ?? DEFAULT_CATEGORY_COLOR);
+      setIcon(initialCategory?.icon ?? DEFAULT_CATEGORY_ICON);
+      setShape(initialCategory?.shape ?? DEFAULT_CATEGORY_SHAPE);
       setConfirmDelete(false);
     }
   }, [isOpen, initialCategory]);
