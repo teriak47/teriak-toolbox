@@ -17,6 +17,7 @@ export interface CategoryRecord {
   shape: string;
   metadataKeys?: string[];
   cardKeys?: string[];
+  position?: number;
 }
 
 export interface NodeRecord {
@@ -70,8 +71,10 @@ export async function insertProjectGraph(db: Surreal, graph: ProjectGraphRecords
 
   if (graph.categories.length > 0) {
     statements.push('INSERT INTO category $categories;');
-    params.categories = graph.categories.map(({ id, ...cat }) => ({
+    // Categories keep the order they are given in (presets, demo, import)
+    params.categories = graph.categories.map(({ id, ...cat }, index) => ({
       ...cat,
+      position: cat.position ?? index,
       id: toRecordId('category', id),
       projectId,
     }));

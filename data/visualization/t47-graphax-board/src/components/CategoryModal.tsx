@@ -202,7 +202,7 @@ export function CategoryModal({
           {/* Icon Selector */}
           <div>
             <label className="block text-xs font-medium text-zinc-300 mb-1.5">Icône</label>
-            <div className="grid grid-cols-8 gap-1.5">
+            <div className="grid grid-cols-9 gap-1.5">
               {(
                 Object.entries(CATEGORY_ICON_MAP) as Array<
                   [CategoryIconName, (typeof CATEGORY_ICON_MAP)[CategoryIconName]]

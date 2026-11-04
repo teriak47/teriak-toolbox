@@ -37,6 +37,15 @@ export function mapCategory(raw: Record<string, unknown>): Category {
   };
 }
 
+// Categories in the order chosen by the user (position), older records without one last by name
+export function sortCategoryRecords(raws: Record<string, unknown>[]): Record<string, unknown>[] {
+  const pos = (r: Record<string, unknown>) =>
+    typeof r.position === 'number' && Number.isFinite(r.position) ? r.position : Infinity;
+  return [...raws].sort(
+    (a, b) => pos(a) - pos(b) || String(a.name ?? '').localeCompare(String(b.name ?? ''), 'fr')
+  );
+}
+
 export function sanitizeMetadata(input: unknown): NodeMetadata {
   if (!input || typeof input !== 'object' || Array.isArray(input)) {
     return {};

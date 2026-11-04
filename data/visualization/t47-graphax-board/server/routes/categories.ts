@@ -87,9 +87,20 @@ categoriesRouter.post('/projects/:projectId/categories', async (c) => {
     return c.json({ error: 'Projet introuvable.' }, 404);
   }
   const id = generateId();
+  // A new category goes after the others. In a project created before categories had a
+  // position, it gets none either, so it is sorted by name with them as before.
+  const [positions] = await db
+    .query<[unknown[]]>('SELECT VALUE position FROM category WHERE projectId = $projectId;', {
+      projectId,
+    })
+    .collect();
+  const isPos = (p: unknown): p is number => typeof p === 'number' && Number.isFinite(p);
+  const all = positions ?? [];
+  const position = all.every(isPos) ? Math.max(-1, ...all) + 1 : undefined;
 
   const created = await db.create(toRecordId('category', id)).content({
     projectId,
+    ...(position === undefined ? {} : { position }),
     name,
     color: style.color ?? DEFAULT_CATEGORY_COLOR,
     icon: style.icon ?? DEFAULT_CATEGORY_ICON,

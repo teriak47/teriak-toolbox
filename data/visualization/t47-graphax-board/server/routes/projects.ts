@@ -1,6 +1,13 @@
 import { Hono } from 'hono';
 import { getDb, generateId, toRecordId } from '../db.ts';
-import { mapCategory, mapEdge, mapNode, mapProject, sanitizeMetadata } from '../mappers.ts';
+import {
+  mapCategory,
+  mapEdge,
+  mapNode,
+  mapProject,
+  sanitizeMetadata,
+  sortCategoryRecords,
+} from '../mappers.ts';
 import { PRESET_CATEGORIES } from '../presets.ts';
 import { insertProjectGraph } from '../bulk.ts';
 import {
@@ -116,7 +123,7 @@ projectsRouter.post('/demo', async (c) => {
   const projectId = generateId();
   const now = new Date().toISOString();
 
-  const catDefs = PRESET_CATEGORIES.osint;
+  const catDefs = PRESET_CATEGORIES.cyber;
   const categories = catDefs.map((def) => ({ ...def, id: generateId() }));
   const catIds: Record<string, string> = Object.fromEntries(
     categories.map((cat) => [cat.name, cat.id])
@@ -125,7 +132,7 @@ projectsRouter.post('/demo', async (c) => {
   const demoNodes = [
     {
       key: 'actor',
-      categoryId: catIds['Acteur / Suspect'],
+      categoryId: catIds['Acteur malveillant'],
       title: 'Groupe "NightOwl" (APT-X)',
       positionX: -320,
       positionY: -120,
@@ -139,7 +146,7 @@ projectsRouter.post('/demo', async (c) => {
     },
     {
       key: 'malware',
-      categoryId: catIds['Malware / Exploit'],
+      categoryId: catIds['Malware / Outil'],
       title: 'Implant "ChimeraLoader.dll"',
       positionX: -20,
       positionY: -95,
@@ -154,7 +161,7 @@ projectsRouter.post('/demo', async (c) => {
     },
     {
       key: 'c2',
-      categoryId: catIds['Infrastructure / IP'],
+      categoryId: catIds['IP / Serveur'],
       title: 'Relais C2 192.0.2.42',
       positionX: 290,
       positionY: -160,
@@ -183,7 +190,7 @@ projectsRouter.post('/demo', async (c) => {
     },
     {
       key: 'org',
-      categoryId: catIds['Organisation'],
+      categoryId: catIds['Organisation / Victime'],
       title: 'NovaTech CI/CD Pipeline',
       positionX: -40,
       positionY: 135,
@@ -197,7 +204,7 @@ projectsRouter.post('/demo', async (c) => {
     },
     {
       key: 'evidence',
-      categoryId: catIds['Preuve / Artefact'],
+      categoryId: catIds['Preuve / Rapport'],
       title: 'Logs Forensics Runner #04',
       positionX: 95,
       positionY: 315,
@@ -311,7 +318,7 @@ projectsRouter.get('/:id/export', async (c) => {
     version: 1,
     exportedAt: new Date().toISOString(),
     project: mapProject(rawProject),
-    categories: (rawCategories ?? []).map(mapCategory),
+    categories: sortCategoryRecords(rawCategories ?? []).map(mapCategory),
     nodes: (rawNodes ?? []).map(mapNode),
     edges: (rawEdges ?? []).map(mapEdge),
   };
@@ -428,7 +435,7 @@ projectsRouter.get('/:id', async (c) => {
     >(
       `
       SELECT * FROM ONLY $pid;
-      SELECT * FROM category WHERE projectId = $projectId ORDER BY name ASC;
+      SELECT * FROM category WHERE projectId = $projectId;
       SELECT * FROM entity WHERE projectId = $projectId;
       SELECT * FROM relation WHERE projectId = $projectId;
     `,
@@ -445,7 +452,7 @@ projectsRouter.get('/:id', async (c) => {
 
   const payload: ProjectGraphPayload = {
     project: mapProject(rawProject),
-    categories: (rawCategories ?? []).map(mapCategory),
+    categories: sortCategoryRecords(rawCategories ?? []).map(mapCategory),
     nodes: (rawNodes ?? []).map(mapNode),
     edges: (rawEdges ?? []).map(mapEdge),
   };
