@@ -40,12 +40,14 @@ const HEX = /^[0-9a-f]+$/i;
 const NUMBER = /^-?\d+([.,]\d+)?$/;
 
 function isValidIpv6(value: string): boolean {
+  if (!IPV6.test(value)) return false;
   const address = value.split('/')[0];
-  if (!IPV6.test(value) || (address.match(/::/g) ?? []).length > 1) return false;
-  const groups = address.split(':');
-  const hasShorthand = address.includes('::');
-  if (groups.length > 8 || (!hasShorthand && groups.length !== 8)) return false;
-  return groups.every((g) => g.length <= 4);
+  // At most one "::", which stands for one or more zero groups; it may sit at either end
+  const halves = address.split('::');
+  if (halves.length > 2) return false;
+  const hextets = halves.flatMap((half) => (half === '' ? [] : half.split(':')));
+  if (!hextets.every((g) => g.length >= 1 && g.length <= 4)) return false;
+  return halves.length === 2 ? hextets.length <= 7 : hextets.length === 8;
 }
 
 // Defanged indicators (hxxp, [.]) are common in investigation notes; read them as the real thing

@@ -19,6 +19,16 @@ describe('metadata value types', () => {
       ['192.0.2.42', 'ipv4'],
       ['192.0.2.0/24', 'ipv4'],
       ['2001:db8::1', 'ipv6'],
+      ['2001:db8:1:2:3:4:5::', 'ipv6'],
+      ['::2001:db8:1:2:3:4:5', 'ipv6'],
+      ['::', 'ipv6'],
+      ['::1', 'ipv6'],
+      ['fe80::/10', 'ipv6'],
+      ['2001:db8:0:0:0:0:0:1', 'ipv6'],
+      ['2001:db8:1:2:3:4:5:6:7', 'text'],
+      [':2001:db8:1:2:3:4:5:6', 'text'],
+      ['2001:db8:1:2:3:4:5:6::', 'text'],
+      ['2001::db8::1', 'text'],
       ['2026-10-22', 'date'],
       ['2026-10-22 08:14 UTC', 'date'],
       ['22/10/2026', 'date'],
@@ -78,6 +88,7 @@ describe('metadata keys and search', () => {
     assert.deepEqual(parseMetadataQuery('Statut:'), { key: 'statut', value: '' });
     assert.equal(parseMetadataQuery('https://example.org'), null);
     assert.equal(parseMetadataQuery('2001:db8::1'), null);
+    assert.equal(parseMetadataQuery('2001:db8:1:2:3:4:5::'), null);
     assert.equal(parseMetadataQuery('ChimeraLoader'), null);
     // A recognised value after the key is still a key:value query
     assert.deepEqual(parseMetadataQuery('Email:alice@example.org'), { key: 'email', value: 'alice@example.org' });
