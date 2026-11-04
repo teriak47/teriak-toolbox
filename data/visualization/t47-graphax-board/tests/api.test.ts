@@ -394,6 +394,104 @@ describe('reference checks', () => {
   });
 });
 
+describe('input validation', () => {
+  async function raw(method: string, url: string, body: string) {
+    const res = await app.request(url, {
+      method,
+      headers: { host: HOST, 'content-type': 'application/json' },
+      body,
+    });
+    return { status: res.status, json: await res.json().catch(() => null) };
+  }
+
+  it('answers 400, not 500, to malformed JSON or a non-object body', async () => {
+    const projectId = await createProject();
+    for (const [method, url] of [
+      ['POST', '/api/projects'],
+      ['POST', `/api/projects/${projectId}/nodes`],
+      ['POST', `/api/projects/${projectId}/categories`],
+      ['POST', '/api/projects/import'],
+    ]) {
+      const broken = await raw(method, url, '{"name": ');
+      assert.equal(broken.status, 400, `${method} ${url}`);
+      assert.ok(broken.json.error);
+      assert.equal((await raw(method, url, '[1, 2]')).status, 400, `${method} ${url} array`);
+      assert.equal((await raw(method, url, 'null')).status, 400, `${method} ${url} null`);
+    }
+  });
+
+  it('ignores fields of the wrong type instead of failing', async () => {
+    const projectId = await createProject();
+    const node = await call('POST', `/api/projects/${projectId}/nodes`, { title: 42, content: {} });
+    assert.equal(node.status, 201);
+    assert.equal(node.json.node.title, 'Nouvel indice');
+    assert.equal(node.json.node.content, '');
+
+    const project = await call('POST', '/api/projects', { name: 'Preset piégé', preset: 'toString' });
+    assert.equal(project.status, 201);
+  });
+
+  it('validates category colour, icon and shape', async () => {
+    const projectId = await createProject();
+    const url = `/api/projects/${projectId}/categories`;
+    assert.equal((await call('POST', url, { name: 'A', color: 'red' })).status, 400);
+    assert.equal((await call('POST', url, { name: 'A', color: '#12345' })).status, 400);
+    assert.equal((await call('POST', url, { name: 'A', icon: 'rocket' })).status, 400);
+    assert.equal((await call('POST', url, { name: 'A', shape: 'star' })).status, 400);
+
+    const short = await call('POST', url, { name: 'A', color: '#ABC', icon: 'bug', shape: 'cut' });
+    assert.equal(short.status, 201);
+    assert.equal(short.json.category.color, '#aabbcc');
+
+    const id = short.json.category.id;
+    assert.equal((await call('PATCH', `/api/categories/${id}`, { color: 'blue' })).status, 400);
+    assert.equal((await call('PATCH', `/api/categories/${id}`, { icon: 'rocket' })).status, 400);
+    const ok = await call('PATCH', `/api/categories/${id}`, { color: '#47C0EF', shape: 'sharp' });
+    assert.equal(ok.status, 200);
+    assert.equal(ok.json.category.color, '#47c0ef');
+  });
+
+  it('limits the request size, with a larger limit for imports', async () => {
+    const projectId = await createProject();
+    const big = 'x'.repeat(3 * 1024 * 1024);
+    const tooBig = await call('POST', `/api/projects/${projectId}/nodes`, { title: 'A', content: big });
+    assert.equal(tooBig.status, 413);
+
+    const imported = await call('POST', '/api/projects/import', {
+      project: { name: 'Gros import' },
+      categories: [],
+      nodes: [{ id: 'n1', title: 'A', content: big }],
+      edges: [],
+    });
+    assert.equal(imported.status, 201);
+  });
+
+  it('imports a bundle with invalid entries by skipping or defaulting them', async () => {
+    const imported = await call('POST', '/api/projects/import', {
+      project: { name: 7 },
+      categories: [null, { id: 'c1', name: 'Cat', color: 'not-a-colour', icon: 'rocket', shape: 'star' }],
+      nodes: [null, 5, 'texte', { id: 'n1', title: { a: 1 }, categoryId: 'c1', metadata: [] }],
+      edges: [null, { id: 'e1', sourceNodeId: 'n1', targetNodeId: 'n1', label: 3 }],
+    });
+    assert.equal(imported.status, 201);
+    assert.equal(imported.json.project.name, 'Projet importé');
+
+    const graph = await call('GET', `/api/projects/${imported.json.project.id}`);
+    assert.equal(graph.json.nodes.length, 1);
+    assert.equal(graph.json.nodes[0].title, 'Indice');
+    const [category] = graph.json.categories;
+    assert.equal(category.color, '#47c0ef');
+    assert.equal(category.icon, 'tag');
+    assert.equal(graph.json.nodes[0].categoryId, category.id);
+    assert.equal(graph.json.edges[0].label, '');
+
+    assert.equal(
+      (await call('POST', '/api/projects/import', { project: 'x', nodes: [], edges: [] })).status,
+      400
+    );
+  });
+});
+
 describe('local-only guard', () => {
   it('accepts same-origin and header-less requests', async () => {
     assert.equal((await call('GET', '/api/health')).status, 200);

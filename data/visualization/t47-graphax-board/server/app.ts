@@ -1,10 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { Hono } from 'hono';
+import { HTTPException } from 'hono/http-exception';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { getDb } from './db.ts';
 import { APP_VERSION } from './version.ts';
 import { localOnlyGuard } from './security.ts';
+import { requestSizeLimit } from './validation.ts';
 import { projectsRouter } from './routes/projects.ts';
 import { categoriesRouter } from './routes/categories.ts';
 import { nodesRouter } from './routes/nodes.ts';
@@ -13,8 +15,13 @@ import { edgesRouter } from './routes/edges.ts';
 export const app = new Hono();
 
 app.use('*', localOnlyGuard);
+app.use('/api/*', requestSizeLimit);
 
 app.onError((err, c) => {
+  // Client errors raised on purpose (e.g. malformed JSON) keep their status and message
+  if (err instanceof HTTPException) {
+    return c.json({ error: err.message }, err.status);
+  }
   console.error('[Graphax API Error]', err);
   return c.json(
     {

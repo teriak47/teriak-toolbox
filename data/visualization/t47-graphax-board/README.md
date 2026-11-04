@@ -6,7 +6,7 @@ Graphax is a local interactive graph board for investigations, research, and sto
 
 **Beta:** the application is under development and has not yet received a complete security and functionality review. Keep independent backups of important projects.
 
-Reversing a link now keeps pending edits, and a failed save is reported with a retry action instead of showing "saved". Deleting the selected node or link with the Delete or Backspace key now asks for confirmation first. Creating, importing and deleting a project, a category or a node is now done in a single transaction, so a failure leaves no partial data, and the API refuses links, nodes and categories that refer to a missing project, node or category, or to another project. The remaining review items (see the repository issue tracker) are still open, so keep exported backups of important projects.
+Reversing a link now keeps pending edits, and a failed save is reported with a retry action instead of showing "saved". Deleting the selected node or link with the Delete or Backspace key now asks for confirmation first. Creating, importing and deleting a project, a category or a node is now done in a single transaction, so a failure leaves no partial data, and the API refuses links, nodes and categories that refer to a missing project, node or category, or to another project. Request bodies are validated and limited to 2 MB (50 MB for an import). The remaining review items (see the repository issue tracker) are still open, so keep exported backups of important projects.
 
 ## Run locally
 

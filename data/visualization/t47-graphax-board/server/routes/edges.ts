@@ -3,13 +3,14 @@ import { getDb, generateId, toRecordId } from '../db.ts';
 import { mapEdge, touchProject } from '../mappers.ts';
 import { nodesInProject, projectExists } from '../guards.ts';
 import type { EdgeStyle } from '../../shared/types.ts';
+import { normalizeHandle, optString, readBody } from '../validation.ts';
 
 export const edgesRouter = new Hono();
 
 // Create a native SurrealDB RELATE edge between two nodes
 edgesRouter.post('/projects/:projectId/edges', async (c) => {
   const projectId = c.req.param('projectId');
-  const body = await c.req.json<{
+  const body = await readBody<{
     sourceNodeId?: string;
     targetNodeId?: string;
     sourceHandle?: string | null;
@@ -18,7 +19,7 @@ edgesRouter.post('/projects/:projectId/edges', async (c) => {
     style?: EdgeStyle;
     directed?: boolean;
     notes?: string;
-  }>();
+  }>(c);
 
   if (!body.sourceNodeId || !body.targetNodeId) {
     return c.json({ error: 'sourceNodeId et targetNodeId sont requis.' }, 400);
@@ -63,12 +64,12 @@ edgesRouter.post('/projects/:projectId/edges', async (c) => {
         relId: toRecordId('relation', id),
         to: toRecordId('entity', targetNodeId),
         projectId,
-        label: (body.label ?? '').trim(),
+        label: (optString(body.label) ?? '').trim(),
         style,
         directed,
-        notes: body.notes ?? '',
-        sourceHandle: body.sourceHandle ?? null,
-        targetHandle: body.targetHandle ?? null,
+        notes: optString(body.notes) ?? '',
+        sourceHandle: normalizeHandle(body.sourceHandle),
+        targetHandle: normalizeHandle(body.targetHandle),
         now,
       }
     )
@@ -85,7 +86,7 @@ edgesRouter.post('/projects/:projectId/edges', async (c) => {
 // Update edge properties (or reverse direction)
 edgesRouter.patch('/edges/:id', async (c) => {
   const id = c.req.param('id');
-  const body = await c.req.json<{
+  const body = await readBody<{
     label?: string;
     style?: EdgeStyle;
     directed?: boolean;
@@ -93,7 +94,7 @@ edgesRouter.patch('/edges/:id', async (c) => {
     sourceHandle?: string | null;
     targetHandle?: string | null;
     reverse?: boolean;
-  }>();
+  }>(c);
 
   const db = await getDb();
   const now = new Date().toISOString();
@@ -136,10 +137,10 @@ edgesRouter.patch('/edges/:id', async (c) => {
           relId: toRecordId('relation', newId),
           to: toRecordId('entity', current.sourceNodeId),
           projectId: current.projectId,
-          label: body.label !== undefined ? body.label.trim() : current.label,
+          label: optString(body.label)?.trim() ?? current.label,
           style: body.style ? (body.style === 'dashed' ? 'dashed' : 'solid') : current.style,
-          directed: body.directed !== undefined ? body.directed : current.directed,
-          notes: body.notes !== undefined ? body.notes : (current.notes ?? ''),
+          directed: typeof body.directed === 'boolean' ? body.directed : current.directed,
+          notes: optString(body.notes) ?? current.notes ?? '',
           sourceHandle: current.targetHandle ?? null,
           targetHandle: current.sourceHandle ?? null,
           createdAt: current.createdAt,
@@ -181,11 +182,11 @@ edgesRouter.patch('/edges/:id', async (c) => {
   }
   if (body.sourceHandle !== undefined) {
     sets.push('sourceHandle = $sourceHandle');
-    params.sourceHandle = body.sourceHandle;
+    params.sourceHandle = normalizeHandle(body.sourceHandle);
   }
   if (body.targetHandle !== undefined) {
     sets.push('targetHandle = $targetHandle');
-    params.targetHandle = body.targetHandle;
+    params.targetHandle = normalizeHandle(body.targetHandle);
   }
 
   const [updated] = await db

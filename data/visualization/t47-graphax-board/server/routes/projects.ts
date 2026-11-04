@@ -8,6 +8,15 @@ import type {
   ProjectGraphPayload,
   ProjectPreset,
 } from '../../shared/types.ts';
+import {
+  isCategoryIcon,
+  isCategoryShape,
+  isPlainObject,
+  normalizeColor,
+  normalizeHandle,
+  optString,
+  readBody,
+} from '../validation.ts';
 
 export const projectsRouter = new Hono();
 
@@ -58,13 +67,13 @@ projectsRouter.get('/', async (c) => {
 
 // Create a new project with optional category preset
 projectsRouter.post('/', async (c) => {
-  const body = await c.req.json<{
+  const body = await readBody<{
     name?: string;
     description?: string;
     preset?: ProjectPreset;
-  }>();
+  }>(c);
 
-  const name = (body.name ?? '').trim();
+  const name = (optString(body.name) ?? '').trim();
   if (!name) {
     return c.json({ error: 'Le nom du projet est requis.' }, 400);
   }
@@ -72,12 +81,15 @@ projectsRouter.post('/', async (c) => {
   const db = await getDb();
   const id = generateId();
   const now = new Date().toISOString();
-  const preset: ProjectPreset = body.preset && body.preset in PRESET_CATEGORIES ? body.preset : 'osint';
+  const preset: ProjectPreset =
+    typeof body.preset === 'string' && Object.hasOwn(PRESET_CATEGORIES, body.preset)
+      ? body.preset
+      : 'osint';
 
   const projectRecord = {
     id,
     name,
-    description: (body.description ?? '').trim(),
+    description: (optString(body.description) ?? '').trim(),
     createdAt: now,
     updatedAt: now,
   };
@@ -309,71 +321,74 @@ projectsRouter.get('/:id/export', async (c) => {
 
 // Import full project from JSON bundle (with safe ID remapping to avoid collisions)
 projectsRouter.post('/import', async (c) => {
-  const bundle = await c.req.json<Partial<ProjectExportBundle>>();
-  if (!bundle.project || !Array.isArray(bundle.nodes) || !Array.isArray(bundle.edges)) {
+  const bundle = await readBody<Record<string, unknown>>(c);
+  if (!isPlainObject(bundle.project) || !Array.isArray(bundle.nodes) || !Array.isArray(bundle.edges)) {
     return c.json({ error: 'Fichier JSON invalide : structure de projet Graphax attendue.' }, 400);
   }
 
   const db = await getDb();
   const newProjectId = generateId();
   const now = new Date().toISOString();
+  const source = bundle.project;
 
-  // Every record gets a fresh id so an import never collides with existing data
+  // Every record gets a fresh id so an import never collides with existing data.
+  // Entries that are not objects are skipped and invalid values fall back to defaults.
   const project = {
     id: newProjectId,
-    name: String(bundle.project.name || 'Projet importé').trim(),
-    description: String(bundle.project.description || '').trim(),
-    createdAt: String(bundle.project.createdAt || now),
+    name: (optString(source.name) ?? '').trim() || 'Projet importé',
+    description: (optString(source.description) ?? '').trim(),
+    createdAt: optString(source.createdAt) || now,
     updatedAt: now,
   };
 
   const categoryIdMap = new Map<string, string>();
-  const categories = (Array.isArray(bundle.categories) ? bundle.categories : []).map((cat) => {
+  const rawCategories = Array.isArray(bundle.categories) ? bundle.categories : [];
+  const categories = rawCategories.filter(isPlainObject).map((cat) => {
     const id = generateId();
-    categoryIdMap.set(cat.id, id);
+    categoryIdMap.set(String(cat.id), id);
     return {
       id,
-      name: String(cat.name || 'Catégorie'),
-      color: String(cat.color || '#47c0ef'),
-      icon: String(cat.icon || 'tag'),
-      shape: String(cat.shape || 'rounded'),
+      name: (optString(cat.name) ?? '').trim() || 'Catégorie',
+      color: normalizeColor(cat.color) ?? '#47c0ef',
+      icon: isCategoryIcon(cat.icon) ? cat.icon : 'tag',
+      shape: isCategoryShape(cat.shape) ? cat.shape : 'rounded',
     };
   });
 
   const nodeIdMap = new Map<string, string>();
-  const nodes = bundle.nodes.map((node) => {
+  const nodes = bundle.nodes.filter(isPlainObject).map((node) => {
     const id = generateId();
-    nodeIdMap.set(node.id, id);
+    nodeIdMap.set(String(node.id), id);
     return {
       id,
-      categoryId: node.categoryId ? (categoryIdMap.get(node.categoryId) ?? null) : null,
-      title: String(node.title || 'Indice'),
-      content: String(node.content || ''),
+      categoryId: node.categoryId ? (categoryIdMap.get(String(node.categoryId)) ?? null) : null,
+      title: optString(node.title) || 'Indice',
+      content: optString(node.content) ?? '',
       positionX: Number.isFinite(Number(node.positionX)) ? Number(node.positionX) : 0,
       positionY: Number.isFinite(Number(node.positionY)) ? Number(node.positionY) : 0,
       metadata: sanitizeMetadata(node.metadata),
-      createdAt: String(node.createdAt || now),
+      createdAt: optString(node.createdAt) || now,
       updatedAt: now,
     };
   });
 
   // Links whose ends are not in the bundle are skipped
-  const edges = bundle.edges.flatMap((edge) => {
-    const sourceNodeId = nodeIdMap.get(edge.sourceNodeId);
-    const targetNodeId = nodeIdMap.get(edge.targetNodeId);
+  const edges = bundle.edges.filter(isPlainObject).flatMap((edge) => {
+    const sourceNodeId = nodeIdMap.get(String(edge.sourceNodeId));
+    const targetNodeId = nodeIdMap.get(String(edge.targetNodeId));
     if (!sourceNodeId || !targetNodeId) return [];
     return [
       {
         id: generateId(),
         sourceNodeId,
         targetNodeId,
-        label: String(edge.label ?? ''),
+        label: optString(edge.label) ?? '',
         style: edge.style === 'dashed' ? 'dashed' : 'solid',
         directed: edge.directed !== false,
-        notes: String(edge.notes ?? ''),
-        sourceHandle: edge.sourceHandle ?? null,
-        targetHandle: edge.targetHandle ?? null,
-        createdAt: String(edge.createdAt || now),
+        notes: optString(edge.notes) ?? '',
+        sourceHandle: normalizeHandle(edge.sourceHandle),
+        targetHandle: normalizeHandle(edge.targetHandle),
+        createdAt: optString(edge.createdAt) || now,
         updatedAt: now,
       },
     ];
@@ -439,7 +454,7 @@ projectsRouter.get('/:id', async (c) => {
 // Update project metadata
 projectsRouter.patch('/:id', async (c) => {
   const projectId = c.req.param('id');
-  const body = await c.req.json<{ name?: string; description?: string }>();
+  const body = await readBody<{ name?: string; description?: string }>(c);
   const db = await getDb();
 
   const patch: Record<string, unknown> = {

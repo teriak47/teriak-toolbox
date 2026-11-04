@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { getDb, generateId, toRecordId } from '../db.ts';
 import { mapNode, sanitizeMetadata, touchProject } from '../mappers.ts';
 import { categoryInProject, nodesInProject, projectExists } from '../guards.ts';
+import { optString, readBody } from '../validation.ts';
 
 const UNKNOWN_CATEGORY = "Cette catégorie n'existe pas dans ce projet.";
 
@@ -10,14 +11,14 @@ export const nodesRouter = new Hono();
 // Create a node on the canvas
 nodesRouter.post('/projects/:projectId/nodes', async (c) => {
   const projectId = c.req.param('projectId');
-  const body = await c.req.json<{
+  const body = await readBody<{
     title?: string;
     categoryId?: string | null;
     content?: string;
     positionX?: number;
     positionY?: number;
     metadata?: Record<string, unknown>;
-  }>();
+  }>(c);
 
   const db = await getDb();
   if (!(await projectExists(db, projectId))) {
@@ -33,13 +34,13 @@ nodesRouter.post('/projects/:projectId/nodes', async (c) => {
 
   const positionX = Number.isFinite(Number(body.positionX)) ? Number(body.positionX) : 0;
   const positionY = Number.isFinite(Number(body.positionY)) ? Number(body.positionY) : 0;
-  const title = (body.title ?? '').trim() || 'Nouvel indice';
+  const title = (optString(body.title) ?? '').trim() || 'Nouvel indice';
 
   const created = await db.create(toRecordId('entity', id)).content({
     projectId,
     categoryId,
     title,
-    content: body.content ?? '',
+    content: optString(body.content) ?? '',
     positionX,
     positionY,
     metadata: sanitizeMetadata(body.metadata),
@@ -60,14 +61,14 @@ nodesRouter.post('/projects/:projectId/nodes', async (c) => {
 // Update node content, title, category, metadata, or position
 nodesRouter.patch('/nodes/:id', async (c) => {
   const id = c.req.param('id');
-  const body = await c.req.json<{
+  const body = await readBody<{
     title?: string;
     categoryId?: string | null;
     content?: string;
     positionX?: number;
     positionY?: number;
     metadata?: Record<string, unknown>;
-  }>();
+  }>(c);
 
   const db = await getDb();
   const now = new Date().toISOString();
@@ -135,7 +136,7 @@ nodesRouter.patch('/nodes/:id', async (c) => {
 // Fast single-node position update (on drag stop)
 nodesRouter.patch('/nodes/:id/position', async (c) => {
   const id = c.req.param('id');
-  const body = await c.req.json<{ positionX: number; positionY: number }>();
+  const body = await readBody<{ positionX: number; positionY: number }>(c);
 
   const posX = Number(body.positionX);
   const posY = Number(body.positionY);
@@ -169,9 +170,9 @@ nodesRouter.patch('/nodes/:id/position', async (c) => {
 // Batch node positions update (multi-node drag or optional auto-align)
 nodesRouter.patch('/projects/:projectId/positions', async (c) => {
   const projectId = c.req.param('projectId');
-  const body = await c.req.json<{
+  const body = await readBody<{
     positions: Array<{ id: string; positionX: number; positionY: number }>;
-  }>();
+  }>(c);
 
   if (!Array.isArray(body.positions)) {
     return c.json({ error: 'Liste de positions attendue.' }, 400);
