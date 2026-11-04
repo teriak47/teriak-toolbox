@@ -35,6 +35,7 @@ import { GraphCanvas, type GraphCanvasHandle } from '@/components/GraphCanvas';
 import {
   INSPECTOR_SAVE_DELAY_MS,
   InspectorSidebar,
+  type TakePendingEdgeEdit,
   type TakePendingNodeEdit,
 } from '@/components/InspectorSidebar';
 import { downloadProjectExport } from '@/lib/exportProject';
@@ -108,6 +109,7 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
   const canvasRef = useRef<GraphCanvasHandle>(null);
   // Lets a change made on the canvas take the inspector's unsaved edits (see InspectorSidebar)
   const takePendingEditRef = useRef<TakePendingNodeEdit | null>(null);
+  const takePendingEdgeEditRef = useRef<TakePendingEdgeEdit | null>(null);
 
   // Core domain state
   const [project, setProject] = useState<Project | null>(null);
@@ -795,10 +797,14 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
       const pending = takePendingEditRef.current?.(nodeId) ?? {};
       if (Object.keys(pending).length > 0) void handleUpdateNode(nodeId, pending);
     }
+    const pendingEdge = takePendingEdgeEditRef.current?.();
+    if (pendingEdge && Object.keys(pendingEdge.patch).length > 0) {
+      void handleUpdateEdge(pendingEdge.edgeId, pendingEdge.patch);
+    }
     const label = historyRef.current.undo();
     setHistoryVersion((v) => v + 1);
     if (label) setHistoryNotice(`Annulé : ${label}`);
-  }, [handleUpdateNode]);
+  }, [handleUpdateNode, handleUpdateEdge]);
 
   const redo = useCallback(() => {
     const label = historyRef.current.redo();
@@ -1617,6 +1623,7 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
           allNodes={entities}
           categories={categories}
           takePendingEditRef={takePendingEditRef}
+          takePendingEdgeEditRef={takePendingEdgeEditRef}
           onClose={() => {
             setSelectedNodeId(null);
             setSelectedEdgeId(null);

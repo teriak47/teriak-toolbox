@@ -56,7 +56,12 @@ interface InspectorSidebarProps {
   onOpenNewCategory: () => void;
   /** Filled by the inspector: hands over (and cancels) the typed edits of a node not saved yet */
   takePendingEditRef?: MutableRefObject<TakePendingNodeEdit | null>;
+  /** Same for a link's label and notes */
+  takePendingEdgeEditRef?: MutableRefObject<TakePendingEdgeEdit | null>;
 }
+
+export type PendingEdgeEdit = Partial<{ label: string; notes: string }>;
+export type TakePendingEdgeEdit = () => { edgeId: string; patch: PendingEdgeEdit } | null;
 
 export type PendingNodeEdit = Partial<{ title: string; content: string; metadata: NodeMetadata }>;
 export type TakePendingNodeEdit = (nodeId: string) => PendingNodeEdit;
@@ -104,6 +109,7 @@ export function InspectorSidebar({
   onDeleteEdge,
   onOpenNewCategory,
   takePendingEditRef,
+  takePendingEdgeEditRef,
 }: InspectorSidebarProps) {
   // Node draft state
   const [title, setTitle] = useState('');
@@ -156,6 +162,18 @@ export function InspectorSidebar({
     return patch;
   };
   if (takePendingEditRef) takePendingEditRef.current = takePendingNodeEdit;
+
+  const takePendingEdgeEdit: TakePendingEdgeEdit = () => {
+    if (!pendingEdgeFlushRef.current) return null;
+    if (edgeTimerRef.current) {
+      clearTimeout(edgeTimerRef.current);
+      edgeTimerRef.current = null;
+    }
+    const pending = pendingEdgeFlushRef.current;
+    pendingEdgeFlushRef.current = null;
+    return pending;
+  };
+  if (takePendingEdgeEditRef) takePendingEdgeEditRef.current = takePendingEdgeEdit;
 
   const pendingEdgeFlushRef = useRef<{
     edgeId: string;
