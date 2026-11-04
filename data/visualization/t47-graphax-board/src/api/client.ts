@@ -10,6 +10,7 @@ import type {
   ProjectExportBundle,
   ProjectGraphPayload,
   ProjectPreset,
+  ProjectSnapshot,
 } from '@shared/types';
 
 // What the category editor sends: style, default keys and card keys
@@ -105,6 +106,25 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(bundle),
     }),
+
+  // Snapshots (A7)
+  listSnapshots: (projectId: string) =>
+    request<{ snapshots: ProjectSnapshot[] }>(`/api/projects/${projectId}/snapshots`),
+
+  createSnapshot: (projectId: string) =>
+    request<{ snapshot: ProjectSnapshot }>(`/api/projects/${projectId}/snapshots`, { method: 'POST' }),
+
+  restoreSnapshot: (projectId: string, name: string) =>
+    request<{ project: Project }>(
+      `/api/projects/${projectId}/snapshots/${encodeURIComponent(name)}/restore`,
+      { method: 'POST' }
+    ),
+
+  deleteSnapshot: (projectId: string, name: string) =>
+    request<{ deleted: boolean }>(
+      `/api/projects/${projectId}/snapshots/${encodeURIComponent(name)}`,
+      { method: 'DELETE' }
+    ),
 
   // Categories
   createCategory: (

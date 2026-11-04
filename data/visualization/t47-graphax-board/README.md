@@ -49,7 +49,9 @@ pnpm build
 pnpm start
 ```
 
-The project uses local disk storage under `data/` in the tool directory, whichever folder the server is started from; set `GRAPHAX_DATA_DIR` to use another location. This directory is ignored by Git and must not be published. Export and back up projects separately when needed.
+The project uses local disk storage under `data/` in the tool directory, whichever folder the server is started from; set `GRAPHAX_DATA_DIR` to use another location. This directory is ignored by Git and must not be published.
+
+Snapshots: every 30 minutes, the server saves each project that changed to `data/snapshots/<project id>/` and keeps the 10 latest (`GRAPHAX_AUTO_SNAPSHOT_MINUTES` sets the interval, `0` turns it off). The "Instantanés" button in a project takes one on demand, restores one as a new project (the current project is left as it is) or deletes one. Snapshot files use the export format, so one can also be imported from the project list, even after its project was deleted. They live in the same `data/` directory: keep a copy elsewhere for important projects.
 
 Planned fixes, optimisations and features are listed in the [roadmap](docs/ROADMAP.md).
 

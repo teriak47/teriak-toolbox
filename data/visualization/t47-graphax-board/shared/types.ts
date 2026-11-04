@@ -162,3 +162,16 @@ export interface ProjectExportBundle {
 // Most records (nodes plus links, or categories) one undo can bring back in a single
 // restore; a group deletion larger than this is refused, so that it can always be undone
 export const MAX_RESTORE_RECORDS = 5000;
+
+// ---- Project snapshots (A7) ----
+
+export type SnapshotKind = 'auto' | 'manual';
+
+export interface ProjectSnapshot {
+  /** File name, also the snapshot's id in the API */
+  name: string;
+  createdAt: string;
+  kind: SnapshotKind;
+  nodeCount: number;
+  edgeCount: number;
+}

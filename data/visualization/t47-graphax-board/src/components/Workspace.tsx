@@ -19,6 +19,7 @@ import {
   Search,
   X,
   GripVertical,
+  History,
   Redo2,
   Undo2,
 } from 'lucide-react';
@@ -49,6 +50,7 @@ import {
 } from '@/lib/metadata';
 import { CategoryModal } from '@/components/CategoryModal';
 import { MultiSelectionPanel } from '@/components/MultiSelectionPanel';
+import { SnapshotsModal } from '@/components/SnapshotsModal';
 import { getCategoryIcon } from '@/lib/icons';
 import { computeConstellationLayout } from '@/lib/forceLayout';
 import { cn, moveItem } from '@/lib/utils';
@@ -63,6 +65,8 @@ type EdgeFilterMode = 'all' | 'solid' | 'dashed';
 interface WorkspaceProps {
   projectId: string;
   onBack: () => void;
+  /** Opens another project (a snapshot restored as a new project) */
+  onOpenProject: (projectId: string) => void;
 }
 
 type NodePatch = Partial<{
@@ -120,7 +124,7 @@ function edgeEditLabel(patch: EdgePatch): string {
   return 'Modification du lien';
 }
 
-export function Workspace({ projectId, onBack }: WorkspaceProps) {
+export function Workspace({ projectId, onBack, onOpenProject }: WorkspaceProps) {
   const canvasRef = useRef<GraphCanvasHandle>(null);
   // Lets a change made on the canvas take the inspector's unsaved edits (see InspectorSidebar)
   const takePendingEditRef = useRef<TakePendingNodeEdit | null>(null);
@@ -248,6 +252,7 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
   // Modals / Menus
   const [categoryModalOpen, setCategoryModalOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
+  const [snapshotsOpen, setSnapshotsOpen] = useState(false);
   const [layoutMenuOpen, setLayoutMenuOpen] = useState(false);
   const [editingProjectName, setEditingProjectName] = useState(false);
   const [projectNameDraft, setProjectNameDraft] = useState('');
@@ -1738,6 +1743,15 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
 
           <button
             type="button"
+            onClick={() => setSnapshotsOpen(true)}
+            title="Instantanés du projet : sauvegardes automatiques et manuelles"
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium bg-zinc-950 hover:bg-zinc-800 border border-filet text-zinc-300 transition-colors"
+          >
+            <History className="w-3.5 h-3.5 text-zinc-400" />
+            <span className="hidden md:inline">Instantanés</span>
+          </button>
+          <button
+            type="button"
             onClick={() => void handleExportProject()}
             disabled={exporting}
             aria-busy={exporting}
@@ -2077,6 +2091,13 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
 
       {/* Category Create/Edit Modal */}
       <AppFooter />
+
+      <SnapshotsModal
+        projectId={projectId}
+        isOpen={snapshotsOpen}
+        onClose={() => setSnapshotsOpen(false)}
+        onOpenProject={onOpenProject}
+      />
 
       <CategoryModal
         isOpen={categoryModalOpen}
