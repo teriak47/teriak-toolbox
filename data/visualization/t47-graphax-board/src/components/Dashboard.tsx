@@ -18,6 +18,7 @@ import {
 import type { Project, ProjectPreset } from '@shared/types';
 import { api } from '@/api/client';
 import { cn, formatRelativeDate } from '@/lib/utils';
+import { downloadProjectExport } from '@/lib/exportProject';
 import { AppFooter } from '@/components/AppFooter';
 import logoWhite from '@/ds/assets/logo-white.svg';
 
@@ -143,21 +144,7 @@ export function Dashboard({ projects, loading, onRefresh, onOpenProject }: Dashb
   const handleExport = async (proj: Project, e: React.MouseEvent) => {
     e.stopPropagation();
     try {
-      const bundle = await api.exportProject(proj.id);
-      const slug = proj.name
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-|-$/g, '');
-      const dateStr = new Date().toISOString().slice(0, 10);
-      const blob = new Blob([JSON.stringify(bundle, null, 2)], {
-        type: 'application/json',
-      });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `graphax-${slug || 'projet'}-${dateStr}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
+      await downloadProjectExport(proj.id, proj.name);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erreur lors de l’export JSON.');
     }
