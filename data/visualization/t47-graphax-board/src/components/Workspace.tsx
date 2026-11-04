@@ -67,6 +67,8 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
   // Core domain state
   const [project, setProject] = useState<Project | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
+  const categoriesRef = useRef(categories);
+  categoriesRef.current = categories;
   const [entities, setEntities] = useState<GraphNode[]>([]);
   const [relations, setRelations] = useState<GraphEdge[]>([]);
   const [loading, setLoading] = useState(true);
@@ -518,7 +520,12 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
           const op = categoryOrderQueueRef.current.then(async () => {
             const wanted = categoryOrderRef.current;
             if (!wanted) return; // already saved by an earlier queued save
-            await api.reorderCategories(projectId, wanted.ids);
+            // A category deleted since the order was asked is left out (the API refuses it)
+            const existing = new Set(categoriesRef.current.map((c) => c.id));
+            await api.reorderCategories(
+              projectId,
+              wanted.ids.filter((id) => existing.has(id))
+            );
             if (categoryOrderRef.current?.version === wanted.version) categoryOrderRef.current = null;
           });
           categoryOrderQueueRef.current = op.catch(() => undefined);

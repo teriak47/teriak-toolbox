@@ -1492,6 +1492,7 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
             <div
               role="menu"
               aria-label="Changer la catégorie"
+              data-canvas-scrollable=""
               onMouseDown={(e) => e.stopPropagation()}
               onClick={(e) => e.stopPropagation()}
               onDoubleClick={(e) => e.stopPropagation()}
