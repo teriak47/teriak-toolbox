@@ -190,3 +190,26 @@
   background: var(--surface-carte);
   color: var(--texte-fort);
 }
+
+/* Warning colour used by the amber utilities and search highlights */
+:root {
+  --attention: var(--avert);
+}
+
+/* Directed links being looked at: gaps travel from the source towards the target */
+.graphax-edge-flow {
+  stroke-dasharray: 3 11;
+  animation: graphax-edge-flow 0.9s linear infinite;
+}
+
+@keyframes graphax-edge-flow {
+  to {
+    stroke-dashoffset: -14;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .graphax-edge-flow {
+    animation: none;
+  }
+}

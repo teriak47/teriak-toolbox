@@ -11,6 +11,36 @@ export interface EdgeGeometry {
   my: number;
   /** SVG polygon points of the arrowhead at the target end */
   arrowPoints: string;
+  /** Smaller arrow along the link, so the direction reads without following it to the end */
+  midArrowPoints: string;
+}
+
+// Arrowhead at the target end, and the smaller arrow drawn along the link
+export const ARROW_LENGTH = 12;
+export const ARROW_HALF_WIDTH = 5.5;
+const MID_ARROW_LENGTH = 9;
+const MID_ARROW_HALF_WIDTH = 4.5;
+
+// Triangle pointing along (ux, uy) with its tip at (tipX, tipY)
+function arrowTriangle(
+  tipX: number,
+  tipY: number,
+  ux: number,
+  uy: number,
+  length: number,
+  halfWidth: number
+): string {
+  const bx = tipX - ux * length;
+  const by = tipY - uy * length;
+  const px = -uy;
+  const py = ux;
+  return [
+    [tipX, tipY],
+    [bx + px * halfWidth, by + py * halfWidth],
+    [bx - px * halfWidth, by - py * halfWidth],
+  ]
+    .map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`)
+    .join(' ');
 }
 
 // Computes how each link is drawn: its ends are clipped to the node boxes, parallel links
@@ -91,7 +121,7 @@ export function computeEdgeGeometry(
       const eux = edx / eLen;
       const euy = edy / eLen;
       const b2 = boxBoundary(nodeHalf(r2), eux, euy);
-      const endPad = edge.directed ? b2 + 5 : b2 + 3;
+      const endPad = edge.directed ? b2 + 4 : b2 + 3;
       const tx = p2.x - eux * endPad;
       const ty = p2.y - euy * endPad;
 
@@ -108,20 +138,33 @@ export function computeEdgeGeometry(
       const mx = Math.abs(curveStep) < 0.5 ? (sx + tx) / 2 : cx;
       const my = Math.abs(curveStep) < 0.5 ? (sy + ty) / 2 : cy;
 
-      // Arrowhead polygon at (tx, ty)
-      const arrowLen = 9.5;
-      const arrowHalfW = 4.3;
-      const bx = tx - eux * arrowLen;
-      const by = ty - euy * arrowLen;
-      const pnx = -euy;
-      const pny = eux;
-      const arrowPoints = `${(tx + eux * 2).toFixed(1)},${(ty + euy * 2).toFixed(1)} ${(
-        bx +
-        pnx * arrowHalfW
-      ).toFixed(1)},${(by + pny * arrowHalfW).toFixed(1)} ${(
-        bx -
-        pnx * arrowHalfW
-      ).toFixed(1)},${(by - pny * arrowHalfW).toFixed(1)}`;
+          // Arrowhead at (tx, ty), its tip slightly past the line end
+      const arrowPoints = arrowTriangle(
+        tx + eux * 2,
+        ty + euy * 2,
+        eux,
+        euy,
+        ARROW_LENGTH,
+        ARROW_HALF_WIDTH
+      );
+
+      // Mid arrow: halfway along the first segment of a bent link; on a straight link,
+      // in the middle, or nearer the source when the middle holds the label
+      const bent = Math.abs(curveStep) >= 0.5;
+      const segEndX = bent ? cx : tx;
+      const segEndY = bent ? cy : ty;
+      const segLen = Math.hypot(segEndX - sx, segEndY - sy) || 1;
+      const mux = (segEndX - sx) / segLen;
+      const muy = (segEndY - sy) / segLen;
+      const t = bent ? 0.5 : edge.label ? 0.28 : 0.5;
+      const midArrowPoints = arrowTriangle(
+        sx + (segEndX - sx) * t + mux * (MID_ARROW_LENGTH / 2),
+        sy + (segEndY - sy) * t + muy * (MID_ARROW_LENGTH / 2),
+        mux,
+        muy,
+        MID_ARROW_LENGTH,
+        MID_ARROW_HALF_WIDTH
+      );
 
       return {
         edge,
@@ -129,6 +172,7 @@ export function computeEdgeGeometry(
         mx: clampFinite(mx, 0),
         my: clampFinite(my, 0),
         arrowPoints,
+        midArrowPoints,
       };
     })
     .filter((item): item is NonNullable<typeof item> => item !== null);

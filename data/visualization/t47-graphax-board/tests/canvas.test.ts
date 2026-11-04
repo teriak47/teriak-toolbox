@@ -59,6 +59,22 @@ describe('edge geometry', () => {
     assert.equal(geo.arrowPoints.split(' ').length, 3);
   });
 
+  it('places the mid arrow along the link, pointing to the target, away from the label', () => {
+    const tips = (points: string) => points.split(' ').map((pt) => pt.split(',').map(Number));
+    const [plain] = computeEdgeGeometry([node('a', 0, 0), node('b', 200, 0)], [edge('e', 'a', 'b')], pos, radius);
+    const [tip, base1, base2] = tips(plain.midArrowPoints);
+    assert.ok(tip[0] > base1[0] && tip[0] > base2[0], 'points towards the target');
+    assert.ok(Math.abs((base1[0] + tip[0]) / 2 - 100) < 10, 'near the middle without a label');
+
+    const labelled = { ...edge('e', 'a', 'b'), label: 'connaît' };
+    const [withLabel] = computeEdgeGeometry([node('a', 0, 0), node('b', 200, 0)], [labelled], pos, radius);
+    assert.ok(tips(withLabel.midArrowPoints)[0][0] < 80, 'moved towards the source to leave room for the label');
+
+    const [reversed] = computeEdgeGeometry([node('a', 0, 0), node('b', 200, 0)], [edge('e', 'b', 'a')], pos, radius);
+    const [rtip, rbase] = tips(reversed.midArrowPoints);
+    assert.ok(rtip[0] < rbase[0], 'follows the link direction');
+  });
+
   it('bends parallel links to opposite sides', () => {
     const geos = computeEdgeGeometry(
       [node('a', 0, 0), node('b', 200, 0)],

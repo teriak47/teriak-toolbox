@@ -45,6 +45,7 @@ La version affichée dans le pied de page vient de `package.json`, qui doit corr
 - **Glisser-déposer un nœud :** Positionnement libre sauvegardé automatiquement dans SurrealDB (`positionX`, `positionY`).
 - **Glisser depuis le cadre autour d'un nœud vers un autre :** Crée une relation graphe native avec saisie directe du label sur la flèche.
 - **Double-clic sur le label d'une flèche :** Modifie le texte de la relation directement sur le graphe.
+- **Sens des liens :** chaque lien orienté porte une flèche au milieu et une à l'arrivée. Quand un nœud est sélectionné, ses liens sortants s'affichent en bleu et ses liens entrants en ocre, avec une légende qui les compte ; des tirets animés montrent le sens du lien survolé ou sélectionné.
 - **Clic sur un nœud ou un lien :** Ouvre le panneau latéral d'inspection à droite (catégorie, métadonnées libres clé/valeur, notes complètes en Markdown avec aperçu rendu, trait plein vs pointillés d'hypothèse, orientation).
 - **`Ctrl + K` :** Recherche instantanée avec centrage automatique de la caméra sur l'indice sélectionné.
 - **`Suppr` (`Delete`) ou `Retour arrière` :** Demande la suppression du nœud ou du lien sélectionné ; `Entrée` confirme, `Échap` annule.
