@@ -10,7 +10,7 @@ process.env.GRAPHAX_DATA_DIR = dataDir;
 process.env.PORT = '3456';
 
 const { app } = await import('../server/app.ts');
-const { closeDb, getDb, recoverLegacyDatabase, surrealKvUrl } = await import('../server/db.ts');
+const { closeDb, getDb, recoverLegacyDatabase, surrealKvUrl, toRecordId } = await import('../server/db.ts');
 const { insertProjectGraph } = await import('../server/bulk.ts');
 const { runAutoSnapshots, AUTO_SNAPSHOTS_KEPT } = await import('../server/snapshots.ts');
 
@@ -906,6 +906,11 @@ describe('project snapshots', () => {
     const db = await getDb();
     assert.ok((await runAutoSnapshots(db)).includes(projectId));
     // Unchanged since: no new snapshot
+    assert.ok(!(await runAutoSnapshots(db)).includes(projectId));
+    // A change whose date is older than the snapshot file (it landed while the snapshot was
+    // being written) still differs from the revision captured in it: snapshotted again
+    await db.query('UPDATE $pid SET updatedAt = "2000-01-01T00:00:00.000Z";', { pid: toRecordId('project', projectId) }).collect();
+    assert.ok((await runAutoSnapshots(db)).includes(projectId));
     assert.ok(!(await runAutoSnapshots(db)).includes(projectId));
     for (let i = 0; i < AUTO_SNAPSHOTS_KEPT + 2; i++) {
       await createNode(projectId, `N${i}`, i * 10);

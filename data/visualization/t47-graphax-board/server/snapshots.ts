@@ -53,17 +53,20 @@ export function listSnapshots(projectId: string): ProjectSnapshot[] {
     if (!meta) continue;
     let nodeCount = 0;
     let edgeCount = 0;
+    let projectUpdatedAt: string | undefined;
     try {
       const bundle = JSON.parse(fs.readFileSync(path.join(dir, name), 'utf-8')) as {
+        project?: { updatedAt?: unknown };
         nodes?: unknown[];
         edges?: unknown[];
       };
       nodeCount = Array.isArray(bundle.nodes) ? bundle.nodes.length : 0;
       edgeCount = Array.isArray(bundle.edges) ? bundle.edges.length : 0;
+      if (typeof bundle.project?.updatedAt === 'string') projectUpdatedAt = bundle.project.updatedAt;
     } catch {
       continue; // unreadable file: not listed
     }
-    out.push({ name, ...meta, nodeCount, edgeCount });
+    out.push({ name, ...meta, nodeCount, edgeCount, projectUpdatedAt });
   }
   return out.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
@@ -104,7 +107,14 @@ export async function createSnapshot(
   fs.writeFileSync(tmp, JSON.stringify(bundle, null, 2), 'utf-8');
   fs.renameSync(tmp, path.join(dir, name));
   pruneSnapshots(projectId);
-  return { name, createdAt, kind, nodeCount: bundle.nodes.length, edgeCount: bundle.edges.length };
+  return {
+    name,
+    createdAt,
+    kind,
+    nodeCount: bundle.nodes.length,
+    edgeCount: bundle.edges.length,
+    projectUpdatedAt: bundle.project.updatedAt,
+  };
 }
 
 // Keeps the latest automatic snapshots and a bounded number of manual ones
@@ -118,8 +128,10 @@ export function pruneSnapshots(projectId: string): void {
   for (const s of drop) fs.rmSync(path.join(dir, s.name), { force: true });
 }
 
-// Takes an automatic snapshot of every project changed since its latest snapshot.
-// Returns the ids of the projects snapshotted.
+// Takes an automatic snapshot of every project changed since its latest snapshot: the
+// project's revision (its updatedAt) is compared with the one captured in that snapshot,
+// not with the file's date, so an edit made while a snapshot was being written is never
+// skipped. Returns the ids of the projects snapshotted.
 export async function runAutoSnapshots(db: Surreal): Promise<string[]> {
   const [rows] = await db
     .query<[Array<{ id: unknown; updatedAt: unknown }>]>('SELECT id, updatedAt FROM project;')
@@ -130,7 +142,7 @@ export async function runAutoSnapshots(db: Surreal): Promise<string[]> {
     if (!PROJECT_ID.test(projectId)) continue;
     const latest = listSnapshots(projectId)[0];
     const updatedAt = String(row.updatedAt ?? '');
-    if (latest && updatedAt && updatedAt <= latest.createdAt) continue;
+    if (latest && updatedAt && updatedAt === latest.projectUpdatedAt) continue;
     if (await createSnapshot(db, projectId, 'auto')) done.push(projectId);
   }
   return done;

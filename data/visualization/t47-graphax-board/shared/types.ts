@@ -174,4 +174,6 @@ export interface ProjectSnapshot {
   kind: SnapshotKind;
   nodeCount: number;
   edgeCount: number;
+  /** The project's revision captured in the snapshot (its updatedAt at that time) */
+  projectUpdatedAt?: string;
 }

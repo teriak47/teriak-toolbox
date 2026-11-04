@@ -2097,6 +2097,13 @@ export function Workspace({ projectId, onBack, onOpenProject }: WorkspaceProps) 
         isOpen={snapshotsOpen}
         onClose={() => setSnapshotsOpen(false)}
         onOpenProject={onOpenProject}
+        beforeSnapshot={async () => {
+          flushPendingEdits();
+          await waitForIdle(10_000);
+          return hasUnsavedChanges()
+            ? 'Des modifications ne sont pas encore enregistrées : utilisez « Réessayer » puis reprenez l’instantané.'
+            : null;
+        }}
       />
 
       <CategoryModal

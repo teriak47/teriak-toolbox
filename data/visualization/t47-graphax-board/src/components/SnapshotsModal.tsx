@@ -10,6 +10,11 @@ interface SnapshotsModalProps {
   onClose: () => void;
   /** Opens the project created from a snapshot */
   onOpenProject: (projectId: string) => void;
+  /**
+   * Saves the edits still waiting and waits for the saves in progress; returns a message when
+   * some changes are not saved (a snapshot would miss them), null otherwise
+   */
+  beforeSnapshot?: () => Promise<string | null>;
 }
 
 function formatDate(iso: string): string {
@@ -17,7 +22,13 @@ function formatDate(iso: string): string {
 }
 
 // Lists the project's snapshots (A7): take one now, restore one as a new project, delete one
-export function SnapshotsModal({ projectId, isOpen, onClose, onOpenProject }: SnapshotsModalProps) {
+export function SnapshotsModal({
+  projectId,
+  isOpen,
+  onClose,
+  onOpenProject,
+  beforeSnapshot,
+}: SnapshotsModalProps) {
   const [snapshots, setSnapshots] = useState<ProjectSnapshot[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -95,6 +106,8 @@ export function SnapshotsModal({ projectId, isOpen, onClose, onOpenProject }: Sn
             disabled={busy !== null}
             onClick={() =>
               void run('create', async () => {
+                const problem = await beforeSnapshot?.();
+                if (problem) throw new Error(problem);
                 await api.createSnapshot(projectId);
                 await load();
               })
