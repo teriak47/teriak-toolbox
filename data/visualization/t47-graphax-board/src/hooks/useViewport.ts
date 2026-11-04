@@ -108,6 +108,8 @@ export function useViewport(containerRef: RefObject<HTMLDivElement | null>) {
     if (!el) return;
 
     const onWheel = (e: WheelEvent) => {
+      // Panels drawn over the canvas (e.g. the category menu) scroll normally
+      if (e.target instanceof Element && e.target.closest('[data-canvas-scrollable]')) return;
       e.preventDefault();
       const rect = el.getBoundingClientRect();
       const mx = e.clientX - rect.left;

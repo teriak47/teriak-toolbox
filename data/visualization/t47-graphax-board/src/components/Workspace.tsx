@@ -18,6 +18,7 @@ import {
   Plus,
   Search,
   X,
+  GripVertical,
 } from 'lucide-react';
 import type {
   Category,
@@ -29,7 +30,11 @@ import type {
 } from '@shared/types';
 import { api, type CategoryInput } from '@/api/client';
 import { GraphCanvas, type GraphCanvasHandle } from '@/components/GraphCanvas';
-import { INSPECTOR_SAVE_DELAY_MS, InspectorSidebar } from '@/components/InspectorSidebar';
+import {
+  INSPECTOR_SAVE_DELAY_MS,
+  InspectorSidebar,
+  type TakePendingNodeEdit,
+} from '@/components/InspectorSidebar';
 import { downloadProjectExport } from '@/lib/exportProject';
 import { useSaveQueue } from '@/hooks/useSaveQueue';
 import {
@@ -41,7 +46,7 @@ import {
 import { CategoryModal } from '@/components/CategoryModal';
 import { getCategoryIcon } from '@/lib/icons';
 import { computeConstellationLayout } from '@/lib/forceLayout';
-import { cn } from '@/lib/utils';
+import { cn, moveItem } from '@/lib/utils';
 import { AppFooter } from '@/components/AppFooter';
 import logoWhite from '@/ds/assets/logo-white.svg';
 
@@ -56,10 +61,14 @@ interface WorkspaceProps {
 
 export function Workspace({ projectId, onBack }: WorkspaceProps) {
   const canvasRef = useRef<GraphCanvasHandle>(null);
+  // Lets a change made on the canvas take the inspector's unsaved edits (see InspectorSidebar)
+  const takePendingEditRef = useRef<TakePendingNodeEdit | null>(null);
 
   // Core domain state
   const [project, setProject] = useState<Project | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
+  const categoriesRef = useRef(categories);
+  categoriesRef.current = categories;
   const [entities, setEntities] = useState<GraphNode[]>([]);
   const [relations, setRelations] = useState<GraphEdge[]>([]);
   const [loading, setLoading] = useState(true);
@@ -225,6 +234,9 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
       return false;
     });
   }, [entities, searchQuery, categoryMap]);
+
+  // Category being dragged in the sidebar, and the row it is over
+  const [dragCategory, setDragCategory] = useState<{ from: number; over: number } | null>(null);
 
   // Keys used in the project, offered when editing a category's default keys
   const projectMetadataKeys = useMemo(
@@ -464,6 +476,65 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
       );
     },
     [runSave]
+  );
+
+  // Category picked on the canvas (menu or number key): the node also gets the new
+  // category's missing default keys, as when the category is changed in the inspector
+  const handleChangeNodeCategory = useCallback(
+    (nodeId: string, categoryId: string | null) => {
+      const node = entities.find((n) => n.id === nodeId);
+      if (!node) return;
+      // Edits typed in the inspector and not saved yet go in this request, so its delayed
+      // save cannot replace the default keys added here
+      const pending = takePendingEditRef.current?.(nodeId) ?? {};
+      const base = pending.metadata ?? node.metadata ?? {};
+      const cat = categories.find((c) => c.id === categoryId);
+      const metadata = withCategoryKeys(cat, base);
+      const added = Object.keys(metadata).length !== Object.keys(base).length;
+      void handleUpdateNode(nodeId, {
+        ...pending,
+        categoryId,
+        ...(added || pending.metadata ? { metadata } : {}),
+      });
+    },
+    [entities, categories, handleUpdateNode]
+  );
+
+  // New category order from the sidebar (drag and drop or arrow keys)
+  // Category order: the latest wanted order, and a queue so saves never overlap. Each save
+  // sends the latest order. The order is already shown, so the answer is not applied: its
+  // category objects could be older than a category created or edited meanwhile.
+  const categoryOrderRef = useRef<{ ids: string[]; version: number } | null>(null);
+  const categoryOrderVersionRef = useRef(0);
+  const categoryOrderQueueRef = useRef<Promise<unknown>>(Promise.resolve());
+
+  const handleReorderCategories = useCallback(
+    async (from: number, to: number) => {
+      if (from === to) return;
+      const next = moveItem(categories, from, to);
+      setCategories(next);
+      categoryOrderVersionRef.current += 1;
+      categoryOrderRef.current = { ids: next.map((c) => c.id), version: categoryOrderVersionRef.current };
+      await runSave(
+        () => {
+          const op = categoryOrderQueueRef.current.then(async () => {
+            const wanted = categoryOrderRef.current;
+            if (!wanted) return; // already saved by an earlier queued save
+            // A category deleted since the order was asked is left out (the API refuses it)
+            const existing = new Set(categoriesRef.current.map((c) => c.id));
+            await api.reorderCategories(
+              projectId,
+              wanted.ids.filter((id) => existing.has(id))
+            );
+            if (categoryOrderRef.current?.version === wanted.version) categoryOrderRef.current = null;
+          });
+          categoryOrderQueueRef.current = op.catch(() => undefined);
+          return op;
+        },
+        { retryKey: 'category-order' }
+      );
+    },
+    [categories, projectId, runSave]
   );
 
   const handleDeleteNode = useCallback(async (nodeId: string) => {
@@ -1102,19 +1173,60 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
                 )}
 
                 <div className="space-y-1">
-                  {categories.map((cat) => {
+                  {categories.map((cat, index) => {
                     const Icon = getCategoryIcon(cat.icon);
                     const hidden = hiddenCategoryIds.has(cat.id);
                     const count = categoryCounts.get(cat.id) ?? 0;
+                    const isDropTarget =
+                      dragCategory !== null && dragCategory.over === index && dragCategory.from !== index;
 
                     return (
                       <div
                         key={cat.id}
+                        draggable
+                        onDragStart={(e) => {
+                          e.dataTransfer.effectAllowed = 'move';
+                          e.dataTransfer.setData('text/plain', cat.id);
+                          setDragCategory({ from: index, over: index });
+                        }}
+                        onDragOver={(e) => {
+                          if (!dragCategory) return;
+                          e.preventDefault();
+                          if (dragCategory.over !== index) setDragCategory({ ...dragCategory, over: index });
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          if (dragCategory) void handleReorderCategories(dragCategory.from, index);
+                          setDragCategory(null);
+                        }}
+                        onDragEnd={() => setDragCategory(null)}
                         className={cn(
                           'group flex items-center justify-between gap-1.5 px-2 py-1.5 rounded-lg hover:bg-zinc-800/70 transition-colors',
-                          hidden && 'opacity-45'
+                          hidden && 'opacity-45',
+                          dragCategory?.from === index && 'opacity-40',
+                          isDropTarget &&
+                            (dragCategory.from > index
+                              ? 'shadow-[inset_0_2px_0_var(--accent-fort)]'
+                              : 'shadow-[inset_0_-2px_0_var(--accent-fort)]')
                         )}
                       >
+                        <button
+                          type="button"
+                          aria-label={`Déplacer « ${cat.name} » (flèches haut et bas)`}
+                          title="Glisser pour réordonner, ou flèches ↑ ↓"
+                          onKeyDown={(e) => {
+                            if (e.key === 'ArrowUp' && index > 0) {
+                              e.preventDefault();
+                              void handleReorderCategories(index, index - 1);
+                            } else if (e.key === 'ArrowDown' && index < categories.length - 1) {
+                              e.preventDefault();
+                              void handleReorderCategories(index, index + 1);
+                            }
+                          }}
+                          className="-ml-1 p-0.5 rounded text-zinc-600 hover:text-zinc-300 cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
+                        >
+                          <GripVertical className="w-3 h-3" />
+                        </button>
                         <button
                           type="button"
                           onClick={() => toggleCategoryVisibility(cat.id)}
@@ -1204,6 +1316,9 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
               <div>
                 <strong className="text-zinc-300">Double-clic lien :</strong> éditer le label
               </div>
+              <div>
+                <strong className="text-zinc-300">Clic droit nœud :</strong> changer de catégorie
+              </div>
             </div>
           </aside>
         )}
@@ -1236,6 +1351,7 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
             onDeleteNode={handleDeleteNode}
             onDeleteEdge={handleDeleteEdge}
             onOrganizeConstellation={handleOrganizeConstellation}
+            onChangeNodeCategory={handleChangeNodeCategory}
           />
         </div>
 
@@ -1245,6 +1361,7 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
           selectedEdge={selectedEdge}
           allNodes={entities}
           categories={categories}
+          takePendingEditRef={takePendingEditRef}
           onClose={() => {
             setSelectedNodeId(null);
             setSelectedEdgeId(null);
@@ -1270,6 +1387,11 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
         onSave={handleSaveCategory}
         onDelete={handleDeleteCategory}
         knownKeys={projectMetadataKeys}
+        usedBy={
+          editingCategory
+            ? entities.filter((n) => n.categoryId === editingCategory.id).map((n) => n.title)
+            : []
+        }
       />
     </div>
   );

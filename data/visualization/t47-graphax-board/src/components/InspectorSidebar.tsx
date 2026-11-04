@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
 import {
   ArrowLeftRight,
   ArrowRight,
@@ -54,7 +54,12 @@ interface InspectorSidebarProps {
   ) => Promise<void>;
   onDeleteEdge: (edgeId: string) => Promise<void>;
   onOpenNewCategory: () => void;
+  /** Filled by the inspector: hands over (and cancels) the typed edits of a node not saved yet */
+  takePendingEditRef?: MutableRefObject<TakePendingNodeEdit | null>;
 }
+
+export type PendingNodeEdit = Partial<{ title: string; content: string; metadata: NodeMetadata }>;
+export type TakePendingNodeEdit = (nodeId: string) => PendingNodeEdit;
 
 const MarkdownPreview = lazy(() => import('@/components/MarkdownPreview'));
 
@@ -68,6 +73,15 @@ const METADATA_PRESETS: Array<{ key: string; defaultVal: string }> = [
   { key: 'Source', defaultVal: '' },
   { key: 'IP / Hash', defaultVal: '' },
 ];
+
+function rowsToMetadata(rows: Array<{ id: string; key: string; value: string }>): NodeMetadata {
+  const out: NodeMetadata = {};
+  for (const r of rows) {
+    const k = r.key.trim();
+    if (k) out[k] = r.value;
+  }
+  return out;
+}
 
 const EDGE_LABEL_SUGGESTIONS = [
   'communique avec',
@@ -89,6 +103,7 @@ export function InspectorSidebar({
   onUpdateEdge,
   onDeleteEdge,
   onOpenNewCategory,
+  takePendingEditRef,
 }: InspectorSidebarProps) {
   // Node draft state
   const [title, setTitle] = useState('');
@@ -127,6 +142,20 @@ export function InspectorSidebar({
     patch: Partial<{ title: string; content: string; metadata: NodeMetadata }>;
   } | null>(null);
   const nodeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // A change made elsewhere (category picked on the canvas) takes the edits still waiting here
+  // and sends them in its own request, so the delayed save cannot overwrite it afterwards
+  const takePendingNodeEdit: TakePendingNodeEdit = (nodeId) => {
+    if (pendingNodeFlushRef.current?.nodeId !== nodeId) return {};
+    if (nodeTimerRef.current) {
+      clearTimeout(nodeTimerRef.current);
+      nodeTimerRef.current = null;
+    }
+    const { patch } = pendingNodeFlushRef.current;
+    pendingNodeFlushRef.current = null;
+    return patch;
+  };
+  if (takePendingEditRef) takePendingEditRef.current = takePendingNodeEdit;
 
   const pendingEdgeFlushRef = useRef<{
     edgeId: string;
@@ -179,6 +208,23 @@ export function InspectorSidebar({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedNode?.id]);
+
+  // Follow changes made outside the inspector (category picked on the canvas, which can also
+  // add default keys), unless an edit typed here is still waiting to be saved
+  useEffect(() => {
+    if (!selectedNode || pendingNodeFlushRef.current?.nodeId === selectedNode.id) return;
+    setCategoryId(selectedNode.categoryId);
+    const incoming = selectedNode.metadata ?? {};
+    setMetaRows((rows) => {
+      const current = rowsToMetadata(rows);
+      const same =
+        Object.keys(current).length === Object.keys(incoming).length &&
+        Object.entries(incoming).every(([k, v]) => current[k] === v);
+      if (same) return rows;
+      return Object.entries(incoming).map(([k, v], idx) => ({ id: `${idx}-${k}`, key: k, value: v }));
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedNode?.categoryId, selectedNode?.metadata]);
 
   // Sync when selectedEdge ID changes (or external inline label commit updates label)
   useEffect(() => {
@@ -245,17 +291,6 @@ export function InspectorSidebar({
       pendingEdgeFlushRef.current?.edgeId === edgeId ? pendingEdgeFlushRef.current.patch : {};
     pendingEdgeFlushRef.current = null;
     void onUpdateEdge(edgeId, { ...pending, reverse: true });
-  };
-
-  const rowsToMetadata = (
-    rows: Array<{ id: string; key: string; value: string }>
-  ): NodeMetadata => {
-    const out: NodeMetadata = {};
-    for (const r of rows) {
-      const k = r.key.trim();
-      if (k) out[k] = r.value;
-    }
-    return out;
   };
 
   const updateMetaRows = (nextRows: Array<{ id: string; key: string; value: string }>) => {

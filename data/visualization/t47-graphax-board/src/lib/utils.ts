@@ -44,3 +44,12 @@ export function slugify(name: string): string {
 export function exportFileName(projectName: string, date = new Date()): string {
   return `graphax-${slugify(projectName) || 'projet'}-${date.toISOString().slice(0, 10)}.json`;
 }
+
+// Copy of a list with the item at `from` moved to index `to` (indexes are clamped)
+export function moveItem<T>(items: readonly T[], from: number, to: number): T[] {
+  const next = [...items];
+  if (from < 0 || from >= next.length) return next;
+  const [item] = next.splice(from, 1);
+  next.splice(Math.max(0, Math.min(to, next.length)), 0, item);
+  return next;
+}
