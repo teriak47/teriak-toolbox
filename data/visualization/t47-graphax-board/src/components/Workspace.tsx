@@ -33,6 +33,7 @@ import { api } from '@/api/client';
 import { GraphCanvas, type GraphCanvasHandle } from '@/components/GraphCanvas';
 import { INSPECTOR_SAVE_DELAY_MS, InspectorSidebar } from '@/components/InspectorSidebar';
 import { downloadProjectExport } from '@/lib/exportProject';
+import { useSaveQueue } from '@/hooks/useSaveQueue';
 import { CategoryModal } from '@/components/CategoryModal';
 import { getCategoryIcon } from '@/lib/icons';
 import { computeConstellationLayout } from '@/lib/forceLayout';
@@ -59,13 +60,20 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
   const [relations, setRelations] = useState<GraphEdge[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [saveState, setSaveState] = useState<'saved' | 'saving' | 'error'>('saved');
-  const [saveError, setSaveError] = useState<string | null>(null);
+  const {
+    saveState,
+    saveError,
+    runSave,
+    retryFailedSaves,
+    dismissSaveError,
+    keepForRetry,
+    hasRetryableSaves,
+    hasUnsavedChanges,
+    waitForIdle,
+  } = useSaveQueue();
 
-  // Save tracking: in-flight count, failed operations kept for retry, and a per-edge
-  // queue so a reversal can never overtake a label edit on the same link
-  const inFlightSavesRef = useRef(0);
-  const failedSavesRef = useRef(new Map<string, () => Promise<unknown>>());
+  // Unsaved edits kept per node, and a per-edge queue so a reversal can never
+  // overtake a label edit on the same link
   const nodePatchesRef = useRef(new Map<string, Record<string, unknown>>());
   // Unsaved field edits per link; a retry always sends the latest merged values
   const edgePatchesRef = useRef(new Map<string, Record<string, unknown>>());
@@ -76,58 +84,6 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
   const positionQueueRef = useRef<Promise<unknown>>(Promise.resolve());
   const edgeQueueRef = useRef<Promise<unknown>>(Promise.resolve());
   const edgeAliasRef = useRef(new Map<string, string>());
-
-  const unretryableErrorRef = useRef(false);
-
-  const settleSaveState = useCallback(() => {
-    if (inFlightSavesRef.current > 0) return;
-    const failed = failedSavesRef.current.size > 0 || unretryableErrorRef.current;
-    setSaveState(failed ? 'error' : 'saved');
-    if (!failed) setSaveError(null);
-  }, []);
-
-  // Runs one persistence call. A failure is reported, never hidden as "saved".
-  // `retryKey` keeps the operation so "Réessayer" can replay it; `rethrow` lets
-  // a caller (e.g. a modal) stay open on failure.
-  const runSave = useCallback(
-    async <T,>(
-      op: () => Promise<T>,
-      opts: { retryKey?: string; rethrow?: boolean } = {}
-    ): Promise<T | undefined> => {
-      inFlightSavesRef.current += 1;
-      setSaveState('saving');
-      try {
-        const result = await op();
-        if (opts.retryKey) failedSavesRef.current.delete(opts.retryKey);
-        return result;
-      } catch (err) {
-        console.error('[Graphax] Enregistrement impossible :', err);
-        if (opts.retryKey) failedSavesRef.current.set(opts.retryKey, op);
-        else unretryableErrorRef.current = true;
-        setSaveError(err instanceof Error ? err.message : 'Erreur inconnue.');
-        if (opts.rethrow) throw err;
-        return undefined;
-      } finally {
-        inFlightSavesRef.current -= 1;
-        settleSaveState();
-      }
-    },
-    [settleSaveState]
-  );
-
-  const retryFailedSaves = useCallback(async () => {
-    const pending = [...failedSavesRef.current.entries()];
-    unretryableErrorRef.current = false;
-    for (const [retryKey, op] of pending) {
-      await runSave(op, { retryKey });
-    }
-    settleSaveState();
-  }, [runSave, settleSaveState]);
-
-  const dismissSaveError = useCallback(() => {
-    unretryableErrorRef.current = false;
-    settleSaveState();
-  }, [settleSaveState]);
 
   // Serialize operations on links; ids replaced by a reversal are mapped to the new id
   const enqueueEdgeOp = useCallback(<T,>(op: () => Promise<T>): Promise<T> => {
@@ -141,14 +97,6 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
     while (edgeAliasRef.current.has(current)) current = edgeAliasRef.current.get(current)!;
     return current;
   }, []);
-
-  // Warn before closing the tab while changes are unsaved
-  useEffect(() => {
-    if (saveState === 'saved') return;
-    const onBeforeUnload = (e: BeforeUnloadEvent) => e.preventDefault();
-    window.addEventListener('beforeunload', onBeforeUnload);
-    return () => window.removeEventListener('beforeunload', onBeforeUnload);
-  }, [saveState]);
 
   // Selection & inline editing state
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -573,8 +521,7 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
       );
       // A reversal is not replayed (it would flip the link twice), but its fields are
       if (!reversed && edgePatchesRef.current.has(startId)) {
-        failedSavesRef.current.set(`edge:${startId}`, () => edgeFieldsOp(startId));
-        setSaveState('error');
+        keepForRetry(`edge:${startId}`, () => edgeFieldsOp(startId));
       }
     },
     [runSave, enqueueEdgeOp, resolveEdgeId, queueEdgeFields, edgeFieldsOp]
@@ -680,14 +627,8 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
     setExportNotice(null);
     try {
       await new Promise((r) => setTimeout(r, INSPECTOR_SAVE_DELAY_MS + 50));
-      const deadline = Date.now() + 10_000;
-      while (inFlightSavesRef.current > 0 && Date.now() < deadline) {
-        await new Promise((r) => setTimeout(r, 50));
-      }
-      const unsaved =
-        inFlightSavesRef.current > 0 ||
-        failedSavesRef.current.size > 0 ||
-        unretryableErrorRef.current;
+      await waitForIdle(10_000);
+      const unsaved = hasUnsavedChanges();
 
       await downloadProjectExport(project.id, project.name);
       if (unsaved) {
@@ -852,7 +793,7 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
                 >
                   Échec de l'enregistrement
                 </span>
-                {failedSavesRef.current.size > 0 && (
+                {hasRetryableSaves() && (
                   <button
                     type="button"
                     onClick={() => void retryFailedSaves()}
