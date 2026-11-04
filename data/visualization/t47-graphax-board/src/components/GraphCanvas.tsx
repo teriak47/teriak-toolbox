@@ -789,8 +789,8 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
               const isIncidentSpotlight = spotlightEdges?.has(edge.id) ?? false;
               const labelText = String(edge.label ?? '');
 
-              // Links of the selected node: outgoing in the accent, incoming in the warning
-              // colour, so the direction of every relation reads at a glance
+              // Links of the selected node: outgoing and incoming in two colours of the same
+              // family, so the direction of every relation reads at a glance
               const relation = !selectedNodeId
                 ? null
                 : edge.sourceNodeId === selectedNodeId
@@ -814,9 +814,9 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
               const strokeColor = isSelected
                 ? 'var(--accent-fort)'
                 : relation === 'incoming'
-                  ? 'var(--avert)'
+                  ? 'var(--lien-entrant)'
                   : relation !== null
-                    ? 'var(--accent-fort)'
+                    ? 'var(--lien-sortant)'
                     : isIncidentSpotlight || isHovered
                       ? 'var(--accent)'
                       : 'var(--filet-fort)';
@@ -1310,11 +1310,11 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
             className="pointer-events-none absolute top-3 left-3 flex items-center gap-3 px-3 py-1.5 bg-zinc-900/90 border border-filet text-xs text-zinc-300 z-10"
           >
             <span className="flex items-center gap-1.5">
-              <span className="inline-block w-4 h-0.5" style={{ background: 'var(--accent-fort)' }} />
+              <span className="inline-block w-4 h-0.5" style={{ background: 'var(--lien-sortant)' }} />
               Sortants ({selectedDirections.outgoing})
             </span>
             <span className="flex items-center gap-1.5">
-              <span className="inline-block w-4 h-0.5" style={{ background: 'var(--avert)' }} />
+              <span className="inline-block w-4 h-0.5" style={{ background: 'var(--lien-entrant)' }} />
               Entrants ({selectedDirections.incoming})
             </span>
           </div>

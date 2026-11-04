@@ -139,3 +139,19 @@
     --code-valeur: #161310; --code-commentaire: #5a5249;
   }
 }
+
+/* Link direction on the graph: outgoing links use the accent; incoming links use a cold
+   lavender with the same lightness and chroma as the blue, so both read as one family. */
+:root, .s21-sombre {
+  --lien-sortant: var(--bleu-clair);
+  --lien-entrant: oklch(0.800 0.100 300);
+}
+:root[data-theme="clair"], .s21-clair {
+  --lien-sortant: oklch(0.48 0.11 228);
+  --lien-entrant: oklch(0.48 0.11 300);
+}
+@media print {
+  :root, :root[data-theme="clair"], .s21-clair, .s21-sombre {
+    --lien-sortant: #161310; --lien-entrant: #5a5249;
+  }
+}
