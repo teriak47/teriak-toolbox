@@ -23,7 +23,7 @@ import type { Category, CategoryShape, GraphEdge, GraphNode } from '@shared/type
 import { getCategoryIcon } from '@/lib/icons';
 import { cn } from '@/lib/utils';
 import { useViewport } from '@/hooks/useViewport';
-import { computeEdgeGeometry } from '@/lib/edgeGeometry';
+import { computeEdgeGeometry, edgeLabelHalfSize } from '@/lib/edgeGeometry';
 import { usePhysicsSimulation } from '@/hooks/usePhysicsSimulation';
 import {
   boxBoundary,
@@ -650,6 +650,20 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
       [renderedEdges, editingEdgeId]
     );
 
+    // Directed links leaving and reaching the selected node (for the legend)
+    const selectedDirections = useMemo(() => {
+      let outgoing = 0;
+      let incoming = 0;
+      if (selectedNodeId) {
+        for (const e of edges) {
+          if (!e.directed) continue;
+          if (e.sourceNodeId === selectedNodeId) outgoing++;
+          else if (e.targetNodeId === selectedNodeId) incoming++;
+        }
+      }
+      return { outgoing, incoming };
+    }, [edges, selectedNodeId]);
+
     const hasSearch = (searchQuery ?? '').trim().length > 0;
     const spotlightNodeId = hoveredNodeId;
     const spotlightNeighbors = spotlightNodeId ? (neighborMap.get(spotlightNodeId) ?? null) : null;
@@ -768,12 +782,28 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
 
           <g transform={`translate(${viewport.x}, ${viewport.y}) scale(${viewport.zoom})`}>
             {/* 1. EDGES LAYER */}
-            {renderedEdges.map(({ edge, pathD, mx, my, arrowPoints }) => {
+            {renderedEdges.map(({ edge, pathD, mx, my, arrowPoints, midArrowPoints }) => {
               const isSelected = edge.id === selectedEdgeId;
               const isHovered = edge.id === hoveredEdgeId;
               const isDashed = edge.style === 'dashed';
               const isIncidentSpotlight = spotlightEdges?.has(edge.id) ?? false;
               const labelText = String(edge.label ?? '');
+
+              // Links of the selected node: outgoing and incoming in two colours of the same
+              // family, so the direction of every relation reads at a glance
+              const relation = !selectedNodeId
+                ? null
+                : edge.sourceNodeId === selectedNodeId
+                  ? edge.directed
+                    ? 'outgoing'
+                    : 'linked'
+                  : edge.targetNodeId === selectedNodeId
+                    ? edge.directed
+                      ? 'incoming'
+                      : 'linked'
+                    : null;
+              // Moving dashes show the direction of the link being looked at
+              const showFlow = edge.directed && (isSelected || isHovered || relation !== null);
 
               const isDimmed =
                 (spotlightEdges !== null && !isIncidentSpotlight && !isSelected) ||
@@ -781,14 +811,30 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
                   !searchMatchIds.has(edge.sourceNodeId) &&
                   !searchMatchIds.has(edge.targetNodeId));
 
-              const strokeColor = isSelected
-                ? 'var(--accent-fort)'
-                : isIncidentSpotlight || isHovered
-                  ? 'var(--accent)'
-                  : 'var(--filet-fort)';
+              // A custom colour stays visible when the link is selected or hovered; the
+              // direction colours of a selected node take over, then fall back to it
+              const customColor = edge.color ?? null;
+              const strokeColor =
+                relation === 'incoming'
+                  ? 'var(--lien-entrant)'
+                  : relation !== null
+                    ? 'var(--lien-sortant)'
+                    : customColor
+                      ? customColor
+                      : isSelected
+                        ? 'var(--accent-fort)'
+                        : isIncidentSpotlight || isHovered
+                          ? 'var(--accent)'
+                          : 'var(--filet-fort)';
 
               const strokeWidth =
-                isSelected || isHovered ? 2.4 : isIncidentSpotlight ? 2.0 : 1.45;
+                isSelected || isHovered
+                  ? 2.4
+                  : relation !== null
+                    ? 2.2
+                    : isIncidentSpotlight
+                      ? 2.0
+                      : 1.45;
 
               return (
                 <g
@@ -828,8 +874,30 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
                     strokeLinecap="butt"
                   />
 
-                  {/* Perimeter-aligned Directional Arrowhead */}
-                  {edge.directed && <polygon points={arrowPoints} fill={strokeColor} />}
+                  {/* Moving dashes along the direction of the link */}
+                  {showFlow && (
+                    <path
+                      d={pathD}
+                      fill="none"
+                      stroke="var(--surface-puits)"
+                      strokeWidth={Math.max(1, strokeWidth - 1)}
+                      className="graphax-edge-flow pointer-events-none"
+                    />
+                  )}
+
+                  {/* Direction: arrow along the link and arrowhead at the target */}
+                  {edge.directed && (
+                    <>
+                      {midArrowPoints && (
+                        <polygon
+                          points={midArrowPoints}
+                          fill={strokeColor}
+                          className="pointer-events-none"
+                        />
+                      )}
+                      <polygon points={arrowPoints} fill={strokeColor} />
+                    </>
+                  )}
 
                   {/* Clean Midpoint Edge Label */}
                   {editingEdgeId !== edge.id && (labelText || isSelected || isHovered) && (
@@ -837,12 +905,16 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
                       {labelText ? (
                         <>
                           <rect
-                            x={-(labelText.length * 3.7 + 10)}
-                            y={-10.5}
-                            width={labelText.length * 7.4 + 20}
-                            height={21}
+                            x={-edgeLabelHalfSize(labelText).halfWidth}
+                            y={-edgeLabelHalfSize(labelText).halfHeight}
+                            width={edgeLabelHalfSize(labelText).halfWidth * 2}
+                            height={edgeLabelHalfSize(labelText).halfHeight * 2}
                             fill="var(--surface-puits)"
-                            stroke={isSelected ? 'var(--accent-fort)' : 'var(--filet)'}
+                            stroke={
+                              isSelected
+                                ? 'var(--accent-fort)'
+                                : (customColor ?? 'var(--filet)')
+                            }
                             strokeWidth={1}
                             strokeDasharray={isDashed ? '3 2' : undefined}
                           />
@@ -860,10 +932,10 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
                       ) : (
                         <g>
                           <rect
-                            x={-34}
-                            y={-9}
-                            width={68}
-                            height={18}
+                            x={-edgeLabelHalfSize('').halfWidth}
+                            y={-edgeLabelHalfSize('').halfHeight}
+                            width={edgeLabelHalfSize('').halfWidth * 2}
+                            height={edgeLabelHalfSize('').halfHeight * 2}
                             fill="var(--surface-carte)"
                             stroke="var(--filet-fort)"
                             strokeWidth={1}
@@ -1239,6 +1311,23 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
               {linkingWire
                 ? 'Glissez ou cliquez sur un nœud cible (ou lâchez dans le vide pour créer un nœud relié)'
                 : 'Mode Liaison actif : cliquez ou glissez d’un nœud A vers un nœud B (Échap pour quitter)'}
+            </span>
+          </div>
+        )}
+
+        {/* ==================== DIRECTION LEGEND (SELECTED NODE) ==================== */}
+        {selectedDirections.outgoing + selectedDirections.incoming > 0 && (
+          <div
+            aria-label="Sens des liens du nœud sélectionné"
+            className="pointer-events-none absolute top-3 left-3 flex items-center gap-3 px-3 py-1.5 bg-zinc-900/90 border border-filet text-xs text-zinc-300 z-10"
+          >
+            <span className="flex items-center gap-1.5">
+              <span className="inline-block w-4 h-0.5" style={{ background: 'var(--lien-sortant)' }} />
+              Sortants ({selectedDirections.outgoing})
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="inline-block w-4 h-0.5" style={{ background: 'var(--lien-entrant)' }} />
+              Entrants ({selectedDirections.incoming})
             </span>
           </div>
         )}

@@ -9,7 +9,7 @@ import {
   clampFinite,
   sanitizeViewport,
 } from '../src/lib/canvasGeometry.ts';
-import { computeEdgeGeometry } from '../src/lib/edgeGeometry.ts';
+import { computeEdgeGeometry, edgeLabelHalfSize } from '../src/lib/edgeGeometry.ts';
 
 const now = '2026-11-04T00:00:00.000Z';
 
@@ -57,6 +57,49 @@ describe('edge geometry', () => {
     assert.ok(Number(tx) < 182 && Number(tx) > 170, `end ${tx}`);
     assert.equal(geo.my, 0);
     assert.equal(geo.arrowPoints.split(' ').length, 3);
+  });
+
+  it('places the mid arrow along the link, pointing to the target, away from the label', () => {
+    const tips = (points: string) => points.split(' ').map((pt) => pt.split(',').map(Number));
+    const [plain] = computeEdgeGeometry([node('a', 0, 0), node('b', 200, 0)], [edge('e', 'a', 'b')], pos, radius);
+    const [tip, base1, base2] = tips(plain.midArrowPoints);
+    assert.ok(tip[0] > base1[0] && tip[0] > base2[0], 'points towards the target');
+    // Unlabelled links show a "+ label" placeholder in the middle on hover: stay clear of it
+    const placeholder = edgeLabelHalfSize('');
+    for (const [x, y] of tips(plain.midArrowPoints)) {
+      assert.ok(
+        !(Math.abs(x - plain.mx) < placeholder.halfWidth && Math.abs(y - plain.my) < placeholder.halfHeight),
+        `arrow point ${x},${y} is under the "+ label" placeholder`
+      );
+    }
+
+    // The arrow must stay clear of the label box, for short and long labels and slopes
+    let checked = 0;
+    for (const [label, bx, by] of [['', 200, 0], ['relation', 200, 0], ['connaît', 200, 0], ['communique avec', 300, 0], ['lien', 160, 120], ['', 160, 120]] as const) {
+      const [geo] = computeEdgeGeometry([node('a', 0, 0), node('b', bx, by)], [{ ...edge('e', 'a', 'b'), label }], pos, () => 30);
+      if (!geo.midArrowPoints) continue;
+      checked++;
+      const { halfWidth, halfHeight } = edgeLabelHalfSize(label);
+      for (const [x, y] of tips(geo.midArrowPoints)) {
+        const inside = Math.abs(x - geo.mx) < halfWidth && Math.abs(y - geo.my) < halfHeight;
+        assert.ok(!inside, `arrow point ${x},${y} is under the label "${label}"`);
+      }
+    }
+
+    assert.ok(checked >= 5, `only ${checked} labelled links had a mid arrow`);
+
+    // No room before the label: the mid arrow is skipped rather than hidden
+    const [cramped] = computeEdgeGeometry(
+      [node('a', 0, 0), node('b', 150, 0)],
+      [{ ...edge('e', 'a', 'b'), label: 'une relation au libellé très long' }],
+      pos,
+      radius
+    );
+    assert.equal(cramped.midArrowPoints, '');
+
+    const [reversed] = computeEdgeGeometry([node('a', 0, 0), node('b', 200, 0)], [edge('e', 'b', 'a')], pos, radius);
+    const [rtip, rbase] = tips(reversed.midArrowPoints);
+    assert.ok(rtip[0] < rbase[0], 'follows the link direction');
   });
 
   it('bends parallel links to opposite sides', () => {
