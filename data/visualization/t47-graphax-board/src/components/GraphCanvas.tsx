@@ -572,6 +572,8 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
         }
 
         if (pendingDelete) {
+          // Enter on a focused button (e.g. "Annuler") activates that button, not the shortcut
+          if (e.key === 'Enter' && tag === 'BUTTON') return;
           if (e.key === 'Enter' || e.key === 'Delete' || e.key === 'Backspace') {
             e.preventDefault();
             confirmPendingDelete();
