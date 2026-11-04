@@ -27,6 +27,8 @@ export class UndoHistory {
   private past: HistoryEntry[] = [];
   private future: HistoryEntry[] = [];
   private applying = false;
+  /** Replays whose outcome is not known yet; undo and redo wait for them */
+  private pending = 0;
   private readonly limit: number;
   private readonly mergeWindowMs: number;
   /** Called when a failed replay puts an entry back, so the buttons can be refreshed */
@@ -42,12 +44,17 @@ export class UndoHistory {
     return this.applying;
   }
 
+  /** True while an undo or redo is still being saved */
+  get isBusy(): boolean {
+    return this.pending > 0;
+  }
+
   get canUndo(): boolean {
-    return this.past.length > 0;
+    return this.pending === 0 && this.past.length > 0;
   }
 
   get canRedo(): boolean {
-    return this.future.length > 0;
+    return this.pending === 0 && this.future.length > 0;
   }
 
   get undoLabel(): string | null {
@@ -78,7 +85,10 @@ export class UndoHistory {
     if (this.past.length > this.limit) this.past.shift();
   }
 
+  // While a replay is being saved, undo and redo do nothing: the next step depends on
+  // whether that one worked
   undo(): string | null {
+    if (this.pending > 0) return null;
     const entry = this.past.pop();
     if (!entry) return null;
     this.future.push(entry);
@@ -87,6 +97,7 @@ export class UndoHistory {
   }
 
   redo(): string | null {
+    if (this.pending > 0) return null;
     const popped = this.future.pop();
     if (!popped) return null;
     // A redone entry is not merged with the next action
@@ -126,7 +137,13 @@ export class UndoHistory {
     };
     if (result === false) back();
     else if (result instanceof Promise) {
-      result.then((ok) => ok === false && back(), back);
+      this.pending += 1;
+      const done = (ok: unknown) => {
+        this.pending -= 1;
+        if (ok === false) back();
+        else this.onChange?.();
+      };
+      result.then(done, () => done(false));
     }
   }
 }

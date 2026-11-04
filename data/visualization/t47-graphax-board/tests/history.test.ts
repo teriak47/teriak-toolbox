@@ -87,7 +87,7 @@ describe('undo history', () => {
     let ok = false;
     history.record({ label: 'inversion', undo: () => Promise.resolve(ok), redo: () => true });
     assert.equal(history.undo(), 'inversion');
-    assert.equal(history.canRedo, true);
+    assert.equal(history.isBusy, true, 'nothing else until the undo is saved');
     await new Promise((r) => setTimeout(r, 0));
     assert.equal(history.canUndo, true, 'failed undo goes back to the undo list');
     assert.equal(history.canRedo, false);
@@ -104,5 +104,26 @@ describe('undo history', () => {
     await new Promise((r) => setTimeout(r, 0));
     assert.equal(history.redoLabel, 'autre');
     assert.equal(history.undoLabel, null);
+  });
+
+  it('waits for a replay being saved before the next undo or redo', async () => {
+    const history = new UndoHistory();
+    let finish: (ok: boolean) => void = () => {};
+    let redone = 0;
+    history.record({
+      label: 'inversion',
+      undo: () => new Promise<boolean>((r) => (finish = r)),
+      redo: () => void redone++,
+    });
+    history.undo();
+    assert.equal(history.isBusy, true);
+    assert.equal(history.canRedo, false);
+    assert.equal(history.redo(), null, 'redo is ignored while the undo is saved');
+    assert.equal(redone, 0);
+    finish(false);
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(history.isBusy, false);
+    assert.equal(history.undoLabel, 'inversion', 'the failed undo is back');
+    assert.equal(history.canRedo, false);
   });
 });
