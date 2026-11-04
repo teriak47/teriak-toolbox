@@ -22,6 +22,14 @@ export type CategoryInput = {
   cardKeys: string[];
 };
 
+// What undo sends to bring deleted records back
+export type RestoreSnapshot = {
+  categories?: Array<Category & { index: number }>;
+  nodes?: GraphNode[];
+  edges?: GraphEdge[];
+  assignments?: Array<{ categoryId: string; nodeIds: string[] }>;
+};
+
 async function request<T>(path: string, init?: RequestInit, retries = 3): Promise<T> {
   let res: Response;
   try {
@@ -216,6 +224,14 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify(input),
     }),
+
+  // Undo: brings back deleted records with their ids (categories at their former index,
+  // nodes with their links, and nodes given back the category they lost)
+  restore: (projectId: string, snapshot: RestoreSnapshot) =>
+    request<{ categories: Category[]; nodes: GraphNode[]; edges: GraphEdge[] }>(
+      `/api/projects/${projectId}/restore`,
+      { method: 'POST', body: JSON.stringify(snapshot) }
+    ),
 
   deleteEdge: (edgeId: string) =>
     request<{ deleted: boolean }>(`/api/edges/${edgeId}`, {

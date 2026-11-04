@@ -91,8 +91,8 @@ interface GraphCanvasProps {
     positions: Array<{ id: string; positionX: number; positionY: number }>
   ) => Promise<void>;
   onCommitEdgeLabel: (edgeId: string, label: string) => Promise<void>;
-  onDeleteNode: (nodeId: string) => Promise<void>;
-  onDeleteEdge: (edgeId: string) => Promise<void>;
+  onDeleteNode: (nodeId: string) => Promise<unknown>;
+  onDeleteEdge: (edgeId: string) => Promise<unknown>;
   onOrganizeConstellation: () => Promise<void>;
   /** Moves a node to another category (null: unclassified) */
   onChangeNodeCategory: (nodeId: string, categoryId: string | null) => void;

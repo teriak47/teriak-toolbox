@@ -30,7 +30,7 @@ import type {
   NodeMetadata,
   Project,
 } from '@shared/types';
-import { api, type CategoryInput } from '@/api/client';
+import { api, type CategoryInput, type RestoreSnapshot } from '@/api/client';
 import { GraphCanvas, type GraphCanvasHandle } from '@/components/GraphCanvas';
 import {
   INSPECTOR_SAVE_DELAY_MS,
@@ -85,6 +85,17 @@ interface HistoryActions {
   updateEdge: (edgeId: string, patch: EdgePatch) => Promise<boolean>;
   applyPositions: (positions: Positions) => void;
   reorderCategories: (ids: string[]) => Promise<void>;
+  // Each resolves to false when the server failed, so the history entry stays in place
+  deleteNode: (nodeId: string) => Promise<boolean>;
+  deleteEdge: (edgeId: string) => Promise<boolean>;
+  deleteCategory: (categoryId: string) => Promise<boolean>;
+  updateCategory: (categoryId: string, input: CategoryInput) => Promise<boolean>;
+  restore: (snapshot: RestoreSnapshot) => Promise<boolean>;
+}
+
+function categoryInput(category: Category): CategoryInput {
+  const { name, color, icon, shape, metadataKeys, cardKeys } = category;
+  return { name, color, icon, shape, metadataKeys, cardKeys };
 }
 
 // Labels shown in the undo / redo tooltips
@@ -176,6 +187,26 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
     let current = edgeId;
     while (edgeAliasRef.current.has(current)) current = edgeAliasRef.current.get(current)!;
     return current;
+  }, []);
+
+  // A link as it is now stored: a reversal saved after the copy was taken gave it a new id
+  // and swapped its ends (each alias is one reversal)
+  const currentEdgeState = useCallback((edge: GraphEdge): GraphEdge => {
+    let id = edge.id;
+    let flips = 0;
+    while (edgeAliasRef.current.has(id)) {
+      id = edgeAliasRef.current.get(id)!;
+      flips += 1;
+    }
+    if (flips % 2 === 0) return { ...edge, id };
+    return {
+      ...edge,
+      id,
+      sourceNodeId: edge.targetNodeId,
+      targetNodeId: edge.sourceNodeId,
+      sourceHandle: edge.targetHandle,
+      targetHandle: edge.sourceHandle,
+    };
   }, []);
 
   // Selection & inline editing state
@@ -320,6 +351,91 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
     [searchMatches]
   );
 
+  // ---- Creations and deletions in the history (A1.2) ----
+  // What undo needs to bring a record back, read from the current state
+  const nodeSnapshot = useCallback((nodeId: string): RestoreSnapshot | null => {
+    const node = entitiesRef.current.find((n) => n.id === nodeId);
+    if (!node) return null;
+    const edges = relationsRef.current.filter(
+      (e) => e.sourceNodeId === nodeId || e.targetNodeId === nodeId
+    );
+    return { nodes: [node], edges };
+  }, []);
+
+  const edgeSnapshot = useCallback(
+    (edgeId: string): RestoreSnapshot | null => {
+      const edge = relationsRef.current.find((e) => e.id === resolveEdgeId(edgeId));
+      return edge ? { edges: [edge] } : null;
+    },
+    [resolveEdgeId]
+  );
+
+  const categorySnapshot = useCallback((categoryId: string): RestoreSnapshot | null => {
+    const index = categoriesRef.current.findIndex((c) => c.id === categoryId);
+    if (index < 0) return null;
+    const nodeIds = entitiesRef.current.filter((n) => n.categoryId === categoryId).map((n) => n.id);
+    return {
+      categories: [{ ...categoriesRef.current[index], index }],
+      assignments: nodeIds.length > 0 ? [{ categoryId, nodeIds }] : [],
+    };
+  }, []);
+
+  // One entry for a record that a creation added or a deletion removed. Undoing a creation
+  // deletes the record, redoing it restores it (and the other way round for a deletion).
+  // The snapshot is taken again each time the record is removed, so edits made after an
+  // undo are not lost by the next one.
+  const recordPresence = useCallback(
+    (
+      label: string,
+      kind: 'created' | 'deleted',
+      initial: RestoreSnapshot,
+      take: () => RestoreSnapshot | null,
+      remove: () => Promise<unknown> | undefined
+    ) => {
+      let snapshot = initial;
+      const removeNow = async () => {
+        snapshot = take() ?? snapshot;
+        return (await remove()) !== false;
+      };
+      const restoreNow = () => actionsRef.current?.restore(snapshot);
+      recordHistory({
+        label,
+        undo: kind === 'created' ? removeNow : restoreNow,
+        redo: kind === 'created' ? restoreNow : removeNow,
+      });
+    },
+    [recordHistory]
+  );
+
+  // Brings deleted records back with their ids. Shown once the server has stored them;
+  // it runs in the same queue as deletions, so it always comes after the one it undoes.
+  const restoreSnapshot = useCallback(
+    async (snapshot: RestoreSnapshot) => {
+      const res = await runSave(() => enqueueEdgeOp(() => api.restore(projectId, snapshot)));
+      if (!res) return false;
+      if (snapshot.categories?.length) setCategories(res.categories);
+      if (res.nodes.length > 0) {
+        setEntities((prev) => {
+          const back = new Map(res.nodes.map((n) => [n.id, n]));
+          // A node still on screen only gets its category back (it may hold unsaved edits)
+          const next = prev.map((n) => {
+            const r = back.get(n.id);
+            if (!r) return n;
+            back.delete(n.id);
+            return { ...n, categoryId: r.categoryId };
+          });
+          return [...next, ...back.values()];
+        });
+      }
+      if (res.edges.length > 0) {
+        const ids = new Set(res.edges.map((e) => e.id));
+        setRelations((prev) => [...prev.filter((e) => !ids.has(e.id)), ...res.edges]);
+      }
+      return true;
+    },
+    [projectId, runSave, enqueueEdgeOp]
+  );
+
   // Create node at world coordinates
   const createNodeAt = useCallback(
     async (positionX: number, positionY: number): Promise<GraphNode | null> => {
@@ -339,12 +455,20 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
         })
       );
       if (!created) return null;
+      const nodeId = created.node.id;
       setEntities((prev) => [...prev, created.node]);
       setSelectedEdgeId(null);
-      setSelectedNodeId(created.node.id);
+      setSelectedNodeId(nodeId);
+      recordPresence(
+        'Création du nœud',
+        'created',
+        { nodes: [created.node], edges: [] },
+        () => nodeSnapshot(nodeId),
+        () => actionsRef.current?.deleteNode(nodeId)
+      );
       return created.node;
     },
-    [projectId, categories, hiddenCategoryIds, runSave]
+    [projectId, categories, hiddenCategoryIds, runSave, recordPresence, nodeSnapshot]
   );
 
   const handleCreateNodeCenter = useCallback(() => {
@@ -370,12 +494,20 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
         })
       );
       if (!created) return;
+      const edgeId = created.edge.id;
       setRelations((prev) => [...prev, created.edge]);
       setSelectedNodeId(null);
-      setSelectedEdgeId(created.edge.id);
-      setAutoEditEdgeId(created.edge.id);
+      setSelectedEdgeId(edgeId);
+      setAutoEditEdgeId(edgeId);
+      recordPresence(
+        'Création du lien',
+        'created',
+        { edges: [created.edge] },
+        () => edgeSnapshot(edgeId),
+        () => actionsRef.current?.deleteEdge(edgeId)
+      );
     },
-    [projectId, edgeFilter, runSave]
+    [projectId, edgeFilter, runSave, recordPresence, edgeSnapshot]
   );
 
   // Dragging a link wire into empty space -> spawns a new node already linked!
@@ -411,12 +543,21 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
         }
       });
       if (!created) return;
+      const nodeId = created.node.id;
       setEntities((prev) => [...prev, created.node]);
       setRelations((prev) => [...prev, created.edge]);
       setSelectedEdgeId(null);
-      setSelectedNodeId(created.node.id);
+      setSelectedNodeId(nodeId);
+      // Undone in one step: deleting the node also deletes its link
+      recordPresence(
+        'Création du nœud lié',
+        'created',
+        { nodes: [created.node], edges: [created.edge] },
+        () => nodeSnapshot(nodeId),
+        () => actionsRef.current?.deleteNode(nodeId)
+      );
     },
-    [projectId, categories, hiddenCategoryIds, edgeFilter, runSave]
+    [projectId, categories, hiddenCategoryIds, edgeFilter, runSave, recordPresence, nodeSnapshot]
   );
 
   // Persists the latest unsaved positions. Single drags and batches write into the same map,
@@ -690,15 +831,48 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
     [applyCategoryOrder, recordHistory]
   );
 
-  const handleDeleteNode = useCallback(async (nodeId: string) => {
-    setEntities((prev) => prev.filter((n) => n.id !== nodeId));
-    setRelations((prev) =>
-      prev.filter((e) => e.sourceNodeId !== nodeId && e.targetNodeId !== nodeId)
-    );
-    setSelectedNodeId((curr) => (curr === nodeId ? null : curr));
+  // A deletion is recorded once the server has done it: a failed one stays queued for
+  // "Réessayer" and cannot be undone. Undo and redo replaying it record nothing.
+  // A deletion made by the user is shown at once, kept for "Réessayer" if it fails, and
+  // recorded once the server has done it. Replayed by undo or redo, it is not kept for
+  // "Réessayer" (a later retry could delete a record restored since): on failure the
+  // record comes back on screen and the history entry stays in place.
+  const handleDeleteNode = useCallback(
+    async (nodeId: string): Promise<boolean> => {
+      const replaying = historyRef.current.isApplying;
+      const snapshot = nodeSnapshot(nodeId);
+      setEntities((prev) => prev.filter((n) => n.id !== nodeId));
+      setRelations((prev) =>
+        prev.filter((e) => e.sourceNodeId !== nodeId && e.targetNodeId !== nodeId)
+      );
+      setSelectedNodeId((curr) => (curr === nodeId ? null : curr));
 
-    await runSave(() => api.deleteNode(nodeId), { retryKey: `delete-node:${nodeId}` });
-  }, [runSave]);
+      const done = await runSave(
+        () => enqueueEdgeOp(() => api.deleteNode(nodeId)),
+        replaying ? {} : { retryKey: `delete-node:${nodeId}` }
+      );
+      if (!done) {
+        if (replaying && snapshot) {
+          setEntities((prev) => [...prev.filter((n) => n.id !== nodeId), ...(snapshot.nodes ?? [])]);
+          setRelations((prev) => [...prev, ...(snapshot.edges ?? []).map(currentEdgeState)]);
+        }
+        return false;
+      }
+      if (snapshot && !replaying) {
+        // Links reversed while the deletion waited in the queue are kept as stored
+        const stored = { ...snapshot, edges: (snapshot.edges ?? []).map(currentEdgeState) };
+        recordPresence(
+          'Suppression du nœud',
+          'deleted',
+          stored,
+          () => nodeSnapshot(nodeId),
+          () => actionsRef.current?.deleteNode(nodeId)
+        );
+      }
+      return true;
+    },
+    [runSave, enqueueEdgeOp, nodeSnapshot, recordPresence, currentEdgeState]
+  );
 
   // Edge updates from Inspector
   const handleUpdateEdge = useCallback(
@@ -808,7 +982,7 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
     },
     [handleUpdateBatchPositions]
   );
-  // Deletions are not undoable yet: entries about a node or link deleted since are skipped
+  // Entries about a node, link or category that is gone (deleted and not restored) are skipped
   actionsRef.current = {
     updateNode: async (nodeId, patch) => {
       if (!entitiesRef.current.some((n) => n.id === nodeId)) return;
@@ -828,6 +1002,31 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
       if (kept.length > 0) applyPositions(kept);
     },
     reorderCategories: applyCategoryOrder,
+    deleteNode: async (nodeId) => {
+      if (!entitiesRef.current.some((n) => n.id === nodeId)) return true;
+      return handleDeleteNode(nodeId);
+    },
+    deleteEdge: async (edgeId) => {
+      const id = resolveEdgeId(edgeId);
+      if (!relationsRef.current.some((e) => e.id === id)) return true;
+      return handleDeleteEdge(id);
+    },
+    deleteCategory: async (categoryId) => {
+      if (!categoriesRef.current.some((c) => c.id === categoryId)) return true;
+      // A failed deletion throws (the editor relies on it), which counts as a failure here
+      return deleteCategory(categoryId).then(
+        () => true,
+        () => false
+      );
+    },
+    updateCategory: async (categoryId, input) => {
+      if (!categoriesRef.current.some((c) => c.id === categoryId)) return true;
+      return updateCategory(categoryId, input, { rethrow: true }).then(
+        () => true,
+        () => false
+      );
+    },
+    restore: restoreSnapshot,
   };
 
   // Edits still waiting in the inspector are saved (and recorded) first: before an undo
@@ -887,51 +1086,129 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
 
-  const handleDeleteEdge = useCallback(async (edgeId: string) => {
-    setRelations((prev) => prev.filter((e) => e.id !== edgeId));
-    setSelectedEdgeId((curr) => (curr === edgeId ? null : curr));
+  const handleDeleteEdge = useCallback(
+    async (edgeId: string): Promise<boolean> => {
+      const replaying = historyRef.current.isApplying;
+      const snapshot = edgeSnapshot(edgeId)?.edges?.[0];
+      setRelations((prev) => prev.filter((e) => e.id !== edgeId));
+      setSelectedEdgeId((curr) => (curr === edgeId ? null : curr));
 
-    await runSave(
-      () => enqueueEdgeOp(() => api.deleteEdge(resolveEdgeId(edgeId))),
-      { retryKey: `delete-edge:${edgeId}` }
-    );
-  }, [runSave, enqueueEdgeOp, resolveEdgeId]);
+      const done = await runSave(
+        () => enqueueEdgeOp(() => api.deleteEdge(resolveEdgeId(edgeId))),
+        replaying ? {} : { retryKey: `delete-edge:${edgeId}` }
+      );
+      if (!done) {
+        if (replaying && snapshot) {
+          const back = currentEdgeState(snapshot);
+          setRelations((prev) => [...prev.filter((e) => e.id !== back.id), back]);
+        }
+        return false;
+      }
+      if (snapshot && !replaying) {
+        // A reversal saved while the deletion waited gave the link a new id and direction
+        const stored = currentEdgeState(snapshot);
+        recordPresence(
+          'Suppression du lien',
+          'deleted',
+          { edges: [stored] },
+          () => edgeSnapshot(stored.id),
+          () => actionsRef.current?.deleteEdge(stored.id)
+        );
+      }
+      return true;
+    },
+    [runSave, enqueueEdgeOp, resolveEdgeId, edgeSnapshot, recordPresence, currentEdgeState]
+  );
 
-  // Category CRUD
-  const handleSaveCategory = async (data: CategoryInput) => {
-    await runSave(
-      async () => {
-        if (editingCategory) {
-          const { category } = await api.updateCategory(editingCategory.id, data);
-          setCategories((prev) =>
-            prev.map((c) => (c.id === category.id ? category : c))
-          );
-        } else {
+  // Category CRUD. Each change is recorded once the server has stored it; `rethrow`
+  // keeps the editor open when it fails
+  const updateCategory = useCallback(
+    async (categoryId: string, data: CategoryInput, opts: { rethrow?: boolean } = {}) => {
+      const replaying = historyRef.current.isApplying;
+      const before = categoriesRef.current.find((c) => c.id === categoryId);
+      const saved = await runSave(
+        async () => {
+          const { category } = await api.updateCategory(categoryId, data);
+          setCategories((prev) => prev.map((c) => (c.id === category.id ? category : c)));
+          return category;
+        },
+        { rethrow: opts.rethrow }
+      );
+      if (saved && before && !replaying) {
+        const undoInput = categoryInput(before);
+        recordHistory({
+          label: 'Modification de la catégorie',
+          undo: () => actionsRef.current?.updateCategory(categoryId, undoInput),
+          redo: () => actionsRef.current?.updateCategory(categoryId, data),
+        });
+      }
+    },
+    [runSave, recordHistory]
+  );
+
+  const createCategory = useCallback(
+    async (data: CategoryInput) => {
+      const created = await runSave(
+        async () => {
           const { category } = await api.createCategory(projectId, data);
           setCategories((prev) => [...prev, category]);
-        }
-      },
-      { rethrow: true }
-    );
+          return category;
+        },
+        { rethrow: true }
+      );
+      if (!created) return;
+      const categoryId = created.id;
+      recordPresence(
+        'Création de la catégorie',
+        'created',
+        { categories: [{ ...created, index: categoriesRef.current.length }], assignments: [] },
+        () => categorySnapshot(categoryId),
+        () => actionsRef.current?.deleteCategory(categoryId)
+      );
+    },
+    [projectId, runSave, recordPresence, categorySnapshot]
+  );
+
+  // Its nodes lose the category; undo gives it back to those that have not got another since
+  const deleteCategory = useCallback(
+    async (categoryId: string) => {
+      const replaying = historyRef.current.isApplying;
+      const snapshot = categorySnapshot(categoryId);
+      const done = await runSave(
+        async () => {
+          await enqueueEdgeOp(() => api.deleteCategory(categoryId));
+          setCategories((prev) => prev.filter((c) => c.id !== categoryId));
+          setEntities((prev) =>
+            prev.map((n) => (n.categoryId === categoryId ? { ...n, categoryId: null } : n))
+          );
+          setHiddenCategoryIds((prev) => {
+            const next = new Set(prev);
+            next.delete(categoryId);
+            return next;
+          });
+          return true;
+        },
+        { rethrow: true }
+      );
+      if (done && snapshot && !replaying) {
+        recordPresence(
+          'Suppression de la catégorie',
+          'deleted',
+          snapshot,
+          () => categorySnapshot(categoryId),
+          () => actionsRef.current?.deleteCategory(categoryId)
+        );
+      }
+    },
+    [runSave, enqueueEdgeOp, categorySnapshot, recordPresence]
+  );
+
+  const handleSaveCategory = async (data: CategoryInput) => {
+    if (editingCategory) await updateCategory(editingCategory.id, data, { rethrow: true });
+    else await createCategory(data);
   };
 
-  const handleDeleteCategory = async (categoryId: string) => {
-    await runSave(
-      async () => {
-        await api.deleteCategory(categoryId);
-        setCategories((prev) => prev.filter((c) => c.id !== categoryId));
-        setEntities((prev) =>
-          prev.map((n) => (n.categoryId === categoryId ? { ...n, categoryId: null } : n))
-        );
-        setHiddenCategoryIds((prev) => {
-          const next = new Set(prev);
-          next.delete(categoryId);
-          return next;
-        });
-      },
-      { rethrow: true }
-    );
-  };
+  const handleDeleteCategory = (categoryId: string) => deleteCategory(categoryId);
 
   // Layouts: Constellation (Force) or Hierarchical (Dagre)
   const handleOrganizeConstellation = useCallback(async () => {
