@@ -438,6 +438,11 @@ describe('input validation', () => {
     assert.equal((await call('POST', url, { name: 'A', color: '#12345' })).status, 400);
     assert.equal((await call('POST', url, { name: 'A', icon: 'rocket' })).status, 400);
     assert.equal((await call('POST', url, { name: 'A', shape: 'star' })).status, 400);
+    for (const shape of ['hexagon', 'diamond', 'octagon', 'circle']) {
+      const ok = await call('POST', url, { name: shape, shape });
+      assert.equal(ok.status, 201, shape);
+      assert.equal(ok.json.category.shape, shape);
+    }
 
     const short = await call('POST', url, { name: 'A', color: '#ABC', icon: 'bug', shape: 'cut' });
     assert.equal(short.status, 201);

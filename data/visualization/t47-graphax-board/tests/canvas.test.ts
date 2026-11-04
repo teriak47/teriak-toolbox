@@ -7,7 +7,11 @@ import {
   boxBoundary,
   boxPoints,
   clampFinite,
+  circleRadius,
   sanitizeViewport,
+  shapeBoundary,
+  shapeExtent,
+  shapeVertices,
 } from '../src/lib/canvasGeometry.ts';
 import { computeEdgeGeometry, edgeLabelHalfSize } from '../src/lib/edgeGeometry.ts';
 
@@ -46,6 +50,68 @@ describe('canvas geometry', () => {
   it('draws square and cut boxes', () => {
     assert.equal(boxPoints(10, false).split(' ').length, 4);
     assert.equal(boxPoints(10, true).split(' ').length, 6);
+  });
+});
+
+describe('node shapes', () => {
+  const shapes = ['sharp', 'cut', 'hexagon', 'diamond', 'octagon', 'circle', 'rounded', 'pill'] as const;
+
+  // Distance from a point to the closest edge of a polygon
+  function distanceToOutline(x: number, y: number, vertices: Array<[number, number]>): number {
+    let best = Infinity;
+    for (let i = 0; i < vertices.length; i++) {
+      const [ax, ay] = vertices[i];
+      const [bx, by] = vertices[(i + 1) % vertices.length];
+      const len2 = (bx - ax) ** 2 + (by - ay) ** 2;
+      const t = Math.max(0, Math.min(1, ((x - ax) * (bx - ax) + (y - ay) * (by - ay)) / len2));
+      best = Math.min(best, Math.hypot(x - (ax + t * (bx - ax)), y - (ay + t * (by - ay))));
+    }
+    return best;
+  }
+
+  it('puts the link end exactly on the outline of every shape, in every direction', () => {
+    for (const shape of shapes) {
+      for (let deg = 0; deg < 360; deg += 7) {
+        const ux = Math.cos((deg * Math.PI) / 180);
+        const uy = Math.sin((deg * Math.PI) / 180);
+        const d = shapeBoundary(shape, 20, ux, uy);
+        const vertices = shapeVertices(shape, 20);
+        const gap = vertices
+          ? distanceToOutline(ux * d, uy * d, vertices)
+          : Math.abs(d - circleRadius(20));
+        assert.ok(gap < 1e-6, `${shape} at ${deg}°: ${gap}`);
+      }
+    }
+  });
+
+  it('draws legacy shapes as squares and gives each shape its own outline', () => {
+    assert.deepEqual(shapeVertices('rounded', 10), shapeVertices('sharp', 10));
+    assert.deepEqual(shapeVertices('pill', 10), shapeVertices('sharp', 10));
+    assert.equal(shapeVertices('hexagon', 10)?.length, 6);
+    assert.equal(shapeVertices('octagon', 10)?.length, 8);
+    assert.equal(shapeVertices('diamond', 10)?.length, 4);
+    assert.equal(shapeVertices('circle', 10), null);
+  });
+
+  it('encloses every shape in its extent', () => {
+    for (const shape of shapes) {
+      const extent = shapeExtent(shape, 20);
+      for (const [x, y] of shapeVertices(shape, 20) ?? []) {
+        assert.ok(Math.abs(x) <= extent + 1e-9 && Math.abs(y) <= extent + 1e-9, shape);
+      }
+    }
+    assert.ok(shapeExtent('diamond', 20) > shapeExtent('sharp', 20), 'the diamond needs a wider halo');
+  });
+
+  it('clips links to the shape of each end', () => {
+    const nodes = [node('a', 0, 0), node('b', 200, 200)];
+    const shapeOf = (id: string) => (id === 'a' ? 'diamond' : 'circle') as const;
+    const [geo] = computeEdgeGeometry(nodes, [edge('e', 'a', 'b', false)], pos, radius, shapeOf);
+    const [, sx, sy, , tx, ty] = geo.pathD.split(' ').map(Number);
+    // Diamond: |x| + |y| = 1.3 * half on the outline (plus the 3 px gap along the link)
+    const half = 20 * 0.92;
+    assert.ok(Math.abs(Math.hypot(sx, sy) - (shapeBoundary('diamond', half, Math.SQRT1_2, Math.SQRT1_2) + 3)) < 0.2);
+    assert.ok(Math.abs(Math.hypot(200 - tx, 200 - ty) - (circleRadius(half) + 3)) < 0.2);
   });
 });
 

@@ -28,7 +28,7 @@ Run the automated API tests with `pnpm test`; they use a temporary database and 
 
 ## Design and version
 
-The interface follows the SECTION 21 design system used across Teriak47 projects: warm bistre dark surfaces, a single cold blue accent, square corners with 21° cuts, straight links, eye-slit status markers and a footer signature. Chakra Petch and Fragment Mono (OFL-1.1, bundled with `@fontsource`) are loaded locally, so nothing is downloaded. The tokens are in `src/ds/`. Category colours and shapes in existing projects are kept; legacy rounded shapes are drawn as squares.
+The interface follows the SECTION 21 design system used across Teriak47 projects: warm bistre dark surfaces, a single cold blue accent, square corners with 21° cuts, straight links, eye-slit status markers and a footer signature. Chakra Petch and Fragment Mono (OFL-1.1, bundled with `@fontsource`) are loaded locally, so nothing is downloaded. The tokens are in `src/ds/`. Category colours and shapes in existing projects are kept; legacy rounded shapes are drawn as squares. Nodes can be square, cut-corner, hexagonal, diamond-shaped, octagonal or round, and links end on each outline.
 
 The version shown in the footer comes from `package.json`, which must match `tool.yaml` (checked by `pnpm test`). `/api/health` also reports it.
 

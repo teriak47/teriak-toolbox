@@ -65,10 +65,15 @@ export const LINK_COLORS: Array<{ value: string; label: string }> = [
   { value: '#c1a9ee', label: 'Lavande' },
 ];
 
-// Legacy "rounded" and "pill" values stay valid in saved data and are drawn as squares
+// Shapes offered in the category editor. Legacy "rounded" and "pill" values stay valid in
+// saved data and are drawn as squares.
 export const CATEGORY_SHAPES: Array<{ value: CategoryShape; label: string; radiusClass: string }> = [
   { value: 'sharp', label: 'Carré', radiusClass: '' },
   { value: 'cut', label: 'Coin coupé', radiusClass: 's21-coupe-2' },
+  { value: 'hexagon', label: 'Hexagone', radiusClass: '' },
+  { value: 'diamond', label: 'Losange', radiusClass: '' },
+  { value: 'octagon', label: 'Octogone', radiusClass: '' },
+  { value: 'circle', label: 'Cercle', radiusClass: '' },
 ];
 
 export function getCategoryIcon(name?: CategoryIconName | null): LucideIcon {
