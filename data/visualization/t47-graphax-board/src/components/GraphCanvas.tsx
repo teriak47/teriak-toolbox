@@ -209,6 +209,9 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
       startX: number;
       startY: number;
       moved: boolean;
+      /** Latest position under the cursor; the live physics reads it every frame */
+      x?: number;
+      y?: number;
     } | null>(null);
 
     const [linkingWire, setLinkingWireState] = useState<LinkingWireState | null>(null);
@@ -415,8 +418,12 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
       [nodes, getNodePos, animateViewportTo, setViewport]
     );
 
-    // Filled once the physics hook exists (below): wakes the layout after a programmatic move
+    // Filled once the physics hook exists (below): a programmatic move also updates the
+    // simulation's own coordinates, then wakes it
     const wakePhysicsRef = useRef<(() => void) | null>(null);
+    const setSimulationPositionsRef = useRef<
+      ((positions: Array<{ id: string; positionX: number; positionY: number }>) => void) | null
+    >(null);
 
     useImperativeHandle(
       ref,
@@ -432,6 +439,7 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
             }
             return next;
           });
+          setSimulationPositionsRef.current?.(positions);
           wakePhysicsRef.current?.();
         },
       }),
@@ -549,7 +557,7 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
     livePositionsRef.current = livePositions;
 
     // Live Obsidian-style force physics (when toggled ON); sleeps once the graph settles
-    const { physicsSettled, wakePhysics } = usePhysicsSimulation({
+    const { physicsSettled, wakePhysics, setSimulationPositions } = usePhysicsSimulation({
       active: physicsActive,
       nodes,
       edges,
@@ -559,6 +567,7 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
       onUpdateBatchPositions,
     });
     wakePhysicsRef.current = wakePhysics;
+    setSimulationPositionsRef.current = setSimulationPositions;
 
     // Find closest snap target node for magnetic linking
     const findSnapNodeAt = useCallback(
@@ -617,6 +626,8 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
             wakePhysics();
           }
           const nid = dragNodeRef.current.nodeId;
+          dragNodeRef.current.x = nx;
+          dragNodeRef.current.y = ny;
           setLivePositions((prev) => {
             const next = new Map(prev);
             next.set(nid, { x: nx, y: ny });
