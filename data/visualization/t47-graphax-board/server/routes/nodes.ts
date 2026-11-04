@@ -3,9 +3,18 @@ import { getDb, generateId, toRecordId } from '../db.ts';
 import { mapNode, sanitizeMetadata, touchProject } from '../mappers.ts';
 import { categoryInProject, nodesInProject, projectExists } from '../guards.ts';
 import { optString, readBody } from '../validation.ts';
-import { MAX_RESTORE_RECORDS } from '../../shared/types.ts';
+import { MAX_RESTORE_RECORDS, normalizeReliability } from '../../shared/types.ts';
 
 const UNKNOWN_CATEGORY = "Cette catégorie n'existe pas dans ce projet.";
+const INVALID_RELIABILITY =
+  'Fiabilité invalide : une lettre A à F suivie d’un chiffre 1 à 6 est attendue (ex. B2).';
+
+// A reliability sent by the client: undefined when absent, null to clear it, false when invalid
+function readReliability(value: unknown): string | null | undefined | false {
+  if (value === undefined) return undefined;
+  if (value === null || value === '') return null;
+  return normalizeReliability(value) ?? false;
+}
 
 export const nodesRouter = new Hono();
 
@@ -19,7 +28,10 @@ nodesRouter.post('/projects/:projectId/nodes', async (c) => {
     positionX?: number;
     positionY?: number;
     metadata?: Record<string, unknown>;
+    reliability?: string | null;
   }>(c);
+  const reliability = readReliability(body.reliability);
+  if (reliability === false) return c.json({ error: INVALID_RELIABILITY }, 400);
 
   const db = await getDb();
   if (!(await projectExists(db, projectId))) {
@@ -45,6 +57,7 @@ nodesRouter.post('/projects/:projectId/nodes', async (c) => {
     positionX,
     positionY,
     metadata: sanitizeMetadata(body.metadata),
+    reliability: reliability ?? null,
     createdAt: now,
     updatedAt: now,
   });
@@ -69,7 +82,10 @@ nodesRouter.patch('/nodes/:id', async (c) => {
     positionX?: number;
     positionY?: number;
     metadata?: Record<string, unknown>;
+    reliability?: string | null;
   }>(c);
+  const reliability = readReliability(body.reliability);
+  if (reliability === false) return c.json({ error: INVALID_RELIABILITY }, 400);
 
   const db = await getDb();
   const now = new Date().toISOString();
@@ -115,6 +131,10 @@ nodesRouter.patch('/nodes/:id', async (c) => {
   if (body.metadata !== undefined) {
     sets.push('metadata = $metadata');
     params.metadata = sanitizeMetadata(body.metadata);
+  }
+  if (reliability !== undefined) {
+    sets.push('reliability = $reliability');
+    params.reliability = reliability;
   }
 
   const [updated] = await db

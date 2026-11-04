@@ -74,6 +74,7 @@ type NodePatch = Partial<{
   categoryId: string | null;
   content: string;
   metadata: NodeMetadata;
+  reliability: string | null;
 }>;
 type EdgePatch = Partial<{
   label: string;
@@ -111,6 +112,7 @@ function nodeEditLabel(patch: NodePatch): string {
   if ('title' in patch) return 'Modification du titre';
   if ('content' in patch) return 'Modification des notes';
   if ('metadata' in patch) return 'Modification des attributs';
+  if ('reliability' in patch) return 'Fiabilité';
   return 'Modification du nœud';
 }
 
@@ -351,7 +353,15 @@ export function Workspace({ projectId, onBack, onOpenProject }: WorkspaceProps) 
     const q = searchQuery.trim().toLowerCase();
     if (!q) return [];
     const metaQuery = parseMetadataQuery(searchQuery);
-    if (metaQuery) return entities.filter((n) => matchesMetadataQuery(n.metadata, metaQuery));
+    // The reliability field is searchable like an attribute: "Fiabilité:B2", "fiabilite:a"
+    if (metaQuery) {
+      return entities.filter((n) =>
+        matchesMetadataQuery(
+          n.reliability ? { ...n.metadata, Fiabilité: n.reliability } : n.metadata,
+          metaQuery
+        )
+      );
+    }
     return entities.filter((n) => {
       if (n.title.toLowerCase().includes(q)) return true;
       if (n.content.toLowerCase().includes(q)) return true;
@@ -743,12 +753,7 @@ export function Workspace({ projectId, onBack, onOpenProject }: WorkspaceProps) 
   const handleUpdateNode = useCallback(
     async (
       nodeId: string,
-      patch: Partial<{
-        title: string;
-        categoryId: string | null;
-        content: string;
-        metadata: NodeMetadata;
-      }>
+      patch: NodePatch
     ) => {
       const node = entitiesRef.current.find((n) => n.id === nodeId);
       if (node) {

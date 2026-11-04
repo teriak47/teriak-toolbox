@@ -735,6 +735,31 @@ describe('link colours', () => {
   });
 });
 
+describe('node reliability (Admiralty code)', () => {
+  it('stores, validates, clears and exports the reliability code', async () => {
+    const projectId = await createProject('Fiabilité');
+    const created = await call('POST', `/api/projects/${projectId}/nodes`, { title: 'Source', reliability: 'b2' });
+    assert.equal(created.status, 201);
+    assert.equal(created.json.node.reliability, 'B2');
+    const id = created.json.node.id;
+    for (const bad of ['Z9', 'A7', 'AB', 12]) {
+      assert.equal((await call('PATCH', `/api/nodes/${id}`, { reliability: bad })).status, 400, String(bad));
+    }
+    assert.equal((await call('PATCH', `/api/nodes/${id}`, { reliability: 'C3' })).json.node.reliability, 'C3');
+    const exported = (await call('GET', `/api/projects/${projectId}/export`)).json;
+    assert.equal(exported.nodes[0].reliability, 'C3');
+    const imported = (await call('POST', '/api/projects/import', exported)).json.project;
+    assert.equal((await call('GET', `/api/projects/${imported.id}`)).json.nodes[0].reliability, 'C3');
+    assert.equal((await call('PATCH', `/api/nodes/${id}`, { reliability: null })).json.node.reliability, null);
+    // A node without the field reads as null; the demo uses the field instead of an attribute
+    assert.equal((await call('POST', `/api/projects/${projectId}/nodes`, { title: 'X' })).json.node.reliability, null);
+    const demo = (await call('POST', '/api/projects/demo')).json.projectId;
+    const nodes = (await call('GET', `/api/projects/${demo}`)).json.nodes;
+    assert.ok(nodes.some((n: { reliability: string | null }) => n.reliability === 'B2'));
+    assert.ok(nodes.every((n: { metadata: Record<string, string> }) => !('Fiabilité' in n.metadata)));
+  });
+});
+
 describe('batch node deletion', () => {
   it('deletes several nodes with their links and leaves the rest', async () => {
     const projectId = await createProject('Suppression groupée');

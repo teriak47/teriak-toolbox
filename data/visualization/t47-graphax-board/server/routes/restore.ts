@@ -15,6 +15,7 @@ import {
   DEFAULT_CATEGORY_SHAPE,
   MAX_RESTORE_RECORDS,
   normalizeCategoryKeys,
+  normalizeReliability,
 } from '../../shared/types.ts';
 import {
   isCategoryIcon,
@@ -135,6 +136,7 @@ restoreRouter.post('/projects/:projectId/restore', async (c) => {
       positionX: Number.isFinite(Number(node.positionX)) ? Number(node.positionX) : 0,
       positionY: Number.isFinite(Number(node.positionY)) ? Number(node.positionY) : 0,
       metadata: sanitizeMetadata(node.metadata),
+      reliability: normalizeReliability(node.reliability),
       createdAt: optString(node.createdAt) || now,
       updatedAt: now,
     };

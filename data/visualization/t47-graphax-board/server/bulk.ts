@@ -28,6 +28,7 @@ export interface NodeRecord {
   positionX: number;
   positionY: number;
   metadata: Record<string, string>;
+  reliability?: string | null;
   createdAt: string;
   updatedAt: string;
 }

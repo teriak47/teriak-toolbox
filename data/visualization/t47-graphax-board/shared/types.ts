@@ -121,6 +121,8 @@ export interface GraphNode {
   positionX: number;
   positionY: number;
   metadata: NodeMetadata;
+  /** Admiralty code (A3): source reliability A–F then information credibility 1–6, e.g. "B2" */
+  reliability: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -176,4 +178,40 @@ export interface ProjectSnapshot {
   edgeCount: number;
   /** The project's revision captured in the snapshot (its updatedAt at that time) */
   projectUpdatedAt?: string;
+}
+
+// ---- Reliability (A3): the Admiralty (NATO) grading of a piece of information ----
+
+export const RELIABILITY_SOURCES: ReadonlyArray<{ code: string; label: string }> = [
+  { code: 'A', label: 'Totalement fiable' },
+  { code: 'B', label: 'Habituellement fiable' },
+  { code: 'C', label: 'Assez fiable' },
+  { code: 'D', label: 'Pas toujours fiable' },
+  { code: 'E', label: 'Peu fiable' },
+  { code: 'F', label: 'Fiabilité inconnue' },
+];
+
+export const RELIABILITY_CREDIBILITY: ReadonlyArray<{ code: string; label: string }> = [
+  { code: '1', label: 'Confirmée par d’autres sources' },
+  { code: '2', label: 'Probablement vraie' },
+  { code: '3', label: 'Possiblement vraie' },
+  { code: '4', label: 'Douteuse' },
+  { code: '5', label: 'Improbable' },
+  { code: '6', label: 'Véracité inconnue' },
+];
+
+// "b2", " B2 " -> "B2"; anything that is not a letter A–F followed by a digit 1–6 -> null
+export function normalizeReliability(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const code = value.trim().toUpperCase();
+  return /^[A-F][1-6]$/.test(code) ? code : null;
+}
+
+// "B2" -> "Habituellement fiable · Probablement vraie"
+export function describeReliability(code: string | null | undefined): string | null {
+  const c = normalizeReliability(code);
+  if (!c) return null;
+  const source = RELIABILITY_SOURCES.find((s) => s.code === c[0])?.label;
+  const info = RELIABILITY_CREDIBILITY.find((s) => s.code === c[1])?.label;
+  return `${source} · ${info}`;
 }

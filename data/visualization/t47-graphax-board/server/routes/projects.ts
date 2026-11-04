@@ -121,8 +121,8 @@ projectsRouter.post('/demo', async (c) => {
       title: 'Groupe "NightOwl" (APT-X)',
       positionX: -320,
       positionY: -120,
+      reliability: 'B2',
       metadata: {
-        Fiabilité: 'Probable (B2)',
         Origine: 'Cluster Est-Européen',
         Statut: 'Actif',
       },
@@ -135,11 +135,11 @@ projectsRouter.post('/demo', async (c) => {
       title: 'Implant "ChimeraLoader.dll"',
       positionX: -20,
       positionY: -95,
+      reliability: 'A1',
       metadata: {
         Famille: 'ChimeraLoader',
         'SHA-256': '9f86d081884c7d659a2f...',
         Langage: 'Rust / C++',
-        Fiabilité: 'Confirmé (A1)',
       },
       content:
         '### Analyse statique\nDLL injectée par *side-loading* lors de l\'étape de build.\n\n```text\nMutex: Global\\Chm_Sync_991\n Sleep jitter: 45s ± 30%\n```\nExfiltre les variables d\'environnement chiffrées en ChaCha20.',
@@ -150,11 +150,11 @@ projectsRouter.post('/demo', async (c) => {
       title: 'Relais C2 192.0.2.42',
       positionX: 290,
       positionY: -160,
+      reliability: 'A1',
       metadata: {
         IP: '192.0.2.42',
         ASN: 'AS205100',
         Port: '8443 / TLS 1.3',
-        Fiabilité: 'Confirmé (A1)',
       },
       content:
         '### Télémétrie Réseau\nNoeud relais contacté toutes les 45 secondes par `ChimeraLoader.dll`.\n\n- Certificat TLS émis le `2026-10-14`\n- Hébergeur VPS payé en Monero selon réponse réquisition.',
@@ -193,9 +193,9 @@ projectsRouter.post('/demo', async (c) => {
       title: 'Logs Forensics Runner #04',
       positionX: 95,
       positionY: 315,
+      reliability: 'A1',
       metadata: {
         Source: 'EDR + Auditd',
-        Fiabilité: 'Confirmé (A1)',
         Horodatage: '2026-10-22 08:14 UTC',
       },
       content:

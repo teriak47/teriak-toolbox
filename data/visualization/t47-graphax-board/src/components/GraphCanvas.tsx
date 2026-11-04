@@ -23,6 +23,7 @@ import {
   ZoomOut,
 } from 'lucide-react';
 import type { Category, CategoryShape, GraphEdge, GraphNode } from '@shared/types';
+import { describeReliability } from '@shared/types';
 import { getCategoryIcon } from '@/lib/icons';
 import { cardEntries } from '@/lib/metadata';
 import { cn } from '@/lib/utils';
@@ -1478,6 +1479,34 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
                         strokeWidth={1.5}
                         className="pointer-events-none"
                       />
+                    )}
+
+                    {/* Reliability badge (Admiralty code, A3) on the top-left corner */}
+                    {node.reliability && (
+                      <g
+                        transform={`translate(${-nodeHalf(r) - 6}, ${-nodeHalf(r) - 7})`}
+                        aria-label={`Fiabilité ${node.reliability}`}
+                      >
+                        <title>{`Fiabilité ${node.reliability} : ${describeReliability(node.reliability) ?? ''}`}</title>
+                        <rect
+                          x={-11}
+                          y={-7}
+                          width={22}
+                          height={14}
+                          fill="var(--surface-puits)"
+                          stroke={color}
+                          strokeWidth={1.2}
+                        />
+                        <text
+                          textAnchor="middle"
+                          dominantBaseline="central"
+                          fontSize={9}
+                          fontFamily="var(--font-mono, ui-monospace, monospace)"
+                          fill="var(--texte-fort)"
+                        >
+                          {node.reliability}
+                        </text>
+                      </g>
                     )}
                   </g>
 

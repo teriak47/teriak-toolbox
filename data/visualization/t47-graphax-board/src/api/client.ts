@@ -182,6 +182,7 @@ export const api = {
       positionX: number;
       positionY: number;
       metadata: NodeMetadata;
+      reliability: string | null;
     }>
   ) =>
     request<{ node: GraphNode }>(`/api/nodes/${nodeId}`, {
