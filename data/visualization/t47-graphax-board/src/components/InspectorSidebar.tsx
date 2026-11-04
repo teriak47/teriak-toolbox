@@ -1,7 +1,10 @@
-import { Suspense, lazy, useEffect, useRef, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeftRight,
   ArrowRight,
+  Check,
+  Copy,
+  ExternalLink,
   Eye,
   FileEdit,
   Minus,
@@ -13,6 +16,12 @@ import {
 import type { Category, EdgeStyle, GraphEdge, GraphNode, NodeMetadata } from '@shared/types';
 import { cn } from '@/lib/utils';
 import { LINK_COLORS } from '@/lib/icons';
+import {
+  checkValueForKey,
+  collectMetadataKeys,
+  describeValue,
+  valueLink,
+} from '@/lib/metadata';
 
 interface InspectorSidebarProps {
   selectedNode: GraphNode | null;
@@ -84,6 +93,24 @@ export function InspectorSidebar({
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [content, setContent] = useState('');
   const [metaRows, setMetaRows] = useState<Array<{ id: string; key: string; value: string }>>([]);
+  const [copiedRowId, setCopiedRowId] = useState<string | null>(null);
+
+  // Keys already used in the project (offered while typing a key), then the usual presets
+  const knownMetadataKeys = useMemo(() => {
+    const keys = collectMetadataKeys(allNodes);
+    const seen = new Set(keys.map((k) => k.toLowerCase()));
+    return [...keys, ...METADATA_PRESETS.map((p) => p.key).filter((k) => !seen.has(k.toLowerCase()))];
+  }, [allNodes]);
+
+  const copyValue = async (rowId: string, value: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopiedRowId(rowId);
+      setTimeout(() => setCopiedRowId((curr) => (curr === rowId ? null : curr)), 1200);
+    } catch {
+      // Clipboard unavailable (insecure context or denied): nothing to undo
+    }
+  };
   const [noteTab, setNoteTab] = useState<'write' | 'preview'>('write');
   const [confirmDeleteNode, setConfirmDeleteNode] = useState(false);
 
@@ -372,44 +399,97 @@ export function InspectorSidebar({
               </p>
             ) : (
               <div className="space-y-1.5">
-                {metaRows.map((row, index) => (
-                  <div key={row.id} className="flex items-center gap-1.5">
-                    <input
-                      type="text"
-                      value={row.key}
-                      onChange={(e) => {
-                        const copy = [...metaRows];
-                        copy[index] = { ...row, key: e.target.value };
-                        updateMetaRows(copy);
-                      }}
-                      placeholder="Clé"
-                      className="w-[38%] px-2.5 py-1.5 text-xs font-mono rounded-md bg-zinc-950 border border-filet text-zinc-300 focus:border-cyan-500 focus:outline-none"
-                    />
-                    <input
-                      type="text"
-                      value={row.value}
-                      onChange={(e) => {
-                        const copy = [...metaRows];
-                        copy[index] = { ...row, value: e.target.value };
-                        updateMetaRows(copy);
-                      }}
-                      placeholder="Valeur"
-                      className="flex-1 px-2.5 py-1.5 text-xs font-mono rounded-md bg-zinc-950 border border-filet text-zinc-100 focus:border-cyan-500 focus:outline-none"
-                    />
-                    <button
-                      type="button"
-                      onClick={() =>
-                        updateMetaRows(metaRows.filter((_, idx) => idx !== index))
-                      }
-                      className="p-1.5 rounded-md text-zinc-500 hover:text-rose-400 hover:bg-zinc-800 transition-colors"
-                      title="Retirer cet attribut"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                ))}
+                {metaRows.map((row, index) => {
+                  const description = describeValue(row.value);
+                  const warning = checkValueForKey(row.key, row.value);
+                  const link = valueLink(row.value);
+                  return (
+                    <div key={row.id} className="space-y-0.5">
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="text"
+                          list="graphax-metadata-keys"
+                          value={row.key}
+                          onChange={(e) => {
+                            const copy = [...metaRows];
+                            copy[index] = { ...row, key: e.target.value };
+                            updateMetaRows(copy);
+                          }}
+                          placeholder="Clé"
+                          className="w-[38%] px-2.5 py-1.5 text-xs font-mono rounded-md bg-zinc-950 border border-filet text-zinc-300 focus:border-cyan-500 focus:outline-none"
+                        />
+                        <input
+                          type="text"
+                          value={row.value}
+                          onChange={(e) => {
+                            const copy = [...metaRows];
+                            copy[index] = { ...row, value: e.target.value };
+                            updateMetaRows(copy);
+                          }}
+                          placeholder="Valeur"
+                          aria-invalid={warning ? true : undefined}
+                          title={warning ?? description ?? undefined}
+                          className={cn(
+                            'flex-1 min-w-0 px-2.5 py-1.5 text-xs font-mono rounded-md bg-zinc-950 border text-zinc-100 focus:outline-none',
+                            warning
+                              ? 'border-amber-500/70 focus:border-amber-400'
+                              : 'border-filet focus:border-cyan-500'
+                          )}
+                        />
+                        {link && (
+                          <a
+                            href={link}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title={`Ouvrir ${link} dans un nouvel onglet`}
+                            className="p-1.5 rounded-md text-zinc-500 hover:text-cyan-300 hover:bg-zinc-800 transition-colors"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </a>
+                        )}
+                        {row.value && (
+                          <button
+                            type="button"
+                            onClick={() => void copyValue(row.id, row.value)}
+                            title="Copier la valeur"
+                            className="p-1.5 rounded-md text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"
+                          >
+                            {copiedRowId === row.id ? (
+                              <Check className="w-3.5 h-3.5 text-emerald-400" />
+                            ) : (
+                              <Copy className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => updateMetaRows(metaRows.filter((_, idx) => idx !== index))}
+                          className="p-1.5 rounded-md text-zinc-500 hover:text-rose-400 hover:bg-zinc-800 transition-colors"
+                          title="Retirer cet attribut"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                      {(warning || description) && (
+                        <p
+                          className={cn(
+                            'pl-[calc(38%_+_0.375rem)] text-[11px] leading-tight',
+                            warning ? 'text-amber-300' : 'text-zinc-500'
+                          )}
+                        >
+                          {warning ?? description}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
+            <datalist id="graphax-metadata-keys">
+              {knownMetadataKeys.map((key) => (
+                <option key={key} value={key} />
+              ))}
+            </datalist>
           </div>
 
           {/* Rich Markdown Notes */}

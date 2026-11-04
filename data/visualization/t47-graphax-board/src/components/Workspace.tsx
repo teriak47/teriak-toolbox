@@ -34,6 +34,7 @@ import { GraphCanvas, type GraphCanvasHandle } from '@/components/GraphCanvas';
 import { INSPECTOR_SAVE_DELAY_MS, InspectorSidebar } from '@/components/InspectorSidebar';
 import { downloadProjectExport } from '@/lib/exportProject';
 import { useSaveQueue } from '@/hooks/useSaveQueue';
+import { matchesMetadataQuery, parseMetadataQuery } from '@/lib/metadata';
 import { CategoryModal } from '@/components/CategoryModal';
 import { getCategoryIcon } from '@/lib/icons';
 import { computeConstellationLayout } from '@/lib/forceLayout';
@@ -203,10 +204,13 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
     });
   }, [relations, visibleEntityIds, edgeFilter]);
 
-  // Search matches across title, content, metadata, category
+  // Search matches across title, content, metadata, category. "Clé:valeur" searches the
+  // value of a metadata key, and "Clé:" finds nodes that have that key.
   const searchMatches = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return [];
+    const metaQuery = parseMetadataQuery(searchQuery);
+    if (metaQuery) return entities.filter((n) => matchesMetadataQuery(n.metadata, metaQuery));
     return entities.filter((n) => {
       if (n.title.toLowerCase().includes(q)) return true;
       if (n.content.toLowerCase().includes(q)) return true;
@@ -843,7 +847,8 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
                   searchInputRef.current?.blur();
                 }
               }}
-              placeholder="Rechercher un nœud, une note, une IP, un attribut… (Ctrl+K)"
+              placeholder="Rechercher… ou Clé:valeur, ex. IP:192.0.2 (Ctrl+K)"
+              title="Recherche dans les titres, notes, catégories et attributs. « Clé:valeur » cherche dans un attribut précis, « Clé: » trouve les nœuds qui l’ont."
               className="w-full pl-8 pr-16 py-1.5 text-xs rounded-xl bg-zinc-950 border border-filet text-zinc-100 placeholder-zinc-500 focus:border-cyan-500 focus:outline-none transition-colors"
             />
             {searchQuery ? (
