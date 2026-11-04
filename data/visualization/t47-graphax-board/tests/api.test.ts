@@ -492,6 +492,48 @@ describe('input validation', () => {
   });
 });
 
+describe('category defaults', () => {
+  it('reads old or invalid category records with the shared defaults', async () => {
+    const projectId = await createProject();
+    await (await getDb())
+      .query(
+        `CREATE category:legacy_a CONTENT { projectId: $p, name: 'Ancienne', color: 'red', icon: 'rocket' };
+        CREATE category:legacy_b CONTENT { projectId: $p, name: 'Courte', color: '#ABC', shape: 'rounded' };`,
+        { p: projectId }
+      )
+      .collect();
+
+    const graph = await call('GET', `/api/projects/${projectId}`);
+    const byName = Object.fromEntries(
+      graph.json.categories.map((c: { name: string }) => [c.name, c])
+    );
+    assert.equal(byName.Ancienne.color, '#47c0ef');
+    assert.equal(byName.Ancienne.icon, 'tag');
+    assert.equal(byName.Ancienne.shape, 'sharp');
+    assert.equal(byName.Courte.color, '#aabbcc');
+    assert.equal(byName.Courte.shape, 'rounded');
+  });
+
+  it('gives new and imported categories the same defaults', async () => {
+    const projectId = await createProject();
+    const created = await call('POST', `/api/projects/${projectId}/categories`, { name: 'Neuve' });
+    const imported = await call('POST', '/api/projects/import', {
+      project: { name: 'Import' },
+      categories: [{ id: 'c1', name: 'Importée' }],
+      nodes: [],
+      edges: [],
+    });
+    const [importedCategory] = (await call('GET', `/api/projects/${imported.json.project.id}`)).json
+      .categories;
+
+    for (const category of [created.json.category, importedCategory]) {
+      assert.equal(category.color, '#47c0ef');
+      assert.equal(category.icon, 'tag');
+      assert.equal(category.shape, 'sharp');
+    }
+  });
+});
+
 describe('local-only guard', () => {
   it('accepts same-origin and header-less requests', async () => {
     assert.equal((await call('GET', '/api/health')).status, 200);

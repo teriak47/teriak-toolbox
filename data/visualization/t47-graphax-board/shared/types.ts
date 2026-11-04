@@ -25,6 +25,11 @@ export const CATEGORY_ICON_NAMES = [
 
 export type CategoryIconName = (typeof CATEGORY_ICON_NAMES)[number];
 
+// Single source for the style of a new category and for missing or invalid stored values
+export const DEFAULT_CATEGORY_COLOR = '#47c0ef';
+export const DEFAULT_CATEGORY_ICON: CategoryIconName = 'tag';
+export const DEFAULT_CATEGORY_SHAPE: CategoryShape = 'sharp';
+
 export type EdgeStyle = 'solid' | 'dashed';
 
 export type ProjectPreset = 'osint' | 'lore' | 'research' | 'empty';
