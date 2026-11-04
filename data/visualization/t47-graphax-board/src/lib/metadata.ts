@@ -32,7 +32,10 @@ export const META_TYPE_LABELS: Record<MetaValueType, string> = {
 };
 
 const IPV4 = /^(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}(\/([0-9]|[12]\d|3[0-2]))?$/;
-const IPV6 = /^(?=.*:)[0-9a-f:]{2,39}(\/\d{1,3})?$/i;
+const IPV4_ADDRESS = /^(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$/;
+// Address, optional zone (fe80::1%eth0), optional prefix length
+const IPV6 = /^([0-9a-f:.]+)(%[0-9a-z._-]+)?(\/(\d{1,3}))?$/i;
+const HEXTET = /^[0-9a-f]{1,4}$/i;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const ISO_DATE = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])([ T]\d{2}:\d{2}(:\d{2})?( ?UTC|Z)?)?$/i;
 const FR_DATE = /^(0?[1-9]|[12]\d|3[01])\/(0?[1-9]|1[0-2])\/\d{4}$/;
@@ -40,13 +43,21 @@ const HEX = /^[0-9a-f]+$/i;
 const NUMBER = /^-?\d+([.,]\d+)?$/;
 
 function isValidIpv6(value: string): boolean {
-  if (!IPV6.test(value)) return false;
-  const address = value.split('/')[0];
+  const match = IPV6.exec(value);
+  if (!match || !match[1].includes(':') || (match[4] && Number(match[4]) > 128)) return false;
+  let address = match[1];
+  // A dotted IPv4 tail (64:ff9b::192.0.2.1) stands for the last two groups
+  const lastColon = address.lastIndexOf(':');
+  const tail = address.slice(lastColon + 1);
+  if (tail.includes('.')) {
+    if (!IPV4_ADDRESS.test(tail)) return false;
+    address = `${address.slice(0, lastColon + 1)}0:0`;
+  }
   // At most one "::", which stands for one or more zero groups; it may sit at either end
   const halves = address.split('::');
   if (halves.length > 2) return false;
   const hextets = halves.flatMap((half) => (half === '' ? [] : half.split(':')));
-  if (!hextets.every((g) => g.length >= 1 && g.length <= 4)) return false;
+  if (!hextets.every((g) => HEXTET.test(g))) return false;
   return halves.length === 2 ? hextets.length <= 7 : hextets.length === 8;
 }
 
