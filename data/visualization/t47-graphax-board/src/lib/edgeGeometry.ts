@@ -11,7 +11,8 @@ export interface EdgeGeometry {
   my: number;
   /** SVG polygon points of the arrowhead at the target end */
   arrowPoints: string;
-  /** Smaller arrow along the link, so the direction reads without following it to the end */
+  /** Smaller arrow along the link, so the direction reads without following it to the end;
+   *  empty when there is no room for it before the label */
   midArrowPoints: string;
 }
 
@@ -20,7 +21,13 @@ export const ARROW_LENGTH = 12;
 export const ARROW_HALF_WIDTH = 5.5;
 const MID_ARROW_LENGTH = 9;
 const MID_ARROW_HALF_WIDTH = 4.5;
+// Space kept between the mid arrow and the label box or the link start
+const MID_ARROW_GAP = 4;
 
+// Half size of the box drawn behind a link label (the canvas draws it from this too)
+export function edgeLabelHalfSize(label: string): { halfWidth: number; halfHeight: number } {
+  return { halfWidth: label.length * 3.7 + 10, halfHeight: 10.5 };
+}
 // Triangle pointing along (ux, uy) with its tip at (tipX, tipY)
 function arrowTriangle(
   tipX: number,
@@ -148,23 +155,37 @@ export function computeEdgeGeometry(
         ARROW_HALF_WIDTH
       );
 
-      // Mid arrow: halfway along the first segment of a bent link; on a straight link,
-      // in the middle, or nearer the source when the middle holds the label
+      // Mid arrow on the first segment (the whole link when straight), placed in the free
+      // part before the label so the label's opaque box never hides it. Skipped when that
+      // part is too short: the arrowhead at the target still shows the direction.
       const bent = Math.abs(curveStep) >= 0.5;
       const segEndX = bent ? cx : tx;
       const segEndY = bent ? cy : ty;
       const segLen = Math.hypot(segEndX - sx, segEndY - sy) || 1;
       const mux = (segEndX - sx) / segLen;
       const muy = (segEndY - sy) / segLen;
-      const t = bent ? 0.5 : edge.label ? 0.28 : 0.5;
-      const midArrowPoints = arrowTriangle(
-        sx + (segEndX - sx) * t + mux * (MID_ARROW_LENGTH / 2),
-        sy + (segEndY - sy) * t + muy * (MID_ARROW_LENGTH / 2),
-        mux,
-        muy,
-        MID_ARROW_LENGTH,
-        MID_ARROW_HALF_WIDTH
-      );
+      // Distance from the segment start to the label centre (the bend, or the middle)
+      const labelCentre = bent ? segLen : segLen / 2;
+      const { halfWidth, halfHeight } = edgeLabelHalfSize(edge.label ?? '');
+      const labelExit = edge.label
+        ? Math.min(
+            Math.abs(mux) > 1e-6 ? halfWidth / Math.abs(mux) : Infinity,
+            Math.abs(muy) > 1e-6 ? halfHeight / Math.abs(muy) : Infinity
+          )
+        : 0;
+      const freeEnd = edge.label ? labelCentre - labelExit - MID_ARROW_GAP : labelCentre;
+      const midDist = edge.label ? freeEnd / 2 : bent ? segLen / 2 : segLen / 2;
+      const fits = freeEnd >= MID_ARROW_LENGTH + MID_ARROW_GAP * 2;
+      const midArrowPoints = fits
+        ? arrowTriangle(
+            sx + mux * (midDist + MID_ARROW_LENGTH / 2),
+            sy + muy * (midDist + MID_ARROW_LENGTH / 2),
+            mux,
+            muy,
+            MID_ARROW_LENGTH,
+            MID_ARROW_HALF_WIDTH
+          )
+        : '';
 
       return {
         edge,

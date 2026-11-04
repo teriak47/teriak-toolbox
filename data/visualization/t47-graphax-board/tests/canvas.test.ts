@@ -9,7 +9,7 @@ import {
   clampFinite,
   sanitizeViewport,
 } from '../src/lib/canvasGeometry.ts';
-import { computeEdgeGeometry } from '../src/lib/edgeGeometry.ts';
+import { computeEdgeGeometry, edgeLabelHalfSize } from '../src/lib/edgeGeometry.ts';
 
 const now = '2026-11-04T00:00:00.000Z';
 
@@ -66,9 +66,29 @@ describe('edge geometry', () => {
     assert.ok(tip[0] > base1[0] && tip[0] > base2[0], 'points towards the target');
     assert.ok(Math.abs((base1[0] + tip[0]) / 2 - 100) < 10, 'near the middle without a label');
 
-    const labelled = { ...edge('e', 'a', 'b'), label: 'connaît' };
-    const [withLabel] = computeEdgeGeometry([node('a', 0, 0), node('b', 200, 0)], [labelled], pos, radius);
-    assert.ok(tips(withLabel.midArrowPoints)[0][0] < 80, 'moved towards the source to leave room for the label');
+    // The arrow must stay clear of the label box, for short and long labels and slopes
+    let checked = 0;
+    for (const [label, bx, by] of [['relation', 200, 0], ['connaît', 200, 0], ['communique avec', 300, 0], ['lien', 160, 120]] as const) {
+      const [geo] = computeEdgeGeometry([node('a', 0, 0), node('b', bx, by)], [{ ...edge('e', 'a', 'b'), label }], pos, () => 30);
+      if (!geo.midArrowPoints) continue;
+      checked++;
+      const { halfWidth, halfHeight } = edgeLabelHalfSize(label);
+      for (const [x, y] of tips(geo.midArrowPoints)) {
+        const inside = Math.abs(x - geo.mx) < halfWidth && Math.abs(y - geo.my) < halfHeight;
+        assert.ok(!inside, `arrow point ${x},${y} is under the label "${label}"`);
+      }
+    }
+
+    assert.ok(checked >= 3, `only ${checked} labelled links had a mid arrow`);
+
+    // No room before the label: the mid arrow is skipped rather than hidden
+    const [cramped] = computeEdgeGeometry(
+      [node('a', 0, 0), node('b', 150, 0)],
+      [{ ...edge('e', 'a', 'b'), label: 'une relation au libellé très long' }],
+      pos,
+      radius
+    );
+    assert.equal(cramped.midArrowPoints, '');
 
     const [reversed] = computeEdgeGeometry([node('a', 0, 0), node('b', 200, 0)], [edge('e', 'b', 'a')], pos, radius);
     const [rtip, rbase] = tips(reversed.midArrowPoints);

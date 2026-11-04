@@ -23,7 +23,7 @@ import type { Category, CategoryShape, GraphEdge, GraphNode } from '@shared/type
 import { getCategoryIcon } from '@/lib/icons';
 import { cn } from '@/lib/utils';
 import { useViewport } from '@/hooks/useViewport';
-import { computeEdgeGeometry } from '@/lib/edgeGeometry';
+import { computeEdgeGeometry, edgeLabelHalfSize } from '@/lib/edgeGeometry';
 import { usePhysicsSimulation } from '@/hooks/usePhysicsSimulation';
 import {
   boxBoundary,
@@ -882,11 +882,13 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
                   {/* Direction: arrow along the link and arrowhead at the target */}
                   {edge.directed && (
                     <>
-                      <polygon
-                        points={midArrowPoints}
-                        fill={strokeColor}
-                        className="pointer-events-none"
-                      />
+                      {midArrowPoints && (
+                        <polygon
+                          points={midArrowPoints}
+                          fill={strokeColor}
+                          className="pointer-events-none"
+                        />
+                      )}
                       <polygon points={arrowPoints} fill={strokeColor} />
                     </>
                   )}
@@ -897,10 +899,10 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
                       {labelText ? (
                         <>
                           <rect
-                            x={-(labelText.length * 3.7 + 10)}
-                            y={-10.5}
-                            width={labelText.length * 7.4 + 20}
-                            height={21}
+                            x={-edgeLabelHalfSize(labelText).halfWidth}
+                            y={-edgeLabelHalfSize(labelText).halfHeight}
+                            width={edgeLabelHalfSize(labelText).halfWidth * 2}
+                            height={edgeLabelHalfSize(labelText).halfHeight * 2}
                             fill="var(--surface-puits)"
                             stroke={isSelected ? 'var(--accent-fort)' : 'var(--filet)'}
                             strokeWidth={1}
