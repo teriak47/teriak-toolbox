@@ -1,22 +1,29 @@
-export type CategoryShape = 'rounded' | 'sharp' | 'pill' | 'cut';
+// Runtime lists, so the server can validate what the client sends.
+// 'rounded' and 'pill' are legacy shapes kept for existing projects (drawn as squares).
+export const CATEGORY_SHAPES = ['rounded', 'sharp', 'pill', 'cut'] as const;
 
-export type CategoryIconName =
-  | 'user'
-  | 'users'
-  | 'map-pin'
-  | 'globe'
-  | 'shield-alert'
-  | 'bug'
-  | 'server'
-  | 'terminal'
-  | 'key'
-  | 'file-text'
-  | 'lightbulb'
-  | 'book-open'
-  | 'building'
-  | 'skull'
-  | 'clock'
-  | 'tag';
+export type CategoryShape = (typeof CATEGORY_SHAPES)[number];
+
+export const CATEGORY_ICON_NAMES = [
+  'user',
+  'users',
+  'map-pin',
+  'globe',
+  'shield-alert',
+  'bug',
+  'server',
+  'terminal',
+  'key',
+  'file-text',
+  'lightbulb',
+  'book-open',
+  'building',
+  'skull',
+  'clock',
+  'tag',
+] as const;
+
+export type CategoryIconName = (typeof CATEGORY_ICON_NAMES)[number];
 
 export type EdgeStyle = 'solid' | 'dashed';
 

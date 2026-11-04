@@ -1,34 +1,67 @@
 import { Hono } from 'hono';
 import { getDb, generateId, toRecordId } from '../db.ts';
 import { mapCategory, touchProject } from '../mappers.ts';
+import { projectExists } from '../guards.ts';
 import type { CategoryIconName, CategoryShape } from '../../shared/types.ts';
+import {
+  isCategoryIcon,
+  isCategoryShape,
+  normalizeColor,
+  optString,
+  readBody,
+} from '../validation.ts';
+
+type CategoryBody = { name: string; color: string; icon: CategoryIconName; shape: CategoryShape };
+
+// Checks the colour, icon and shape that were sent; missing fields are left undefined
+function readCategoryStyle(
+  body: Partial<Record<keyof CategoryBody, unknown>>
+):
+  | { error: string }
+  | { color?: string; icon?: CategoryIconName; shape?: CategoryShape } {
+  const style: { color?: string; icon?: CategoryIconName; shape?: CategoryShape } = {};
+  if (body.color !== undefined) {
+    const color = normalizeColor(body.color);
+    if (!color) return { error: 'Couleur invalide : format #rrggbb attendu.' };
+    style.color = color;
+  }
+  if (body.icon !== undefined) {
+    if (!isCategoryIcon(body.icon)) return { error: 'Icône de catégorie inconnue.' };
+    style.icon = body.icon;
+  }
+  if (body.shape !== undefined) {
+    if (!isCategoryShape(body.shape)) return { error: 'Forme de catégorie inconnue.' };
+    style.shape = body.shape;
+  }
+  return style;
+}
 
 export const categoriesRouter = new Hono();
 
 // Create category in a project
 categoriesRouter.post('/projects/:projectId/categories', async (c) => {
   const projectId = c.req.param('projectId');
-  const body = await c.req.json<{
-    name?: string;
-    color?: string;
-    icon?: CategoryIconName;
-    shape?: CategoryShape;
-  }>();
+  const body = await readBody<CategoryBody>(c);
 
-  const name = (body.name ?? '').trim();
+  const name = (optString(body.name) ?? '').trim();
   if (!name) {
     return c.json({ error: 'Le nom de la catégorie est requis.' }, 400);
   }
+  const style = readCategoryStyle(body);
+  if ('error' in style) return c.json({ error: style.error }, 400);
 
   const db = await getDb();
+  if (!(await projectExists(db, projectId))) {
+    return c.json({ error: 'Projet introuvable.' }, 404);
+  }
   const id = generateId();
 
   const created = await db.create(toRecordId('category', id)).content({
     projectId,
     name,
-    color: (body.color ?? '#47c0ef').trim(),
-    icon: body.icon ?? 'tag',
-    shape: body.shape ?? 'sharp',
+    color: style.color ?? '#47c0ef',
+    icon: style.icon ?? 'tag',
+    shape: style.shape ?? 'sharp',
   });
 
   await touchProject(db, projectId);
@@ -44,12 +77,9 @@ categoriesRouter.post('/projects/:projectId/categories', async (c) => {
 // Update category
 categoriesRouter.patch('/categories/:id', async (c) => {
   const id = c.req.param('id');
-  const body = await c.req.json<{
-    name?: string;
-    color?: string;
-    icon?: CategoryIconName;
-    shape?: CategoryShape;
-  }>();
+  const body = await readBody<CategoryBody>(c);
+  const style = readCategoryStyle(body);
+  if ('error' in style) return c.json({ error: style.error }, 400);
 
   const db = await getDb();
   const sets: string[] = [];
@@ -61,17 +91,17 @@ categoriesRouter.patch('/categories/:id', async (c) => {
     sets.push('name = $name');
     params.name = body.name.trim();
   }
-  if (typeof body.color === 'string' && body.color.trim()) {
+  if (style.color) {
     sets.push('color = $color');
-    params.color = body.color.trim();
+    params.color = style.color;
   }
-  if (typeof body.icon === 'string') {
+  if (style.icon) {
     sets.push('icon = $icon');
-    params.icon = body.icon;
+    params.icon = style.icon;
   }
-  if (typeof body.shape === 'string') {
+  if (style.shape) {
     sets.push('shape = $shape');
-    params.shape = body.shape;
+    params.shape = style.shape;
   }
 
   if (sets.length === 0) {
@@ -113,8 +143,10 @@ categoriesRouter.delete('/categories/:id', async (c) => {
   await db
     .query(
       `
+      BEGIN TRANSACTION;
       UPDATE entity SET categoryId = NONE WHERE categoryId = $catIdStr;
       DELETE $cid;
+      COMMIT TRANSACTION;
     `,
       {
         catIdStr: id,

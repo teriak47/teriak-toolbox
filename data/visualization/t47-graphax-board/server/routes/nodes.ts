@@ -1,34 +1,46 @@
 import { Hono } from 'hono';
 import { getDb, generateId, toRecordId } from '../db.ts';
 import { mapNode, sanitizeMetadata, touchProject } from '../mappers.ts';
+import { categoryInProject, nodesInProject, projectExists } from '../guards.ts';
+import { optString, readBody } from '../validation.ts';
+
+const UNKNOWN_CATEGORY = "Cette catégorie n'existe pas dans ce projet.";
 
 export const nodesRouter = new Hono();
 
 // Create a node on the canvas
 nodesRouter.post('/projects/:projectId/nodes', async (c) => {
   const projectId = c.req.param('projectId');
-  const body = await c.req.json<{
+  const body = await readBody<{
     title?: string;
     categoryId?: string | null;
     content?: string;
     positionX?: number;
     positionY?: number;
     metadata?: Record<string, unknown>;
-  }>();
+  }>(c);
 
   const db = await getDb();
+  if (!(await projectExists(db, projectId))) {
+    return c.json({ error: 'Projet introuvable.' }, 404);
+  }
+  const categoryId = body.categoryId ? String(body.categoryId) : null;
+  if (categoryId && !(await categoryInProject(db, projectId, categoryId))) {
+    return c.json({ error: UNKNOWN_CATEGORY }, 400);
+  }
+
   const id = generateId();
   const now = new Date().toISOString();
 
   const positionX = Number.isFinite(Number(body.positionX)) ? Number(body.positionX) : 0;
   const positionY = Number.isFinite(Number(body.positionY)) ? Number(body.positionY) : 0;
-  const title = (body.title ?? '').trim() || 'Nouvel indice';
+  const title = (optString(body.title) ?? '').trim() || 'Nouvel indice';
 
   const created = await db.create(toRecordId('entity', id)).content({
     projectId,
-    categoryId: body.categoryId || null,
+    categoryId,
     title,
-    content: body.content ?? '',
+    content: optString(body.content) ?? '',
     positionX,
     positionY,
     metadata: sanitizeMetadata(body.metadata),
@@ -49,14 +61,14 @@ nodesRouter.post('/projects/:projectId/nodes', async (c) => {
 // Update node content, title, category, metadata, or position
 nodesRouter.patch('/nodes/:id', async (c) => {
   const id = c.req.param('id');
-  const body = await c.req.json<{
+  const body = await readBody<{
     title?: string;
     categoryId?: string | null;
     content?: string;
     positionX?: number;
     positionY?: number;
     metadata?: Record<string, unknown>;
-  }>();
+  }>(c);
 
   const db = await getDb();
   const now = new Date().toISOString();
@@ -72,8 +84,20 @@ nodesRouter.patch('/nodes/:id', async (c) => {
     params.title = body.title.trim() || 'Sans titre';
   }
   if (body.categoryId !== undefined) {
+    const categoryId = body.categoryId ? String(body.categoryId) : null;
+    if (categoryId) {
+      const [projectId] = await db
+        .query<[unknown]>('SELECT VALUE projectId FROM ONLY $nid;', { nid: params.nid })
+        .collect();
+      if (projectId === undefined || projectId === null) {
+        return c.json({ error: 'Nœud introuvable.' }, 404);
+      }
+      if (!(await categoryInProject(db, String(projectId), categoryId))) {
+        return c.json({ error: UNKNOWN_CATEGORY }, 400);
+      }
+    }
     sets.push('categoryId = $categoryId');
-    params.categoryId = body.categoryId || null;
+    params.categoryId = categoryId;
   }
   if (typeof body.content === 'string') {
     sets.push('content = $content');
@@ -112,7 +136,7 @@ nodesRouter.patch('/nodes/:id', async (c) => {
 // Fast single-node position update (on drag stop)
 nodesRouter.patch('/nodes/:id/position', async (c) => {
   const id = c.req.param('id');
-  const body = await c.req.json<{ positionX: number; positionY: number }>();
+  const body = await readBody<{ positionX: number; positionY: number }>(c);
 
   const posX = Number(body.positionX);
   const posY = Number(body.positionY);
@@ -146,37 +170,47 @@ nodesRouter.patch('/nodes/:id/position', async (c) => {
 // Batch node positions update (multi-node drag or optional auto-align)
 nodesRouter.patch('/projects/:projectId/positions', async (c) => {
   const projectId = c.req.param('projectId');
-  const body = await c.req.json<{
+  const body = await readBody<{
     positions: Array<{ id: string; positionX: number; positionY: number }>;
-  }>();
+  }>(c);
 
   if (!Array.isArray(body.positions)) {
     return c.json({ error: 'Liste de positions attendue.' }, 400);
   }
 
+  const valid = body.positions.flatMap((item) => {
+    const posX = Number(item?.positionX);
+    const posY = Number(item?.positionY);
+    if (!item?.id || !Number.isFinite(posX) || !Number.isFinite(posY)) return [];
+    return [{ id: String(item.id), x: posX, y: posY }];
+  });
+
   const db = await getDb();
-  const now = new Date().toISOString();
-
-  for (const item of body.positions) {
-    const posX = Number(item.positionX);
-    const posY = Number(item.positionY);
-    if (!item.id || !Number.isFinite(posX) || !Number.isFinite(posY)) continue;
-
-    await db
-      .query(
-        'UPDATE ONLY $nid SET positionX = $posX, positionY = $posY, updatedAt = $now;',
-        {
-          nid: toRecordId('entity', item.id),
-          posX,
-          posY,
-          now,
-        }
-      )
-      .collect();
+  if (!(await projectExists(db, projectId))) {
+    return c.json({ error: 'Projet introuvable.' }, 404);
   }
 
-  await touchProject(db, projectId);
-  return c.json({ updated: body.positions.length });
+  // Only nodes of this project are moved; unknown ids and other projects' nodes are ignored
+  const owned = await nodesInProject(db, projectId, valid.map((p) => p.id));
+  const updates = valid
+    .filter((p) => owned.has(p.id))
+    .map((p) => ({ nid: toRecordId('entity', p.id), x: p.x, y: p.y }));
+
+  if (updates.length > 0) {
+    await db
+      .query(
+        `BEGIN TRANSACTION;
+        FOR $p IN $updates {
+          UPDATE $p.nid SET positionX = $p.x, positionY = $p.y, updatedAt = $now;
+        };
+        COMMIT TRANSACTION;`,
+        { updates, now: new Date().toISOString() }
+      )
+      .collect();
+    await touchProject(db, projectId);
+  }
+
+  return c.json({ updated: updates.length });
 });
 
 // Delete node and all connected graph edges
@@ -194,8 +228,10 @@ nodesRouter.delete('/nodes/:id', async (c) => {
   await db
     .query(
       `
+      BEGIN TRANSACTION;
       DELETE relation WHERE in = $nid OR out = $nid;
       DELETE $nid;
+      COMMIT TRANSACTION;
     `,
       {
         nid: nodeRef,
