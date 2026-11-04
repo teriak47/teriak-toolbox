@@ -201,8 +201,32 @@ describe('atomic writes', () => {
     const graph = await call('GET', `/api/projects/${json.project.id}`);
     assert.equal(graph.json.categories.length, json.project.categoryCount);
     assert.ok(graph.json.categories.length > 0);
-    const ip = graph.json.categories.find((c: { name: string }) => c.name === 'Infrastructure / IP');
-    assert.ok(ip.metadataKeys.includes('IP'));
+    const account = graph.json.categories.find((c: { name: string }) => c.name === 'Compte en ligne');
+    assert.equal(account.icon, 'at-sign');
+    assert.deepEqual(account.cardKeys, ['Plateforme', 'Identifiant']);
+  });
+
+  it('creates every preset with valid, distinct-coloured categories in order', async () => {
+    const expected: Record<string, string> = {
+      osint: 'Personne',
+      cyber: 'Acteur malveillant',
+      lore: 'Personnage',
+      research: 'Concept clé',
+    };
+    for (const [preset, first] of Object.entries(expected)) {
+      const { json } = await call('POST', '/api/projects', { name: `Modèle ${preset}`, preset });
+      const graph = await call('GET', `/api/projects/${json.project.id}`);
+      const cats: Array<{ name: string; color: string; metadataKeys: string[]; cardKeys: string[] }> =
+        graph.json.categories;
+      assert.ok(cats.length >= 5, preset);
+      assert.equal(new Set(cats.map((c) => c.color)).size, cats.length, `${preset}: colours repeat`);
+      assert.ok(cats.every((c) => c.cardKeys.every((k) => c.metadataKeys.includes(k))));
+      assert.equal(cats[0].name, first, `${preset}: preset order is kept`);
+    }
+    const ip = (await call('GET', `/api/projects/${(await call('POST', '/api/projects', { name: 'C', preset: 'cyber' })).json.project.id}`)).json.categories.find(
+      (c: { name: string }) => c.name === 'IP / Serveur'
+    );
+    assert.equal(ip.shape, 'hexagon');
     assert.deepEqual(ip.cardKeys, ['IP']);
   });
 
@@ -444,6 +468,27 @@ describe('input validation', () => {
 
     const project = await call('POST', '/api/projects', { name: 'Preset piégé', preset: 'toString' });
     assert.equal(project.status, 201);
+  });
+
+  it('appends new categories, and keeps older projects sorted by name', async () => {
+    const { json } = await call('POST', '/api/projects', { name: 'Ordre', preset: 'research' });
+    const pid = json.project.id;
+    await call('POST', `/api/projects/${pid}/categories`, { name: 'Aaa nouvelle' });
+    const names = (await call('GET', `/api/projects/${pid}`)).json.categories.map((c: { name: string }) => c.name);
+    assert.equal(names[0], 'Concept clé');
+    assert.equal(names.at(-1), 'Aaa nouvelle');
+
+    // A project from before positions existed: its categories have none
+    const legacy = await createProject('Ancien projet');
+    await (await getDb()).query(
+      "INSERT INTO category [{ projectId: $p, name: 'Zèbre', color: '#47c0ef', icon: 'tag', shape: 'sharp' }, { projectId: $p, name: 'Bœuf', color: '#47c0ef', icon: 'tag', shape: 'sharp' }];",
+      { p: legacy }
+    ).collect();
+    await call('POST', `/api/projects/${legacy}/categories`, { name: 'Cheval' });
+    const legacyNames = (await call('GET', `/api/projects/${legacy}`)).json.categories.map(
+      (c: { name: string }) => c.name
+    );
+    assert.deepEqual(legacyNames, ['Bœuf', 'Cheval', 'Zèbre']);
   });
 
   it('stores category default keys and card keys', async () => {

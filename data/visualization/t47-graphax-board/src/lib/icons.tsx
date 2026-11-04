@@ -1,5 +1,6 @@
 import type { LucideIcon } from 'lucide-react';
 import {
+  AtSign,
   BookOpen,
   Bug,
   Building2,
@@ -9,6 +10,7 @@ import {
   KeyRound,
   Lightbulb,
   MapPin,
+  Phone,
   Server,
   ShieldAlert,
   Skull,
@@ -36,6 +38,8 @@ export const CATEGORY_ICON_MAP: Record<CategoryIconName, { icon: LucideIcon; lab
   skull: { icon: Skull, label: 'Danger / Victime' },
   clock: { icon: Clock, label: 'Événement / Date' },
   tag: { icon: Tag, label: 'Étiquette générique' },
+  'at-sign': { icon: AtSign, label: 'Compte en ligne / Pseudonyme' },
+  phone: { icon: Phone, label: 'Téléphone / Contact' },
 };
 
 // SECTION 21 palette: cold accent, labelled semantic tones and cool neutrals
@@ -50,6 +54,10 @@ export const CATEGORY_COLORS: string[] = [
   '#c4bfb4', // ivory
   '#908b84', // neutral
   '#6693aa', // cool series
+  // Hues from the link palette (same lightness as the accent), used by the presets
+  '#60ccc5', // teal
+  '#e89dc0', // pink
+  '#c1a9ee', // lavender
 ];
 
 // Link colours: one lightness and chroma (oklch 0.78 / 0.10, like the accent blue),

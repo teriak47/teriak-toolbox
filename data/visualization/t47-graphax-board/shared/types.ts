@@ -30,6 +30,8 @@ export const CATEGORY_ICON_NAMES = [
   'skull',
   'clock',
   'tag',
+  'at-sign',
+  'phone',
 ] as const;
 
 export type CategoryIconName = (typeof CATEGORY_ICON_NAMES)[number];
@@ -82,7 +84,7 @@ function foldKey(key: string): string {
 
 export type EdgeStyle = 'solid' | 'dashed';
 
-export type ProjectPreset = 'osint' | 'lore' | 'research' | 'empty';
+export type ProjectPreset = 'osint' | 'cyber' | 'lore' | 'research' | 'empty';
 
 export interface Project {
   id: string;
