@@ -10,6 +10,7 @@ import {
   type SVGProps,
 } from 'react';
 import {
+  Check,
   Link2,
   Maximize2,
   MousePointer2,
@@ -85,7 +86,12 @@ interface GraphCanvasProps {
   onDeleteNode: (nodeId: string) => Promise<void>;
   onDeleteEdge: (edgeId: string) => Promise<void>;
   onOrganizeConstellation: () => Promise<void>;
+  /** Moves a node to another category (null: unclassified) */
+  onChangeNodeCategory: (nodeId: string, categoryId: string | null) => void;
 }
+
+// Number keys 1-9 pick the category at that place in the list; 0 removes the category
+export const CATEGORY_SHORTCUT_COUNT = 9;
 
 // Draws a node shape (or a ring around it) centred on 0,0
 function ShapeOutline({
@@ -140,6 +146,7 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
       nodes,
       edges,
       categories,
+      onChangeNodeCategory,
       selectedNodeId,
       selectedEdgeId,
       autoEditEdgeId,
@@ -442,6 +449,18 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
       }
     }, [selectedNodeId, selectedEdgeId, nodes, edges]);
 
+    // Category menu opened by a right click (without dragging) on a node, in container pixels
+    const [nodeMenu, setNodeMenu] = useState<{ nodeId: string; x: number; y: number } | null>(null);
+
+    const pickCategory = useCallback(
+      (nodeId: string, categoryId: string | null) => {
+        setNodeMenu(null);
+        const node = nodes.find((n) => n.id === nodeId);
+        if (node && node.categoryId !== categoryId) onChangeNodeCategory(nodeId, categoryId);
+      },
+      [nodes, onChangeNodeCategory]
+    );
+
     const confirmPendingDelete = useCallback(() => {
       if (!pendingDelete) return;
       setPendingDelete(null);
@@ -456,6 +475,33 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
         const target = e.target as HTMLElement | null;
         const tag = target?.tagName;
         if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target?.isContentEditable) {
+          return;
+        }
+
+        if (nodeMenu && e.key === 'Escape') {
+          e.preventDefault();
+          setNodeMenu(null);
+          return;
+        }
+
+        // 1-9: move the selected node to that category, 0: unclassified
+        if (
+          /^[0-9]$/.test(e.key) &&
+          !e.ctrlKey &&
+          !e.metaKey &&
+          !e.altKey &&
+          !pendingDelete &&
+          (selectedNodeId || nodeMenu)
+        ) {
+          const nodeId = nodeMenu?.nodeId ?? selectedNodeId!;
+          const index = Number(e.key);
+          if (index === 0) {
+            e.preventDefault();
+            pickCategory(nodeId, null);
+          } else if (index <= Math.min(CATEGORY_SHORTCUT_COUNT, categories.length)) {
+            e.preventDefault();
+            pickCategory(nodeId, categories[index - 1].id);
+          }
           return;
         }
 
@@ -500,6 +546,9 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
       requestDeleteSelection,
       confirmPendingDelete,
       setLinkingWire,
+      nodeMenu,
+      pickCategory,
+      categories,
     ]);
 
     const livePositionsRef = useRef(livePositions);
@@ -629,8 +678,21 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
 
         const world = screenToWorld(e.clientX, e.clientY);
         const dragDist = Math.hypot(world.x - curr.startWorldX, world.y - curr.startWorldY);
-        // Ignore micro-clicks (< 10px) on the halo ring so a click or double-click on a node never fires a link
-        if (dragDist < 10) return;
+        // Ignore micro-clicks (< 10px) on the halo ring so a click or double-click on a node never fires a link.
+        // A right click without dragging opens the node's category menu instead.
+        if (dragDist < 10) {
+          if (e.button === 2) {
+            const rect = containerRef.current?.getBoundingClientRect();
+            onSelectEdge(null);
+            onSelectNode(curr.sourceId);
+            setNodeMenu({
+              nodeId: curr.sourceId,
+              x: e.clientX - (rect?.left ?? 0),
+              y: e.clientY - (rect?.top ?? 0),
+            });
+          }
+          return;
+        }
 
         const targetId = findSnapNodeAt(world.x, world.y, curr.sourceId);
         if (targetId) {
@@ -767,7 +829,15 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
       <div
         ref={containerRef}
         onContextMenu={(e) => e.preventDefault()}
+        onMouseDownCapture={() => {
+          // SVG elements do not take focus: leave a field of the inspector or the toolbar so the
+          // canvas shortcuts (V, L, Delete, 0-9) apply, and a digit cannot change a focused list.
+          // Capture phase, because nodes and labels stop the event from bubbling.
+          const active = document.activeElement;
+          if (active instanceof HTMLElement && !containerRef.current?.contains(active)) active.blur();
+        }}
         onMouseDown={(e) => {
+          setNodeMenu(null);
           // Middle-click or Left-click strictly on empty canvas background starts Pan
           if (isCanvasBackground(e.target)) {
             if (e.button === 0 || e.button === 1) {
@@ -1410,6 +1480,57 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
         )}
 
         {/* ==================== KEYBOARD DELETE CONFIRMATION (TOP CENTER) ==================== */}
+        {nodeMenu && (() => {
+          const menuNode = nodes.find((n) => n.id === nodeMenu.nodeId);
+          if (!menuNode) return null;
+          const rect = containerRef.current?.getBoundingClientRect();
+          // Keep the menu inside the canvas
+          const left = Math.min(nodeMenu.x, (rect?.width ?? 0) - 236);
+          const top = Math.min(nodeMenu.y, (rect?.height ?? 0) - (categories.length + 2) * 30 - 40);
+          const item = (categoryId: string | null, label: string, color: string, key: string | null) => {
+            const current = menuNode.categoryId === categoryId;
+            return (
+              <button
+                key={categoryId ?? 'none'}
+                type="button"
+                role="menuitemradio"
+                aria-checked={current}
+                onClick={() => pickCategory(menuNode.id, categoryId)}
+                className={cn(
+                  'w-full flex items-center gap-2 px-2.5 py-1.5 text-left text-xs transition-colors',
+                  current ? 'bg-zinc-800 text-zinc-50' : 'text-zinc-300 hover:bg-zinc-800/70'
+                )}
+              >
+                <span className="w-2.5 h-2.5 shrink-0" style={{ background: color }} aria-hidden="true" />
+                <span className="flex-1 truncate">{label}</span>
+                {current && <Check className="w-3 h-3 text-cyan-300 shrink-0" aria-hidden="true" />}
+                {key && <kbd className="font-mono text-[11px] text-zinc-500 shrink-0">{key}</kbd>}
+              </button>
+            );
+          };
+          return (
+            <div
+              role="menu"
+              aria-label="Changer la catégorie"
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
+              onDoubleClick={(e) => e.stopPropagation()}
+              onContextMenu={(e) => e.preventDefault()}
+              style={{ left: Math.max(8, left), top: Math.max(8, top) }}
+              className="absolute z-30 w-56 py-1 rounded-xl bg-zinc-900 border border-filet-fort shadow-2xl"
+            >
+              <p className="px-2.5 pt-1 pb-1.5 text-[11px] uppercase tracking-wider text-zinc-500 truncate">
+                Catégorie de « {String(menuNode.title ?? '')} »
+              </p>
+              {categories.map((c, i) =>
+                item(c.id, c.name, c.color, i < CATEGORY_SHORTCUT_COUNT ? String(i + 1) : null)
+              )}
+              <div className="my-1 border-t border-filet" />
+              {item(null, 'Non classé', 'var(--etat-clos)', '0')}
+            </div>
+          );
+        })()}
+
         {pendingDelete && (
           <div
             role="alertdialog"

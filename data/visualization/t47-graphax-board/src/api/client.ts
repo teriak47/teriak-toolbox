@@ -117,6 +117,12 @@ export const api = {
       body: JSON.stringify(input),
     }),
 
+  reorderCategories: (projectId: string, ids: string[]) =>
+    request<{ categories: Category[] }>(`/api/projects/${projectId}/categories/order`, {
+      method: 'PUT',
+      body: JSON.stringify({ ids }),
+    }),
+
   deleteCategory: (categoryId: string) =>
     request<{ deleted: boolean }>(`/api/categories/${categoryId}`, {
       method: 'DELETE',

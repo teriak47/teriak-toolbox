@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { getDb, generateId, toRecordId } from '../db.ts';
-import { mapCategory, touchProject } from '../mappers.ts';
+import { mapCategory, sortCategoryRecords, touchProject } from '../mappers.ts';
 import { projectExists } from '../guards.ts';
 import {
   DEFAULT_CATEGORY_COLOR,
@@ -116,6 +116,49 @@ categoriesRouter.post('/projects/:projectId/categories', async (c) => {
     },
     201
   );
+});
+
+// Reorder a project's categories: `ids` in the new order. Categories left out keep their
+// relative order after the listed ones; unknown or foreign ids are a 400.
+categoriesRouter.put('/projects/:projectId/categories/order', async (c) => {
+  const projectId = c.req.param('projectId');
+  const body = await readBody<{ ids: unknown }>(c);
+  if (!Array.isArray(body.ids) || !body.ids.every((id) => typeof id === 'string')) {
+    return c.json({ error: 'Liste d\'identifiants attendue.' }, 400);
+  }
+  const db = await getDb();
+  if (!(await projectExists(db, projectId))) {
+    return c.json({ error: 'Projet introuvable.' }, 404);
+  }
+  const [raws] = await db
+    .query<[Record<string, unknown>[]]>('SELECT * FROM category WHERE projectId = $projectId;', {
+      projectId,
+    })
+    .collect();
+  const current = sortCategoryRecords(raws ?? []).map(mapCategory);
+  const known = new Set(current.map((cat) => cat.id));
+  const listed = [...new Set(body.ids as string[])];
+  if (listed.some((id) => !known.has(id))) {
+    return c.json({ error: 'Catégorie inconnue dans ce projet.' }, 400);
+  }
+  const order = [...listed, ...current.map((cat) => cat.id).filter((id) => !listed.includes(id))];
+
+  await db
+    .query(
+      `BEGIN TRANSACTION;
+      FOR $u IN $updates {
+        UPDATE $u.cid SET position = $u.position;
+      };
+      COMMIT TRANSACTION;`,
+      {
+        updates: order.map((id, position) => ({ cid: toRecordId('category', id), position })),
+      }
+    )
+    .collect();
+  await touchProject(db, projectId);
+
+  const byId = new Map(current.map((cat) => [cat.id, cat]));
+  return c.json({ categories: order.map((id) => byId.get(id)) });
 });
 
 // Update category

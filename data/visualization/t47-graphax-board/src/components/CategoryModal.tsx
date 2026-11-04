@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Eye, EyeOff, Plus, Trash2, X } from 'lucide-react';
 import {
   DEFAULT_CATEGORY_COLOR,
@@ -30,7 +30,12 @@ interface CategoryModalProps {
   onDelete?: (categoryId: string) => Promise<void>;
   /** Keys already used in the project, offered while typing a default key */
   knownKeys?: string[];
+  /** Titles of the nodes in this category, shown before deleting it */
+  usedBy?: string[];
 }
+
+// Number of node titles listed before deleting a category
+const USED_BY_PREVIEW = 6;
 
 type KeyRow = { id: string; key: string; onCard: boolean };
 
@@ -44,6 +49,7 @@ export function CategoryModal({
   onSave,
   onDelete,
   knownKeys = [],
+  usedBy = [],
 }: CategoryModalProps) {
   const [name, setName] = useState('');
   const [color, setColor] = useState(DEFAULT_CATEGORY_COLOR);
@@ -52,6 +58,12 @@ export function CategoryModal({
   const [keyRows, setKeyRows] = useState<KeyRow[]>([]);
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const actionsRef = useRef<HTMLDivElement>(null);
+
+  // The node list shown before deleting can push the buttons out of view: bring them back
+  useEffect(() => {
+    if (confirmDelete) actionsRef.current?.scrollIntoView({ block: 'nearest' });
+  }, [confirmDelete]);
 
   useEffect(() => {
     if (isOpen) {
@@ -335,8 +347,38 @@ export function CategoryModal({
             </datalist>
           </div>
 
+          {/* Before deleting: which nodes lose their category */}
+          {initialCategory && confirmDelete && (
+            <div role="alert" className="px-3 py-2.5 rounded-lg border border-rose-500/40 bg-rose-500/10 text-xs text-zinc-200">
+              {usedBy.length === 0 ? (
+                <p>Aucun nœud n'utilise cette catégorie.</p>
+              ) : (
+                <>
+                  <p>
+                    <strong className="text-zinc-50">
+                      {usedBy.length} nœud{usedBy.length > 1 ? 's' : ''}
+                    </strong>{' '}
+                    {usedBy.length > 1 ? 'utilisent' : 'utilise'} cette catégorie et{' '}
+                    {usedBy.length > 1 ? 'deviendront' : 'deviendra'} « Non classé » :
+                  </p>
+                  <ul className="mt-1.5 space-y-0.5 text-zinc-300">
+                    {usedBy.slice(0, USED_BY_PREVIEW).map((title, i) => (
+                      <li key={i} className="truncate">
+                        · {title || 'Sans titre'}
+                      </li>
+                    ))}
+                    {usedBy.length > USED_BY_PREVIEW && (
+                      <li className="text-zinc-400">… et {usedBy.length - USED_BY_PREVIEW} autre(s)</li>
+                    )}
+                  </ul>
+                </>
+              )}
+              <p className="mt-1.5 text-zinc-400">Les nœuds et leurs liens ne sont pas supprimés.</p>
+            </div>
+          )}
+
           {/* Actions */}
-          <div className="flex items-center justify-between pt-3 border-t border-filet">
+          <div ref={actionsRef} className="flex items-center justify-between pt-3 border-t border-filet">
             {initialCategory && onDelete ? (
               <button
                 type="button"

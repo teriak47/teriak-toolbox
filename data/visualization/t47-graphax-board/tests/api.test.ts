@@ -491,6 +491,31 @@ describe('input validation', () => {
     assert.deepEqual(legacyNames, ['Bœuf', 'Cheval', 'Zèbre']);
   });
 
+  it('reorders categories and keeps the order', async () => {
+    const { json } = await call('POST', '/api/projects', { name: 'Réordre', preset: 'research' });
+    const pid = json.project.id;
+    const before = (await call('GET', `/api/projects/${pid}`)).json.categories.map((c: { id: string }) => c.id);
+    const [a, b, c] = before;
+    // Only the moved ones are listed: the others keep their order after them
+    const res = await call('PUT', `/api/projects/${pid}/categories/order`, { ids: [c, a] });
+    assert.equal(res.status, 200);
+    const expected = [c, a, ...before.filter((id: string) => id !== c && id !== a)];
+    assert.deepEqual(res.json.categories.map((x: { id: string }) => x.id), expected);
+    const after = (await call('GET', `/api/projects/${pid}`)).json.categories.map((x: { id: string }) => x.id);
+    assert.deepEqual(after, expected);
+    // A new category still goes last
+    await call('POST', `/api/projects/${pid}/categories`, { name: 'Dernière' });
+    const names = (await call('GET', `/api/projects/${pid}`)).json.categories.map((x: { name: string }) => x.name);
+    assert.equal(names.at(-1), 'Dernière');
+    assert.ok(b);
+
+    const other = await createProject('Autre');
+    const foreign = (await call('POST', `/api/projects/${other}/categories`, { name: 'Étrangère' })).json.category.id;
+    assert.equal((await call('PUT', `/api/projects/${pid}/categories/order`, { ids: [foreign] })).status, 400);
+    assert.equal((await call('PUT', `/api/projects/${pid}/categories/order`, { ids: 'x' })).status, 400);
+    assert.equal((await call('PUT', '/api/projects/missing/categories/order', { ids: [] })).status, 404);
+  });
+
   it('stores category default keys and card keys', async () => {
     const projectId = await createProject();
     const url = `/api/projects/${projectId}/categories`;

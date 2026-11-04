@@ -69,6 +69,15 @@ const METADATA_PRESETS: Array<{ key: string; defaultVal: string }> = [
   { key: 'IP / Hash', defaultVal: '' },
 ];
 
+function rowsToMetadata(rows: Array<{ id: string; key: string; value: string }>): NodeMetadata {
+  const out: NodeMetadata = {};
+  for (const r of rows) {
+    const k = r.key.trim();
+    if (k) out[k] = r.value;
+  }
+  return out;
+}
+
 const EDGE_LABEL_SUGGESTIONS = [
   'communique avec',
   'confirme',
@@ -180,6 +189,23 @@ export function InspectorSidebar({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedNode?.id]);
 
+  // Follow changes made outside the inspector (category picked on the canvas, which can also
+  // add default keys), unless an edit typed here is still waiting to be saved
+  useEffect(() => {
+    if (!selectedNode || pendingNodeFlushRef.current?.nodeId === selectedNode.id) return;
+    setCategoryId(selectedNode.categoryId);
+    const incoming = selectedNode.metadata ?? {};
+    setMetaRows((rows) => {
+      const current = rowsToMetadata(rows);
+      const same =
+        Object.keys(current).length === Object.keys(incoming).length &&
+        Object.entries(incoming).every(([k, v]) => current[k] === v);
+      if (same) return rows;
+      return Object.entries(incoming).map(([k, v], idx) => ({ id: `${idx}-${k}`, key: k, value: v }));
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedNode?.categoryId, selectedNode?.metadata]);
+
   // Sync when selectedEdge ID changes (or external inline label commit updates label)
   useEffect(() => {
     flushPendingEdge();
@@ -245,17 +271,6 @@ export function InspectorSidebar({
       pendingEdgeFlushRef.current?.edgeId === edgeId ? pendingEdgeFlushRef.current.patch : {};
     pendingEdgeFlushRef.current = null;
     void onUpdateEdge(edgeId, { ...pending, reverse: true });
-  };
-
-  const rowsToMetadata = (
-    rows: Array<{ id: string; key: string; value: string }>
-  ): NodeMetadata => {
-    const out: NodeMetadata = {};
-    for (const r of rows) {
-      const k = r.key.trim();
-      if (k) out[k] = r.value;
-    }
-    return out;
   };
 
   const updateMetaRows = (nextRows: Array<{ id: string; key: string; value: string }>) => {

@@ -18,6 +18,7 @@ import {
   Plus,
   Search,
   X,
+  GripVertical,
 } from 'lucide-react';
 import type {
   Category,
@@ -41,7 +42,7 @@ import {
 import { CategoryModal } from '@/components/CategoryModal';
 import { getCategoryIcon } from '@/lib/icons';
 import { computeConstellationLayout } from '@/lib/forceLayout';
-import { cn } from '@/lib/utils';
+import { cn, moveItem } from '@/lib/utils';
 import { AppFooter } from '@/components/AppFooter';
 import logoWhite from '@/ds/assets/logo-white.svg';
 
@@ -225,6 +226,9 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
       return false;
     });
   }, [entities, searchQuery, categoryMap]);
+
+  // Category being dragged in the sidebar, and the row it is over
+  const [dragCategory, setDragCategory] = useState<{ from: number; over: number } | null>(null);
 
   // Keys used in the project, offered when editing a category's default keys
   const projectMetadataKeys = useMemo(
@@ -464,6 +468,40 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
       );
     },
     [runSave]
+  );
+
+  // Category picked on the canvas (menu or number key): the node also gets the new
+  // category's missing default keys, as when the category is changed in the inspector
+  const handleChangeNodeCategory = useCallback(
+    (nodeId: string, categoryId: string | null) => {
+      const node = entities.find((n) => n.id === nodeId);
+      if (!node) return;
+      const cat = categories.find((c) => c.id === categoryId);
+      const metadata = withCategoryKeys(cat, node.metadata);
+      const added = Object.keys(metadata).length !== Object.keys(node.metadata ?? {}).length;
+      void handleUpdateNode(nodeId, added ? { categoryId, metadata } : { categoryId });
+    },
+    [entities, categories, handleUpdateNode]
+  );
+
+  // New category order from the sidebar (drag and drop or arrow keys)
+  const handleReorderCategories = useCallback(
+    async (from: number, to: number) => {
+      if (from === to) return;
+      const next = moveItem(categories, from, to);
+      setCategories(next);
+      await runSave(
+        async () => {
+          const { categories: saved } = await api.reorderCategories(
+            projectId,
+            next.map((c) => c.id)
+          );
+          setCategories(saved);
+        },
+        { retryKey: 'category-order' }
+      );
+    },
+    [categories, projectId, runSave]
   );
 
   const handleDeleteNode = useCallback(async (nodeId: string) => {
@@ -1102,19 +1140,60 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
                 )}
 
                 <div className="space-y-1">
-                  {categories.map((cat) => {
+                  {categories.map((cat, index) => {
                     const Icon = getCategoryIcon(cat.icon);
                     const hidden = hiddenCategoryIds.has(cat.id);
                     const count = categoryCounts.get(cat.id) ?? 0;
+                    const isDropTarget =
+                      dragCategory !== null && dragCategory.over === index && dragCategory.from !== index;
 
                     return (
                       <div
                         key={cat.id}
+                        draggable
+                        onDragStart={(e) => {
+                          e.dataTransfer.effectAllowed = 'move';
+                          e.dataTransfer.setData('text/plain', cat.id);
+                          setDragCategory({ from: index, over: index });
+                        }}
+                        onDragOver={(e) => {
+                          if (!dragCategory) return;
+                          e.preventDefault();
+                          if (dragCategory.over !== index) setDragCategory({ ...dragCategory, over: index });
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          if (dragCategory) void handleReorderCategories(dragCategory.from, index);
+                          setDragCategory(null);
+                        }}
+                        onDragEnd={() => setDragCategory(null)}
                         className={cn(
                           'group flex items-center justify-between gap-1.5 px-2 py-1.5 rounded-lg hover:bg-zinc-800/70 transition-colors',
-                          hidden && 'opacity-45'
+                          hidden && 'opacity-45',
+                          dragCategory?.from === index && 'opacity-40',
+                          isDropTarget &&
+                            (dragCategory.from > index
+                              ? 'shadow-[inset_0_2px_0_var(--accent-fort)]'
+                              : 'shadow-[inset_0_-2px_0_var(--accent-fort)]')
                         )}
                       >
+                        <button
+                          type="button"
+                          aria-label={`Déplacer « ${cat.name} » (flèches haut et bas)`}
+                          title="Glisser pour réordonner, ou flèches ↑ ↓"
+                          onKeyDown={(e) => {
+                            if (e.key === 'ArrowUp' && index > 0) {
+                              e.preventDefault();
+                              void handleReorderCategories(index, index - 1);
+                            } else if (e.key === 'ArrowDown' && index < categories.length - 1) {
+                              e.preventDefault();
+                              void handleReorderCategories(index, index + 1);
+                            }
+                          }}
+                          className="-ml-1 p-0.5 rounded text-zinc-600 hover:text-zinc-300 cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
+                        >
+                          <GripVertical className="w-3 h-3" />
+                        </button>
                         <button
                           type="button"
                           onClick={() => toggleCategoryVisibility(cat.id)}
@@ -1204,6 +1283,10 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
               <div>
                 <strong className="text-zinc-300">Double-clic lien :</strong> éditer le label
               </div>
+              <div>
+                <strong className="text-zinc-300">Clic droit nœud / 1 à 9 :</strong> changer de
+                catégorie (0 : non classé)
+              </div>
             </div>
           </aside>
         )}
@@ -1236,6 +1319,7 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
             onDeleteNode={handleDeleteNode}
             onDeleteEdge={handleDeleteEdge}
             onOrganizeConstellation={handleOrganizeConstellation}
+            onChangeNodeCategory={handleChangeNodeCategory}
           />
         </div>
 
@@ -1270,6 +1354,11 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
         onSave={handleSaveCategory}
         onDelete={handleDeleteCategory}
         knownKeys={projectMetadataKeys}
+        usedBy={
+          editingCategory
+            ? entities.filter((n) => n.categoryId === editingCategory.id).map((n) => n.title)
+            : []
+        }
       />
     </div>
   );
