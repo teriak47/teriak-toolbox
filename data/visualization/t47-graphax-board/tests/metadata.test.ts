@@ -79,12 +79,21 @@ describe('metadata keys and search', () => {
     assert.equal(parseMetadataQuery('https://example.org'), null);
     assert.equal(parseMetadataQuery('2001:db8::1'), null);
     assert.equal(parseMetadataQuery('ChimeraLoader'), null);
+    // A recognised value after the key is still a key:value query
+    assert.deepEqual(parseMetadataQuery('Email:alice@example.org'), { key: 'email', value: 'alice@example.org' });
+    assert.deepEqual(parseMetadataQuery('Date:2026-10-22'), { key: 'date', value: '2026-10-22' });
   });
 
   it('matches metadata by key and value, ignoring case, accents and defanging', () => {
     const meta = { Fiabilité: 'Confirmé (A1)', Domaine: 'telemetry[.]example' };
     assert.ok(matchesMetadataQuery(meta, parseMetadataQuery('fiabilite:confirme')!));
     assert.ok(matchesMetadataQuery(meta, parseMetadataQuery('domaine:telemetry.example')!));
+    assert.ok(matchesMetadataQuery(meta, parseMetadataQuery('domaine:telemetry[.]example')!), 'defanged query');
+    assert.ok(
+      matchesMetadataQuery({ Domaine: 'telemetry.example' }, parseMetadataQuery('Domaine:telemetry[.]example')!),
+      'defanged query against a plain value'
+    );
+    assert.ok(matchesMetadataQuery({ Email: 'alice@example.org' }, parseMetadataQuery('Email:alice@example.org')!));
     assert.ok(matchesMetadataQuery(meta, parseMetadataQuery('Domaine:')!));
     assert.ok(!matchesMetadataQuery(meta, parseMetadataQuery('IP:')!));
     assert.ok(!matchesMetadataQuery(meta, parseMetadataQuery('fiabilite:probable')!));

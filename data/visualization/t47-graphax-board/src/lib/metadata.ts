@@ -150,8 +150,11 @@ export function parseMetadataQuery(query: string): MetadataQuery | null {
   const match = /^([^:\s][^:]*?)\s*:\s*(.*)$/.exec(q);
   if (!match) return null;
   const [, key, value] = match;
-  if (/^(https?|hxxps?)$/i.test(key) || detectValueType(q) !== 'text') return null;
-  return { key: foldText(key), value: foldText(value) };
+  // Only a whole URL or IPv6 address is a plain query; "Email:a@b.org" is still key:value
+  const whole = detectValueType(q);
+  if (/^(https?|hxxps?)$/i.test(key) || whole === 'url' || whole === 'ipv6') return null;
+  // Defanging is ignored on both sides: "telemetry[.]example" finds "telemetry.example"
+  return { key: foldText(key), value: foldText(refang(value)) };
 }
 
 export function matchesMetadataQuery(metadata: NodeMetadata | undefined, query: MetadataQuery): boolean {
