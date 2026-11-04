@@ -1,6 +1,9 @@
 import { Hono } from 'hono';
 import { getDb, generateId, toRecordId } from '../db.ts';
 import { mapNode, sanitizeMetadata, touchProject } from '../mappers.ts';
+import { categoryInProject, nodesInProject, projectExists } from '../guards.ts';
+
+const UNKNOWN_CATEGORY = "Cette catégorie n'existe pas dans ce projet.";
 
 export const nodesRouter = new Hono();
 
@@ -17,6 +20,14 @@ nodesRouter.post('/projects/:projectId/nodes', async (c) => {
   }>();
 
   const db = await getDb();
+  if (!(await projectExists(db, projectId))) {
+    return c.json({ error: 'Projet introuvable.' }, 404);
+  }
+  const categoryId = body.categoryId ? String(body.categoryId) : null;
+  if (categoryId && !(await categoryInProject(db, projectId, categoryId))) {
+    return c.json({ error: UNKNOWN_CATEGORY }, 400);
+  }
+
   const id = generateId();
   const now = new Date().toISOString();
 
@@ -26,7 +37,7 @@ nodesRouter.post('/projects/:projectId/nodes', async (c) => {
 
   const created = await db.create(toRecordId('entity', id)).content({
     projectId,
-    categoryId: body.categoryId || null,
+    categoryId,
     title,
     content: body.content ?? '',
     positionX,
@@ -72,8 +83,20 @@ nodesRouter.patch('/nodes/:id', async (c) => {
     params.title = body.title.trim() || 'Sans titre';
   }
   if (body.categoryId !== undefined) {
+    const categoryId = body.categoryId ? String(body.categoryId) : null;
+    if (categoryId) {
+      const [projectId] = await db
+        .query<[unknown]>('SELECT VALUE projectId FROM ONLY $nid;', { nid: params.nid })
+        .collect();
+      if (projectId === undefined || projectId === null) {
+        return c.json({ error: 'Nœud introuvable.' }, 404);
+      }
+      if (!(await categoryInProject(db, String(projectId), categoryId))) {
+        return c.json({ error: UNKNOWN_CATEGORY }, 400);
+      }
+    }
     sets.push('categoryId = $categoryId');
-    params.categoryId = body.categoryId || null;
+    params.categoryId = categoryId;
   }
   if (typeof body.content === 'string') {
     sets.push('content = $content');
@@ -154,29 +177,39 @@ nodesRouter.patch('/projects/:projectId/positions', async (c) => {
     return c.json({ error: 'Liste de positions attendue.' }, 400);
   }
 
+  const valid = body.positions.flatMap((item) => {
+    const posX = Number(item?.positionX);
+    const posY = Number(item?.positionY);
+    if (!item?.id || !Number.isFinite(posX) || !Number.isFinite(posY)) return [];
+    return [{ id: String(item.id), x: posX, y: posY }];
+  });
+
   const db = await getDb();
-  const now = new Date().toISOString();
-
-  for (const item of body.positions) {
-    const posX = Number(item.positionX);
-    const posY = Number(item.positionY);
-    if (!item.id || !Number.isFinite(posX) || !Number.isFinite(posY)) continue;
-
-    await db
-      .query(
-        'UPDATE ONLY $nid SET positionX = $posX, positionY = $posY, updatedAt = $now;',
-        {
-          nid: toRecordId('entity', item.id),
-          posX,
-          posY,
-          now,
-        }
-      )
-      .collect();
+  if (!(await projectExists(db, projectId))) {
+    return c.json({ error: 'Projet introuvable.' }, 404);
   }
 
-  await touchProject(db, projectId);
-  return c.json({ updated: body.positions.length });
+  // Only nodes of this project are moved; unknown ids and other projects' nodes are ignored
+  const owned = await nodesInProject(db, projectId, valid.map((p) => p.id));
+  const updates = valid
+    .filter((p) => owned.has(p.id))
+    .map((p) => ({ nid: toRecordId('entity', p.id), x: p.x, y: p.y }));
+
+  if (updates.length > 0) {
+    await db
+      .query(
+        `BEGIN TRANSACTION;
+        FOR $p IN $updates {
+          UPDATE $p.nid SET positionX = $p.x, positionY = $p.y, updatedAt = $now;
+        };
+        COMMIT TRANSACTION;`,
+        { updates, now: new Date().toISOString() }
+      )
+      .collect();
+    await touchProject(db, projectId);
+  }
+
+  return c.json({ updated: updates.length });
 });
 
 // Delete node and all connected graph edges

@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { getDb, generateId, toRecordId } from '../db.ts';
 import { mapEdge, touchProject } from '../mappers.ts';
+import { nodesInProject, projectExists } from '../guards.ts';
 import type { EdgeStyle } from '../../shared/types.ts';
 
 export const edgesRouter = new Hono();
@@ -27,7 +28,18 @@ edgesRouter.post('/projects/:projectId/edges', async (c) => {
     return c.json({ error: 'Un nœud ne peut pas être relié à lui-même.' }, 400);
   }
 
+  const sourceNodeId = String(body.sourceNodeId);
+  const targetNodeId = String(body.targetNodeId);
+
   const db = await getDb();
+  if (!(await projectExists(db, projectId))) {
+    return c.json({ error: 'Projet introuvable.' }, 404);
+  }
+  const owned = await nodesInProject(db, projectId, [sourceNodeId, targetNodeId]);
+  if (!owned.has(sourceNodeId) || !owned.has(targetNodeId)) {
+    return c.json({ error: 'Les deux nœuds doivent exister dans ce projet.' }, 400);
+  }
+
   const id = generateId();
   const now = new Date().toISOString();
   const style: EdgeStyle = body.style === 'dashed' ? 'dashed' : 'solid';
@@ -47,9 +59,9 @@ edgesRouter.post('/projects/:projectId/edges', async (c) => {
         updatedAt: $now
       };`,
       {
-        from: toRecordId('entity', body.sourceNodeId),
+        from: toRecordId('entity', sourceNodeId),
         relId: toRecordId('relation', id),
-        to: toRecordId('entity', body.targetNodeId),
+        to: toRecordId('entity', targetNodeId),
         projectId,
         label: (body.label ?? '').trim(),
         style,

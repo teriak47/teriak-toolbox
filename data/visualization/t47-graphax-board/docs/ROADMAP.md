@@ -10,7 +10,7 @@ Effort: **S** small, **M** medium, **L** large.
 |---|---|---|---|---|---|
 | C1 | Done | The Delete key removed the selected node or link at once, with no confirmation and no undo. It now asks first (Enter or Delete again confirms, Escape cancels); Backspace works the same way. | `src/components/GraphCanvas.tsx` | High | S |
 | C2 | Done | Project import, project deletion and category deletion ran several statements without a transaction, so a failure part-way could leave a half-imported project, orphan nodes or stale category references. Project creation, the demo, import and every deletion now run in a single transaction. | `server/bulk.ts`, `server/routes/*.ts` | High | M |
-| C3 | Planned | The API does not check that the project or nodes exist before creating a category, node or link, nor that both ends of a link belong to the same project. | `server/routes/*.ts` | Medium | M |
+| C3 | Done | The API did not check that the project, nodes or category existed before creating a category, node or link, nor that both ends of a link belonged to the same project; a batch position update could also move another project's nodes. These references are now checked (404 for a missing project, 400 for an invalid node or category). | `server/guards.ts`, `server/routes/*.ts` | Medium | M |
 | C4 | Planned | Input validation is thin: `color`, `icon` and `shape` accept any string, imports have no size limit, and malformed JSON returns 500 instead of 400. | `server/routes/*.ts`, `server/app.ts` | Medium | S |
 | C5 | Planned | Category defaults disagree (`mapCategory` uses `rounded` / `#38bdf8`, presets use `sharp` / `#47c0ef`, import uses `rounded`), and `normalizeCategoryRecord` is an unused duplicate. | `server/mappers.ts`, `server/presets.ts` | Low | S |
 | C6 | Planned | Exporting from the workspace has no error handling, so a failure goes unnoticed. | `src/components/Workspace.tsx` | Low | S |
@@ -21,7 +21,7 @@ Effort: **S** small, **M** medium, **L** large.
 | ID | Status | Topic | Finding | Benefit | Effort |
 |---|---|---|---|---|---|
 | O1 | Planned | Live physics | The loop never stops once the graph settles, sets React state on every frame (re-rendering the whole SVG), is O(n²), and saves every node position every 1.8 s. | CPU and battery use, smoothness beyond ~150 nodes | M |
-| O2 | Planned | Batch positions | The server runs one query per node, sequentially, instead of one statement in a transaction. | Faster layouts | S |
+| O2 | Done | Batch positions | The server ran one query per node, sequentially; it now updates them in one transaction (done with C3). | Faster layouts | S |
 | O3 | Planned | Project list | Counting loads every category, node and link in the database instead of using `GROUP BY` with `count()`. | Fast dashboard with large databases | S |
 | O4 | Done | Create, demo, import | Records were created one at a time; they are now written with batched inserts in one transaction (done with C2). | Speed and atomicity | S |
 | O5 | Planned | Bundle size | The client bundle is 562 kB; `react-markdown`, `remark-gfm` and `dagre` can be loaded on demand, and unused dependencies removed (C7). | Faster start | S |

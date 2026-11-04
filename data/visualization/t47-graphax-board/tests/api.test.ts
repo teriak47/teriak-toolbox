@@ -289,6 +289,111 @@ describe('atomic writes', () => {
   });
 });
 
+describe('reference checks', () => {
+  async function createCategory(projectId: string): Promise<string> {
+    const { status, json } = await call('POST', `/api/projects/${projectId}/categories`, {
+      name: 'Catégorie fictive',
+    });
+    assert.equal(status, 201);
+    return json.category.id;
+  }
+
+  it('refuses nodes and categories in a missing project', async () => {
+    assert.equal((await call('POST', '/api/projects/missing/nodes', { title: 'X' })).status, 404);
+    assert.equal(
+      (await call('POST', '/api/projects/missing/categories', { name: 'X' })).status,
+      404
+    );
+    const [orphans] = await (await getDb())
+      .query<[unknown[]]>(
+        "SELECT * FROM entity WHERE projectId = 'missing'; SELECT * FROM category WHERE projectId = 'missing';"
+      )
+      .collect();
+    assert.equal(orphans.length, 0);
+  });
+
+  it('refuses a link to a missing node or to a node of another project', async () => {
+    const p1 = await createProject('P1');
+    const p2 = await createProject('P2');
+    const a = await createNode(p1, 'A');
+    const b = await createNode(p2, 'B');
+
+    const ghost = await call('POST', `/api/projects/${p1}/edges`, {
+      sourceNodeId: a,
+      targetNodeId: 'ghost',
+    });
+    assert.equal(ghost.status, 400);
+    const across = await call('POST', `/api/projects/${p1}/edges`, {
+      sourceNodeId: a,
+      targetNodeId: b,
+    });
+    assert.equal(across.status, 400);
+    assert.equal(
+      (await call('POST', '/api/projects/missing/edges', { sourceNodeId: a, targetNodeId: b }))
+        .status,
+      404
+    );
+    assert.equal((await call('GET', `/api/projects/${p1}`)).json.edges.length, 0);
+  });
+
+  it('only accepts a category of the same project for a node', async () => {
+    const p1 = await createProject('P1');
+    const p2 = await createProject('P2');
+    const own = await createCategory(p1);
+    const foreign = await createCategory(p2);
+
+    const created = await call('POST', `/api/projects/${p1}/nodes`, { title: 'A', categoryId: own });
+    assert.equal(created.status, 201);
+    assert.equal(created.json.node.categoryId, own);
+
+    assert.equal(
+      (await call('POST', `/api/projects/${p1}/nodes`, { title: 'B', categoryId: foreign })).status,
+      400
+    );
+    assert.equal(
+      (await call('POST', `/api/projects/${p1}/nodes`, { title: 'C', categoryId: 'unknown' }))
+        .status,
+      400
+    );
+
+    const nodeId = created.json.node.id;
+    assert.equal(
+      (await call('PATCH', `/api/nodes/${nodeId}`, { categoryId: foreign })).status,
+      400
+    );
+    const cleared = await call('PATCH', `/api/nodes/${nodeId}`, { categoryId: null });
+    assert.equal(cleared.status, 200);
+    assert.equal(cleared.json.node.categoryId, null);
+  });
+
+  it('moves only the nodes of the project in a batch', async () => {
+    const p1 = await createProject('P1');
+    const p2 = await createProject('P2');
+    const a = await createNode(p1, 'A');
+    const b = await createNode(p2, 'B');
+
+    const res = await call('PATCH', `/api/projects/${p1}/positions`, {
+      positions: [
+        { id: a, positionX: 11, positionY: 12 },
+        { id: b, positionX: 99, positionY: 99 },
+        { id: 'ghost', positionX: 1, positionY: 1 },
+      ],
+    });
+    assert.equal(res.status, 200);
+    assert.equal(res.json.updated, 1);
+
+    const g1 = await call('GET', `/api/projects/${p1}`);
+    assert.equal(g1.json.nodes[0].positionX, 11);
+    assert.equal(g1.json.nodes[0].positionY, 12);
+    const g2 = await call('GET', `/api/projects/${p2}`);
+    assert.equal(g2.json.nodes[0].positionX, 0);
+    const [ghosts] = await (await getDb())
+      .query<[unknown[]]>('SELECT * FROM entity:ghost;')
+      .collect();
+    assert.equal(ghosts.length, 0);
+  });
+});
+
 describe('local-only guard', () => {
   it('accepts same-origin and header-less requests', async () => {
     assert.equal((await call('GET', '/api/health')).status, 200);

@@ -4,7 +4,7 @@
 
 **Bêta :** l'application est en développement et n'a pas encore fait l'objet d'une revue complète de sécurité et de fonctionnement. Conservez des sauvegardes indépendantes de vos projets importants.
 
-L'inversion d'un lien conserve désormais les modifications en attente, et un enregistrement échoué est signalé avec une action « Réessayer » au lieu d'afficher « Sauvegardé ». La suppression du nœud ou du lien sélectionné au clavier (`Suppr` ou `Retour arrière`) demande désormais une confirmation. La création, l'import et la suppression d'un projet, d'une catégorie ou d'un nœud se font en une seule transaction : un échec ne laisse aucune donnée partielle. Les autres points de la revue (voir le suivi des issues du dépôt) restent ouverts : conservez des exports de sauvegarde de vos projets importants.
+L'inversion d'un lien conserve désormais les modifications en attente, et un enregistrement échoué est signalé avec une action « Réessayer » au lieu d'afficher « Sauvegardé ». La suppression du nœud ou du lien sélectionné au clavier (`Suppr` ou `Retour arrière`) demande désormais une confirmation. La création, l'import et la suppression d'un projet, d'une catégorie ou d'un nœud se font en une seule transaction : un échec ne laisse aucune donnée partielle, et l'API refuse les liens, nœuds et catégories qui font référence à un projet, un nœud ou une catégorie inexistants, ou à un autre projet. Les autres points de la revue (voir le suivi des issues du dépôt) restent ouverts : conservez des exports de sauvegarde de vos projets importants.
 
 Application locale d'investigation, d'OSINT/Cyber, d'analyse de lore et de recherche complexe conçue pour dépasser les limites des graphes flottants classiques.
 

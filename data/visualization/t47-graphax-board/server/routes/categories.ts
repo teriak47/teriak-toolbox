@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { getDb, generateId, toRecordId } from '../db.ts';
 import { mapCategory, touchProject } from '../mappers.ts';
+import { projectExists } from '../guards.ts';
 import type { CategoryIconName, CategoryShape } from '../../shared/types.ts';
 
 export const categoriesRouter = new Hono();
@@ -21,6 +22,9 @@ categoriesRouter.post('/projects/:projectId/categories', async (c) => {
   }
 
   const db = await getDb();
+  if (!(await projectExists(db, projectId))) {
+    return c.json({ error: 'Projet introuvable.' }, 404);
+  }
   const id = generateId();
 
   const created = await db.create(toRecordId('category', id)).content({
