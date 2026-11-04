@@ -49,6 +49,8 @@ La version affichée dans le pied de page vient de `package.json`, qui doit corr
 - **Sens des liens :** chaque lien orienté porte une flèche au milieu et une à l'arrivée. Quand un nœud est sélectionné, ses liens sortants s'affichent en bleu et ses liens entrants en lavande, avec une légende qui les compte ; des tirets animés montrent le sens du lien survolé ou sélectionné.
 - **Clic sur un nœud ou un lien :** Ouvre le panneau latéral d'inspection à droite (catégorie, métadonnées libres clé/valeur, notes complètes en Markdown avec aperçu rendu, trait plein vs pointillés d'hypothèse, orientation).
 - **`Ctrl + K` :** Recherche instantanée avec centrage automatique de la caméra sur l'indice sélectionné.
+  Tapez `Clé:valeur` (ex. `IP:192.0.2`) pour chercher dans un attribut précis, ou `Clé:` pour trouver les nœuds qui ont cet attribut.
+- **Attributs (métadonnées) :** les clés déjà utilisées dans le projet sont proposées à la saisie ; le type des valeurs est reconnu (URL, IP, date, empreinte…), une valeur qui ne correspond pas à sa clé est signalée, une URL peut s'ouvrir dans un nouvel onglet (jamais une URL désamorcée comme `hxxps://exemple[.]org`) et chaque valeur peut être copiée.
 - **`Suppr` (`Delete`) ou `Retour arrière` :** Demande la suppression du nœud ou du lien sélectionné ; `Entrée` confirme, `Échap` annule.
 
 ## Protection de l'API locale
