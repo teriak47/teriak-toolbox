@@ -85,10 +85,9 @@ interface HistoryActions {
   updateEdge: (edgeId: string, patch: EdgePatch) => Promise<boolean>;
   applyPositions: (positions: Positions) => void;
   reorderCategories: (ids: string[]) => Promise<void>;
-  // Node and link deletions are shown at once and kept for "Réessayer"; the other three
-  // wait for the server and resolve to false when it fails, so the entry stays in place
-  deleteNode: (nodeId: string) => Promise<void>;
-  deleteEdge: (edgeId: string) => Promise<void>;
+  // Each resolves to false when the server failed, so the history entry stays in place
+  deleteNode: (nodeId: string) => Promise<boolean>;
+  deleteEdge: (edgeId: string) => Promise<boolean>;
   deleteCategory: (categoryId: string) => Promise<boolean>;
   updateCategory: (categoryId: string, input: CategoryInput) => Promise<boolean>;
   restore: (snapshot: RestoreSnapshot) => Promise<boolean>;
@@ -188,6 +187,26 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
     let current = edgeId;
     while (edgeAliasRef.current.has(current)) current = edgeAliasRef.current.get(current)!;
     return current;
+  }, []);
+
+  // A link as it is now stored: a reversal saved after the copy was taken gave it a new id
+  // and swapped its ends (each alias is one reversal)
+  const currentEdgeState = useCallback((edge: GraphEdge): GraphEdge => {
+    let id = edge.id;
+    let flips = 0;
+    while (edgeAliasRef.current.has(id)) {
+      id = edgeAliasRef.current.get(id)!;
+      flips += 1;
+    }
+    if (flips % 2 === 0) return { ...edge, id };
+    return {
+      ...edge,
+      id,
+      sourceNodeId: edge.targetNodeId,
+      targetNodeId: edge.sourceNodeId,
+      sourceHandle: edge.targetHandle,
+      targetHandle: edge.sourceHandle,
+    };
   }, []);
 
   // Selection & inline editing state
@@ -814,8 +833,12 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
 
   // A deletion is recorded once the server has done it: a failed one stays queued for
   // "Réessayer" and cannot be undone. Undo and redo replaying it record nothing.
+  // A deletion made by the user is shown at once, kept for "Réessayer" if it fails, and
+  // recorded once the server has done it. Replayed by undo or redo, it is not kept for
+  // "Réessayer" (a later retry could delete a record restored since): on failure the
+  // record comes back on screen and the history entry stays in place.
   const handleDeleteNode = useCallback(
-    async (nodeId: string) => {
+    async (nodeId: string): Promise<boolean> => {
       const replaying = historyRef.current.isApplying;
       const snapshot = nodeSnapshot(nodeId);
       setEntities((prev) => prev.filter((n) => n.id !== nodeId));
@@ -824,20 +847,31 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
       );
       setSelectedNodeId((curr) => (curr === nodeId ? null : curr));
 
-      const done = await runSave(() => enqueueEdgeOp(() => api.deleteNode(nodeId)), {
-        retryKey: `delete-node:${nodeId}`,
-      });
-      if (done && snapshot && !replaying) {
+      const done = await runSave(
+        () => enqueueEdgeOp(() => api.deleteNode(nodeId)),
+        replaying ? {} : { retryKey: `delete-node:${nodeId}` }
+      );
+      if (!done) {
+        if (replaying && snapshot) {
+          setEntities((prev) => [...prev.filter((n) => n.id !== nodeId), ...(snapshot.nodes ?? [])]);
+          setRelations((prev) => [...prev, ...(snapshot.edges ?? []).map(currentEdgeState)]);
+        }
+        return false;
+      }
+      if (snapshot && !replaying) {
+        // Links reversed while the deletion waited in the queue are kept as stored
+        const stored = { ...snapshot, edges: (snapshot.edges ?? []).map(currentEdgeState) };
         recordPresence(
           'Suppression du nœud',
           'deleted',
-          snapshot,
+          stored,
           () => nodeSnapshot(nodeId),
           () => actionsRef.current?.deleteNode(nodeId)
         );
       }
+      return true;
     },
-    [runSave, enqueueEdgeOp, nodeSnapshot, recordPresence]
+    [runSave, enqueueEdgeOp, nodeSnapshot, recordPresence, currentEdgeState]
   );
 
   // Edge updates from Inspector
@@ -969,11 +1003,13 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
     },
     reorderCategories: applyCategoryOrder,
     deleteNode: async (nodeId) => {
-      if (entitiesRef.current.some((n) => n.id === nodeId)) await handleDeleteNode(nodeId);
+      if (!entitiesRef.current.some((n) => n.id === nodeId)) return true;
+      return handleDeleteNode(nodeId);
     },
     deleteEdge: async (edgeId) => {
       const id = resolveEdgeId(edgeId);
-      if (relationsRef.current.some((e) => e.id === id)) await handleDeleteEdge(id);
+      if (!relationsRef.current.some((e) => e.id === id)) return true;
+      return handleDeleteEdge(id);
     },
     deleteCategory: async (categoryId) => {
       if (!categoriesRef.current.some((c) => c.id === categoryId)) return true;
@@ -1051,28 +1087,37 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
   }, []);
 
   const handleDeleteEdge = useCallback(
-    async (edgeId: string) => {
+    async (edgeId: string): Promise<boolean> => {
       const replaying = historyRef.current.isApplying;
-      const snapshot = edgeSnapshot(edgeId);
+      const snapshot = edgeSnapshot(edgeId)?.edges?.[0];
       setRelations((prev) => prev.filter((e) => e.id !== edgeId));
       setSelectedEdgeId((curr) => (curr === edgeId ? null : curr));
 
       const done = await runSave(
         () => enqueueEdgeOp(() => api.deleteEdge(resolveEdgeId(edgeId))),
-        { retryKey: `delete-edge:${edgeId}` }
+        replaying ? {} : { retryKey: `delete-edge:${edgeId}` }
       );
-      const restoredId = snapshot?.edges?.[0]?.id;
-      if (done && snapshot && restoredId && !replaying) {
+      if (!done) {
+        if (replaying && snapshot) {
+          const back = currentEdgeState(snapshot);
+          setRelations((prev) => [...prev.filter((e) => e.id !== back.id), back]);
+        }
+        return false;
+      }
+      if (snapshot && !replaying) {
+        // A reversal saved while the deletion waited gave the link a new id and direction
+        const stored = currentEdgeState(snapshot);
         recordPresence(
           'Suppression du lien',
           'deleted',
-          snapshot,
-          () => edgeSnapshot(restoredId),
-          () => actionsRef.current?.deleteEdge(restoredId)
+          { edges: [stored] },
+          () => edgeSnapshot(stored.id),
+          () => actionsRef.current?.deleteEdge(stored.id)
         );
       }
+      return true;
     },
-    [runSave, enqueueEdgeOp, resolveEdgeId, edgeSnapshot, recordPresence]
+    [runSave, enqueueEdgeOp, resolveEdgeId, edgeSnapshot, recordPresence, currentEdgeState]
   );
 
   // Category CRUD. Each change is recorded once the server has stored it; `rethrow`

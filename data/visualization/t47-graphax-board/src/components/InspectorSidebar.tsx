@@ -40,7 +40,7 @@ interface InspectorSidebarProps {
       metadata: NodeMetadata;
     }>
   ) => Promise<void>;
-  onDeleteNode: (nodeId: string) => Promise<void>;
+  onDeleteNode: (nodeId: string) => Promise<unknown>;
   onUpdateEdge: (
     edgeId: string,
     patch: Partial<{
@@ -52,7 +52,7 @@ interface InspectorSidebarProps {
       reverse: boolean;
     }>
   ) => Promise<unknown>;
-  onDeleteEdge: (edgeId: string) => Promise<void>;
+  onDeleteEdge: (edgeId: string) => Promise<unknown>;
   onOpenNewCategory: () => void;
   /** Filled by the inspector: hands over (and cancels) the typed edits of a node not saved yet */
   takePendingEditRef?: MutableRefObject<TakePendingNodeEdit | null>;
