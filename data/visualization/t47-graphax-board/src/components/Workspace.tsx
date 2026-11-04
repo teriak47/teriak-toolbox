@@ -151,6 +151,8 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
   // Unsaved edits kept per node, and a per-edge queue so a reversal can never
   // overtake a label edit on the same link
   const nodePatchesRef = useRef(new Map<string, Record<string, unknown>>());
+  // Pending save of each node, so its saves never overlap
+  const nodeQueuesRef = useRef(new Map<string, Promise<unknown>>());
   // Unsaved field edits per link; a retry always sends the latest merged values
   const edgePatchesRef = useRef(new Map<string, Record<string, unknown>>());
   // Unsaved node positions: single drags and batch layouts share one latest-value map
@@ -441,10 +443,14 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
 
   // Persist single node position
   const handleUpdateNodePosition = useCallback(
-    async (nodeId: string, posX: number, posY: number) => {
+    async (nodeId: string, posX: number, posY: number, from?: { x: number; y: number }) => {
       const node = entitiesRef.current.find((n) => n.id === nodeId);
-      if (node && (node.positionX !== posX || node.positionY !== posY)) {
-        const before = [{ id: nodeId, positionX: node.positionX, positionY: node.positionY }];
+      // The drag start is the undo position: during a long drag, the live physics may have
+      // already saved intermediate coordinates of the dragged node
+      const startX = from?.x ?? node?.positionX;
+      const startY = from?.y ?? node?.positionY;
+      if (node && startX !== undefined && startY !== undefined && (startX !== posX || startY !== posY)) {
+        const before = [{ id: nodeId, positionX: startX, positionY: startY }];
         const after = [{ id: nodeId, positionX: posX, positionY: posY }];
         recordHistory({
           label: 'Déplacement du nœud',
@@ -578,14 +584,27 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
       setEntities((prev) =>
         prev.map((n) => (n.id === nodeId ? { ...n, ...patch } : n))
       );
-      // Merge with any earlier patch that failed, so a retry never loses a field
-      const merged = { ...(nodePatchesRef.current.get(nodeId) ?? {}), ...patch };
-      nodePatchesRef.current.set(nodeId, merged);
+      // Merge with any unsent or failed patch, so a retry never loses a field
+      nodePatchesRef.current.set(nodeId, { ...(nodePatchesRef.current.get(nodeId) ?? {}), ...patch });
       await runSave(
-        async () => {
-          const { node } = await api.updateNode(nodeId, merged);
-          nodePatchesRef.current.delete(nodeId);
-          setEntities((prev) => prev.map((n) => (n.id === nodeId ? node : n)));
+        () => {
+          // Saves of one node run one after the other and each sends the latest merged
+          // patch, so an older request can never finish last and overwrite an undo
+          const previous = nodeQueuesRef.current.get(nodeId) ?? Promise.resolve();
+          const next = previous.then(async () => {
+            const sent = nodePatchesRef.current.get(nodeId);
+            if (!sent) return;
+            const { node } = await api.updateNode(nodeId, sent);
+            if (nodePatchesRef.current.get(nodeId) !== sent) return; // a newer edit follows
+            nodePatchesRef.current.delete(nodeId);
+            setEntities((prev) => prev.map((n) => (n.id === nodeId ? node : n)));
+          });
+          const settled = next.catch(() => undefined);
+          nodeQueuesRef.current.set(nodeId, settled);
+          void settled.then(() => {
+            if (nodeQueuesRef.current.get(nodeId) === settled) nodeQueuesRef.current.delete(nodeId);
+          });
+          return next;
         },
         { retryKey: `node:${nodeId}` }
       );

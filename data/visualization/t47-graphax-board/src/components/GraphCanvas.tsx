@@ -80,7 +80,13 @@ interface GraphCanvasProps {
     worldX: number,
     worldY: number
   ) => Promise<void>;
-  onUpdateNodePosition: (nodeId: string, x: number, y: number) => Promise<void>;
+  /** `from` is where the drag started, used as the undo position */
+  onUpdateNodePosition: (
+    nodeId: string,
+    x: number,
+    y: number,
+    from?: { x: number; y: number }
+  ) => Promise<void>;
   onUpdateBatchPositions: (
     positions: Array<{ id: string; positionX: number; positionY: number }>
   ) => Promise<void>;
@@ -661,7 +667,7 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
         }
 
         if (dragNodeRef.current) {
-          const { nodeId, moved } = dragNodeRef.current;
+          const { nodeId, moved, startX, startY } = dragNodeRef.current;
           dragNodeRef.current = null;
           if (moved) {
             const finalPos = livePositionsRef.current.get(nodeId);
@@ -669,7 +675,8 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
               void onUpdateNodePosition(
                 nodeId,
                 Math.round(finalPos.x * 100) / 100,
-                Math.round(finalPos.y * 100) / 100
+                Math.round(finalPos.y * 100) / 100,
+                { x: Math.round(startX * 100) / 100, y: Math.round(startY * 100) / 100 }
               );
             }
           }
