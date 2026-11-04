@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
 import {
   ArrowLeftRight,
   ArrowRight,
@@ -54,7 +54,12 @@ interface InspectorSidebarProps {
   ) => Promise<void>;
   onDeleteEdge: (edgeId: string) => Promise<void>;
   onOpenNewCategory: () => void;
+  /** Filled by the inspector: hands over (and cancels) the typed edits of a node not saved yet */
+  takePendingEditRef?: MutableRefObject<TakePendingNodeEdit | null>;
 }
+
+export type PendingNodeEdit = Partial<{ title: string; content: string; metadata: NodeMetadata }>;
+export type TakePendingNodeEdit = (nodeId: string) => PendingNodeEdit;
 
 const MarkdownPreview = lazy(() => import('@/components/MarkdownPreview'));
 
@@ -98,6 +103,7 @@ export function InspectorSidebar({
   onUpdateEdge,
   onDeleteEdge,
   onOpenNewCategory,
+  takePendingEditRef,
 }: InspectorSidebarProps) {
   // Node draft state
   const [title, setTitle] = useState('');
@@ -136,6 +142,20 @@ export function InspectorSidebar({
     patch: Partial<{ title: string; content: string; metadata: NodeMetadata }>;
   } | null>(null);
   const nodeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // A change made elsewhere (category picked on the canvas) takes the edits still waiting here
+  // and sends them in its own request, so the delayed save cannot overwrite it afterwards
+  const takePendingNodeEdit: TakePendingNodeEdit = (nodeId) => {
+    if (pendingNodeFlushRef.current?.nodeId !== nodeId) return {};
+    if (nodeTimerRef.current) {
+      clearTimeout(nodeTimerRef.current);
+      nodeTimerRef.current = null;
+    }
+    const { patch } = pendingNodeFlushRef.current;
+    pendingNodeFlushRef.current = null;
+    return patch;
+  };
+  if (takePendingEditRef) takePendingEditRef.current = takePendingNodeEdit;
 
   const pendingEdgeFlushRef = useRef<{
     edgeId: string;

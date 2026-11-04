@@ -30,7 +30,11 @@ import type {
 } from '@shared/types';
 import { api, type CategoryInput } from '@/api/client';
 import { GraphCanvas, type GraphCanvasHandle } from '@/components/GraphCanvas';
-import { INSPECTOR_SAVE_DELAY_MS, InspectorSidebar } from '@/components/InspectorSidebar';
+import {
+  INSPECTOR_SAVE_DELAY_MS,
+  InspectorSidebar,
+  type TakePendingNodeEdit,
+} from '@/components/InspectorSidebar';
 import { downloadProjectExport } from '@/lib/exportProject';
 import { useSaveQueue } from '@/hooks/useSaveQueue';
 import {
@@ -57,6 +61,8 @@ interface WorkspaceProps {
 
 export function Workspace({ projectId, onBack }: WorkspaceProps) {
   const canvasRef = useRef<GraphCanvasHandle>(null);
+  // Lets a change made on the canvas take the inspector's unsaved edits (see InspectorSidebar)
+  const takePendingEditRef = useRef<TakePendingNodeEdit | null>(null);
 
   // Core domain state
   const [project, setProject] = useState<Project | null>(null);
@@ -476,10 +482,18 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
     (nodeId: string, categoryId: string | null) => {
       const node = entities.find((n) => n.id === nodeId);
       if (!node) return;
+      // Edits typed in the inspector and not saved yet go in this request, so its delayed
+      // save cannot replace the default keys added here
+      const pending = takePendingEditRef.current?.(nodeId) ?? {};
+      const base = pending.metadata ?? node.metadata ?? {};
       const cat = categories.find((c) => c.id === categoryId);
-      const metadata = withCategoryKeys(cat, node.metadata);
-      const added = Object.keys(metadata).length !== Object.keys(node.metadata ?? {}).length;
-      void handleUpdateNode(nodeId, added ? { categoryId, metadata } : { categoryId });
+      const metadata = withCategoryKeys(cat, base);
+      const added = Object.keys(metadata).length !== Object.keys(base).length;
+      void handleUpdateNode(nodeId, {
+        ...pending,
+        categoryId,
+        ...(added || pending.metadata ? { metadata } : {}),
+      });
     },
     [entities, categories, handleUpdateNode]
   );
@@ -1284,8 +1298,7 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
                 <strong className="text-zinc-300">Double-clic lien :</strong> éditer le label
               </div>
               <div>
-                <strong className="text-zinc-300">Clic droit nœud / 1 à 9 :</strong> changer de
-                catégorie (0 : non classé)
+                <strong className="text-zinc-300">Clic droit nœud :</strong> changer de catégorie
               </div>
             </div>
           </aside>
@@ -1329,6 +1342,7 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
           selectedEdge={selectedEdge}
           allNodes={entities}
           categories={categories}
+          takePendingEditRef={takePendingEditRef}
           onClose={() => {
             setSelectedNodeId(null);
             setSelectedEdgeId(null);

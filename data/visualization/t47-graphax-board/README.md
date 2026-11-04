@@ -34,7 +34,7 @@ A category can list default metadata keys (for example `IP`, `ASN`, `Pays`). The
 
 A new project can start from five category sets: OSINT investigation (people, organisations, online accounts, contacts, places, events), Cyber / CTI (threat actors, malware, vulnerabilities, IPs, domains, victims), lore, research, or none. Shapes mean the same in every set: a circle is a person, a hexagon something technical, an octagon a threat or risk, a diamond something uncertain, a cut corner evidence or a document, and a square the rest. Categories keep their order, and new ones are added at the end.
 
-Right-click a node (without dragging) to change its category, or press `1` to `9` with the node selected (`0` removes the category); the new category's missing default keys are added. Drag categories in the sidebar to reorder them (or use the up and down arrows on the handle). Before a category is deleted, the editor lists the nodes that will become unclassified.
+Right-click a node (without dragging) to change its category from a menu; the new category's missing default keys are added. Drag categories in the sidebar to reorder them (or use the up and down arrows on the handle). Before a category is deleted, the editor lists the nodes that will become unclassified.
 
 The version shown in the footer comes from `package.json`, which must match `tool.yaml` (checked by `pnpm test`). `/api/health` also reports it.
 

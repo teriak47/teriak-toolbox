@@ -90,9 +90,6 @@ interface GraphCanvasProps {
   onChangeNodeCategory: (nodeId: string, categoryId: string | null) => void;
 }
 
-// Number keys 1-9 pick the category at that place in the list; 0 removes the category
-export const CATEGORY_SHORTCUT_COUNT = 9;
-
 // Draws a node shape (or a ring around it) centred on 0,0
 function ShapeOutline({
   shape,
@@ -452,6 +449,11 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
     // Category menu opened by a right click (without dragging) on a node, in container pixels
     const [nodeMenu, setNodeMenu] = useState<{ nodeId: string; x: number; y: number } | null>(null);
 
+    // Selecting another node or a link closes the menu (nodes stop mousedown from bubbling)
+    useEffect(() => {
+      setNodeMenu((menu) => (menu && menu.nodeId !== selectedNodeId ? null : menu));
+    }, [selectedNodeId]);
+
     const pickCategory = useCallback(
       (nodeId: string, categoryId: string | null) => {
         setNodeMenu(null);
@@ -481,27 +483,6 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
         if (nodeMenu && e.key === 'Escape') {
           e.preventDefault();
           setNodeMenu(null);
-          return;
-        }
-
-        // 1-9: move the selected node to that category, 0: unclassified
-        if (
-          /^[0-9]$/.test(e.key) &&
-          !e.ctrlKey &&
-          !e.metaKey &&
-          !e.altKey &&
-          !pendingDelete &&
-          (selectedNodeId || nodeMenu)
-        ) {
-          const nodeId = nodeMenu?.nodeId ?? selectedNodeId!;
-          const index = Number(e.key);
-          if (index === 0) {
-            e.preventDefault();
-            pickCategory(nodeId, null);
-          } else if (index <= Math.min(CATEGORY_SHORTCUT_COUNT, categories.length)) {
-            e.preventDefault();
-            pickCategory(nodeId, categories[index - 1].id);
-          }
           return;
         }
 
@@ -547,8 +528,6 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
       confirmPendingDelete,
       setLinkingWire,
       nodeMenu,
-      pickCategory,
-      categories,
     ]);
 
     const livePositionsRef = useRef(livePositions);
@@ -831,7 +810,7 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
         onContextMenu={(e) => e.preventDefault()}
         onMouseDownCapture={() => {
           // SVG elements do not take focus: leave a field of the inspector or the toolbar so the
-          // canvas shortcuts (V, L, Delete, 0-9) apply, and a digit cannot change a focused list.
+          // canvas shortcuts (V, L, Delete) apply instead of typing into that field.
           // Capture phase, because nodes and labels stop the event from bubbling.
           const active = document.activeElement;
           if (active instanceof HTMLElement && !containerRef.current?.contains(active)) active.blur();
@@ -1487,7 +1466,7 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
           // Keep the menu inside the canvas
           const left = Math.min(nodeMenu.x, (rect?.width ?? 0) - 236);
           const top = Math.min(nodeMenu.y, (rect?.height ?? 0) - (categories.length + 2) * 30 - 40);
-          const item = (categoryId: string | null, label: string, color: string, key: string | null) => {
+          const item = (categoryId: string | null, label: string, color: string) => {
             const current = menuNode.categoryId === categoryId;
             return (
               <button
@@ -1504,7 +1483,6 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
                 <span className="w-2.5 h-2.5 shrink-0" style={{ background: color }} aria-hidden="true" />
                 <span className="flex-1 truncate">{label}</span>
                 {current && <Check className="w-3 h-3 text-cyan-300 shrink-0" aria-hidden="true" />}
-                {key && <kbd className="font-mono text-[11px] text-zinc-500 shrink-0">{key}</kbd>}
               </button>
             );
           };
@@ -1522,11 +1500,9 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
               <p className="px-2.5 pt-1 pb-1.5 text-[11px] uppercase tracking-wider text-zinc-500 truncate">
                 Catégorie de « {String(menuNode.title ?? '')} »
               </p>
-              {categories.map((c, i) =>
-                item(c.id, c.name, c.color, i < CATEGORY_SHORTCUT_COUNT ? String(i + 1) : null)
-              )}
+              {categories.map((c) => item(c.id, c.name, c.color))}
               <div className="my-1 border-t border-filet" />
-              {item(null, 'Non classé', 'var(--etat-clos)', '0')}
+              {item(null, 'Non classé', 'var(--etat-clos)')}
             </div>
           );
         })()}
