@@ -184,6 +184,13 @@ export const api = {
       body: JSON.stringify({ positions }),
     }),
 
+  // Several nodes and their links, in one transaction (multiple selection)
+  deleteNodes: (projectId: string, ids: string[]) =>
+    request<{ deleted: number }>(`/api/projects/${projectId}/nodes/delete`, {
+      method: 'POST',
+      body: JSON.stringify({ ids }),
+    }),
+
   deleteNode: (nodeId: string) =>
     request<{ deleted: boolean }>(`/api/nodes/${nodeId}`, {
       method: 'DELETE',

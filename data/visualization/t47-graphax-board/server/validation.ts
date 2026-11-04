@@ -21,7 +21,10 @@ const defaultLimit = bodyLimit({ maxSize: MAX_BODY_BYTES, onError: tooLarge });
 const importLimit = bodyLimit({ maxSize: MAX_IMPORT_BYTES, onError: tooLarge });
 
 export const requestSizeLimit: MiddlewareHandler = (c, next) =>
-  c.req.path === IMPORT_PATH ? importLimit(c, next) : defaultLimit(c, next);
+  // An import and an undo restoring a large deletion can carry a whole graph
+  c.req.path === IMPORT_PATH || /^\/api\/projects\/[^/]+\/restore$/.test(c.req.path)
+    ? importLimit(c, next)
+    : defaultLimit(c, next);
 
 export function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);

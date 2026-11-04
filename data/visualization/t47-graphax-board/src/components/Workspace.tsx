@@ -30,6 +30,7 @@ import type {
   NodeMetadata,
   Project,
 } from '@shared/types';
+import { MAX_RESTORE_RECORDS } from '@shared/types';
 import { api, type CategoryInput, type RestoreSnapshot } from '@/api/client';
 import { GraphCanvas, type GraphCanvasHandle } from '@/components/GraphCanvas';
 import {
@@ -47,6 +48,7 @@ import {
   withCategoryKeys,
 } from '@/lib/metadata';
 import { CategoryModal } from '@/components/CategoryModal';
+import { MultiSelectionPanel } from '@/components/MultiSelectionPanel';
 import { getCategoryIcon } from '@/lib/icons';
 import { computeConstellationLayout } from '@/lib/forceLayout';
 import { cn, moveItem } from '@/lib/utils';
@@ -87,6 +89,7 @@ interface HistoryActions {
   reorderCategories: (ids: string[]) => Promise<void>;
   // Each resolves to false when the server failed, so the history entry stays in place
   deleteNode: (nodeId: string) => Promise<boolean>;
+  deleteNodes: (nodeIds: string[]) => Promise<boolean>;
   deleteEdge: (edgeId: string) => Promise<boolean>;
   deleteCategory: (categoryId: string) => Promise<boolean>;
   updateCategory: (categoryId: string, input: CategoryInput) => Promise<boolean>;
@@ -214,6 +217,25 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
   const selectedNodeIdRef = useRef(selectedNodeId);
   selectedNodeIdRef.current = selectedNodeId;
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
+  // Multiple selection (A2): two nodes or more, chosen with Ctrl+click or a Shift+drag box.
+  // While it holds nodes, no single node or link is selected.
+  const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
+  // Selecting one node or link (a click, a creation) ends the multiple selection
+  useEffect(() => {
+    if (selectedNodeId || selectedEdgeId) setSelectedNodeIds([]);
+  }, [selectedNodeId, selectedEdgeId]);
+  const selectNodes = useCallback((ids: string[]) => {
+    const unique = [...new Set(ids)];
+    if (unique.length >= 2) {
+      setSelectedNodeId(null);
+      setSelectedEdgeId(null);
+      setSelectedNodeIds(unique);
+    } else {
+      setSelectedNodeIds([]);
+      setSelectedEdgeId(null);
+      setSelectedNodeId(unique[0] ?? null);
+    }
+  }, []);
   const [autoEditEdgeId, setAutoEditEdgeId] = useState<string | null>(null);
 
   // Filters & search state
@@ -353,14 +375,20 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
 
   // ---- Creations and deletions in the history (A1.2) ----
   // What undo needs to bring a record back, read from the current state
-  const nodeSnapshot = useCallback((nodeId: string): RestoreSnapshot | null => {
-    const node = entitiesRef.current.find((n) => n.id === nodeId);
-    if (!node) return null;
+  const nodesSnapshot = useCallback((nodeIds: string[]): RestoreSnapshot | null => {
+    const ids = new Set(nodeIds);
+    const nodes = entitiesRef.current.filter((n) => ids.has(n.id));
+    if (nodes.length === 0) return null;
     const edges = relationsRef.current.filter(
-      (e) => e.sourceNodeId === nodeId || e.targetNodeId === nodeId
+      (e) => ids.has(e.sourceNodeId) || ids.has(e.targetNodeId)
     );
-    return { nodes: [node], edges };
+    return { nodes, edges };
   }, []);
+
+  const nodeSnapshot = useCallback(
+    (nodeId: string): RestoreSnapshot | null => nodesSnapshot([nodeId]),
+    [nodesSnapshot]
+  );
 
   const edgeSnapshot = useCallback(
     (edgeId: string): RestoreSnapshot | null => {
@@ -615,15 +643,19 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
   const handleUpdateBatchPositions = useCallback(
     async (
       positions: Array<{ id: string; positionX: number; positionY: number }>,
-      historyLabel?: string
+      historyLabel?: string,
+      // Where a group drag started (the live physics may have saved positions meanwhile)
+      from?: Array<{ id: string; positionX: number; positionY: number }>
     ) => {
       if (positions.length === 0) return;
       if (historyLabel) {
         const byId = new Map(entitiesRef.current.map((n) => [n.id, n]));
-        const before = positions.flatMap((p) => {
-          const n = byId.get(p.id);
-          return n ? [{ id: p.id, positionX: n.positionX, positionY: n.positionY }] : [];
-        });
+        const before =
+          from ??
+          positions.flatMap((p) => {
+            const n = byId.get(p.id);
+            return n ? [{ id: p.id, positionX: n.positionX, positionY: n.positionY }] : [];
+          });
         const after = positions.map((p) => ({ ...p }));
         recordHistory({
           label: historyLabel,
@@ -874,6 +906,57 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
     [runSave, enqueueEdgeOp, nodeSnapshot, recordPresence, currentEdgeState]
   );
 
+  // Several nodes at once (multiple selection): one request, one history entry
+  const handleDeleteNodes = useCallback(
+    async (nodeIds: string[]): Promise<boolean> => {
+      if (nodeIds.length === 1) return handleDeleteNode(nodeIds[0]);
+      const replaying = historyRef.current.isApplying;
+      const snapshot = nodesSnapshot(nodeIds);
+      // The whole deletion must fit in one restore, otherwise it could not be undone
+      const size = (snapshot?.nodes?.length ?? 0) + (snapshot?.edges?.length ?? 0);
+      if (size > MAX_RESTORE_RECORDS) {
+        setHistoryNotice(
+          `Trop d’éléments pour une seule suppression (${size} nœuds et liens, ${MAX_RESTORE_RECORDS} au plus) : supprimez en plusieurs fois.`
+        );
+        return false;
+      }
+      const ids = new Set(nodeIds);
+      setEntities((prev) => prev.filter((n) => !ids.has(n.id)));
+      setRelations((prev) =>
+        prev.filter((e) => !ids.has(e.sourceNodeId) && !ids.has(e.targetNodeId))
+      );
+      setSelectedNodeIds([]);
+      setSelectedNodeId((curr) => (curr && ids.has(curr) ? null : curr));
+
+      const done = await runSave(
+        () => enqueueEdgeOp(() => api.deleteNodes(projectId, nodeIds)),
+        replaying ? {} : { retryKey: `delete-nodes:${[...nodeIds].sort().join(',')}` }
+      );
+      if (!done) {
+        if (replaying && snapshot) {
+          setEntities((prev) => [...prev.filter((n) => !ids.has(n.id)), ...(snapshot.nodes ?? [])]);
+          const back = (snapshot.edges ?? []).map(currentEdgeState);
+          const backIds = new Set(back.map((e) => e.id));
+          setRelations((prev) => [...prev.filter((e) => !backIds.has(e.id)), ...back]);
+        }
+        return false;
+      }
+      if (snapshot && !replaying) {
+        const stored = { ...snapshot, edges: (snapshot.edges ?? []).map(currentEdgeState) };
+        const count = snapshot.nodes?.length ?? nodeIds.length;
+        recordPresence(
+          `Suppression de ${count} nœuds`,
+          'deleted',
+          stored,
+          () => nodesSnapshot(nodeIds),
+          () => actionsRef.current?.deleteNodes(nodeIds)
+        );
+      }
+      return true;
+    },
+    [projectId, runSave, enqueueEdgeOp, nodesSnapshot, recordPresence, currentEdgeState, handleDeleteNode]
+  );
+
   // Edge updates from Inspector
   const handleUpdateEdge = useCallback(
     async (
@@ -1005,6 +1088,11 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
     deleteNode: async (nodeId) => {
       if (!entitiesRef.current.some((n) => n.id === nodeId)) return true;
       return handleDeleteNode(nodeId);
+    },
+    deleteNodes: async (nodeIds) => {
+      const existing = nodeIds.filter((id) => entitiesRef.current.some((n) => n.id === id));
+      if (existing.length === 0) return true;
+      return handleDeleteNodes(existing);
     },
     deleteEdge: async (edgeId) => {
       const id = resolveEdgeId(edgeId);
@@ -1315,6 +1403,17 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
   const selectedEdge = useMemo(
     () => relations.find((e) => e.id === selectedEdgeId) ?? null,
     [relations, selectedEdgeId]
+  );
+
+  // Nodes of the multiple selection that still exist and are shown
+  const multiSelectedNodes = useMemo(() => {
+    if (selectedNodeIds.length < 2) return [];
+    const ids = new Set(selectedNodeIds);
+    return visibleEntities.filter((n) => ids.has(n.id));
+  }, [selectedNodeIds, visibleEntities]);
+  const multiSelectedIds = useMemo(
+    () => new Set(multiSelectedNodes.length >= 2 ? multiSelectedNodes.map((n) => n.id) : []),
+    [multiSelectedNodes]
   );
 
   const categoryCounts = useMemo(() => {
@@ -1903,6 +2002,9 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
               <div>
                 <strong className="text-zinc-300">Clic droit nœud :</strong> changer de catégorie
               </div>
+              <div>
+                <strong className="text-zinc-300">Ctrl+clic / Maj+glisser fond :</strong> sélection multiple
+              </div>
             </div>
           </aside>
         )}
@@ -1920,12 +2022,14 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
             edges={visibleRelations}
             categories={categories}
             selectedNodeId={selectedNodeId}
+            selectedNodeIds={multiSelectedIds}
             selectedEdgeId={selectedEdgeId}
             autoEditEdgeId={autoEditEdgeId}
             searchQuery={searchQuery}
             searchMatchIds={searchMatchIds}
             onSelectNode={setSelectedNodeId}
             onSelectEdge={setSelectedEdgeId}
+            onSelectNodes={selectNodes}
             onCreateNodeAt={createNodeAt}
             onCreateEdge={handleCreateEdge}
             onCreateLinkedNodeAt={handleCreateLinkedNodeAt}
@@ -1933,13 +2037,22 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
             onUpdateBatchPositions={handleUpdateBatchPositions}
             onCommitEdgeLabel={handleCommitEdgeLabel}
             onDeleteNode={handleDeleteNode}
+            onDeleteNodes={handleDeleteNodes}
             onDeleteEdge={handleDeleteEdge}
             onOrganizeConstellation={handleOrganizeConstellation}
             onChangeNodeCategory={handleChangeNodeCategory}
           />
         </div>
 
-        {/* RIGHT SIDEBAR: Node / Edge Inspector */}
+        {/* RIGHT SIDEBAR: Node / Edge Inspector, or the multiple selection */}
+        {multiSelectedNodes.length >= 2 && (
+          <MultiSelectionPanel
+            nodes={multiSelectedNodes}
+            categories={categories}
+            onClear={() => setSelectedNodeIds([])}
+            onDelete={(ids) => void handleDeleteNodes(ids)}
+          />
+        )}
         <InspectorSidebar
           selectedNode={selectedNode}
           selectedEdge={selectedEdge}

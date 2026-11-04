@@ -13,6 +13,7 @@ import {
   DEFAULT_CATEGORY_COLOR,
   DEFAULT_CATEGORY_ICON,
   DEFAULT_CATEGORY_SHAPE,
+  MAX_RESTORE_RECORDS,
   normalizeCategoryKeys,
 } from '../../shared/types.ts';
 import {
@@ -33,7 +34,7 @@ import {
 export const restoreRouter = new Hono();
 
 const RECORD_ID = /^[A-Za-z0-9_-]{1,64}$/;
-const MAX_RESTORED = 2000;
+const MAX_RESTORED = MAX_RESTORE_RECORDS;
 
 const validId = (value: unknown): value is string => typeof value === 'string' && RECORD_ID.test(value);
 

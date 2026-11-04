@@ -16,11 +16,18 @@ export interface SimNode {
 export function stepForceSimulation(
   simNodes: SimNode[],
   edges: GraphEdge[],
-  draggedNodeId: string | null = null,
+  // Nodes held by the user (one dragged node, or a dragged group): no force moves them
+  draggedNodeId: string | null | ReadonlySet<string> = null,
   alpha = 0.85
 ): number {
   const n = simNodes.length;
   if (n === 0) return 0;
+  const pinned =
+    draggedNodeId === null
+      ? () => false
+      : typeof draggedNodeId === 'string'
+        ? (id: string) => id === draggedNodeId
+        : (id: string) => draggedNodeId.has(id);
 
   const REPULSION = 38000;
   const SPRING_LENGTH = 230;
@@ -56,11 +63,11 @@ export function stepForceSimulation(
       const fx = (dx / dist) * force;
       const fy = (dy / dist) * force;
 
-      if (a.id !== draggedNodeId) {
+      if (!pinned(a.id)) {
         a.vx -= fx;
         a.vy -= fy;
       }
-      if (b.id !== draggedNodeId) {
+      if (!pinned(b.id)) {
         b.vx += fx;
         b.vy += fy;
       }
@@ -84,11 +91,11 @@ export function stepForceSimulation(
     const fx = (dx / dist) * force;
     const fy = (dy / dist) * force;
 
-    if (source.id !== draggedNodeId) {
+    if (!pinned(source.id)) {
       source.vx += fx;
       source.vy += fy;
     }
-    if (target.id !== draggedNodeId) {
+    if (!pinned(target.id)) {
       target.vx -= fx;
       target.vy -= fy;
     }
@@ -97,7 +104,7 @@ export function stepForceSimulation(
   // 3. Gentle centering pull + velocity integration
   let maxSpeed = 0;
   for (const node of simNodes) {
-    if (node.id === draggedNodeId) {
+    if (pinned(node.id)) {
       node.vx = 0;
       node.vy = 0;
       continue;

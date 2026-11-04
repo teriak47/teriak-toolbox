@@ -26,7 +26,15 @@ interface PhysicsOptions {
   nodes: GraphNode[];
   edges: GraphEdge[];
   /** Node currently dragged by the user: it follows the cursor, not the forces */
-  draggedNodeIdRef: RefObject<{ nodeId: string; x?: number; y?: number } | null>;
+  draggedNodeIdRef: RefObject<{
+    nodeId: string;
+    x?: number;
+    y?: number;
+    startX?: number;
+    startY?: number;
+    /** Other nodes dragged with it (multiple selection), held at the same offset */
+    group?: Array<{ id: string; startX: number; startY: number }>;
+  } | null>;
   livePositionsRef: RefObject<Map<string, Point>>;
   setLivePositions: Dispatch<SetStateAction<Map<string, Point>>>;
   onUpdateBatchPositions: (positions: PositionUpdate[]) => Promise<void>;
@@ -120,12 +128,30 @@ export function usePhysicsSimulation({
           simTarget.x = clampFinite(live.x, simTarget.x);
           simTarget.y = clampFinite(live.y, simTarget.y);
         }
+        // The rest of a dragged group keeps its offset from the dragged node on every frame
+        const group = dragged?.group ?? [];
+        if (live && group.length > 0 && dragged?.startX !== undefined && dragged?.startY !== undefined) {
+          const dx = live.x - dragged.startX;
+          const dy = live.y - dragged.startY;
+          const byId = new Map(simNodesRef.current.map((sn) => [sn.id, sn]));
+          for (const g of group) {
+            const sn = byId.get(g.id);
+            if (!sn) continue;
+            sn.x = clampFinite(g.startX + dx, sn.x);
+            sn.y = clampFinite(g.startY + dy, sn.y);
+            sn.vx = 0;
+            sn.vy = 0;
+          }
+        }
       }
 
+      const groupIds = dragged?.group?.length
+        ? new Set([dragged.nodeId, ...dragged.group.map((g) => g.id)])
+        : null;
       const maxSpeed = stepForceSimulation(
         simNodesRef.current,
         edgesRef.current,
-        draggedId,
+        groupIds ?? draggedId,
         0.72
       );
 
