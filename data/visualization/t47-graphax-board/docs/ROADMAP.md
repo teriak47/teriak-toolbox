@@ -20,7 +20,7 @@ Effort: **S** small, **M** medium, **L** large.
 
 | ID | Status | Topic | Finding | Benefit | Effort |
 |---|---|---|---|---|---|
-| O1 | Planned | Live physics | The loop never stops once the graph settles, sets React state on every frame (re-rendering the whole SVG), is O(n²), and saves every node position every 1.8 s. | CPU and battery use, smoothness beyond ~150 nodes | M |
+| O1 | Done (part) | Live physics | The loop never stopped once the graph settled, re-rendered the whole SVG on every frame and saved every node position every 1.8 s. It now goes to sleep when the graph is still (no DOM updates at rest), wakes when a node is dragged or the links change, and saves only the nodes that moved, when the graph settles or at most every 5 s while it moves. On the demo, 12 s of physics went from 8 saves of all nodes to 2. Still open: the force computation is O(n²), which may need a Barnes-Hut approximation beyond a few hundred nodes. | CPU and battery use, fewer writes | M |
 | O2 | Done | Batch positions | The server ran one query per node, sequentially; it now updates them in one transaction (done with C3). | Faster layouts | S |
 | O3 | Done | Project list | Counting loaded every category, node and link record; counts now come from `GROUP BY` with `count()` in the database. Measured on 4 projects with 20,000 nodes and 20,000 links: about 30 % faster (≈250 ms to ≈175 ms), since SurrealDB still scans the rows but no longer returns them. | Faster dashboard with large databases | S |
 | O4 | Done | Create, demo, import | Records were created one at a time; they are now written with batched inserts in one transaction (done with C2). | Speed and atomicity | S |

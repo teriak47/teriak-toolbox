@@ -98,6 +98,12 @@ function sanitizeViewport(vp: Viewport, fallback: Viewport = { x: 400, y: 300, z
 
 // SECTION 21 geometry: no curves. Nodes are square boxes; "cut" boxes lose two opposite
 // corners along the 21 degree slope (width / height = tan 21 degrees).
+// Live physics stops animating once every node moves slower than this for a few frames
+const PHYSICS_SETTLE_SPEED = 0.15;
+const PHYSICS_SETTLE_FRAMES = 30;
+// While nodes still move, their positions are saved at most this often
+const PHYSICS_PERSIST_INTERVAL_MS = 5000;
+
 const NODE_HALF_RATIO = 0.92;
 const CUT_SLOPE = Math.tan((21 * Math.PI) / 180);
 
@@ -197,6 +203,8 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
     // Interaction tool mode: 'select' (move + halo link) or 'link' (click/drag node A -> node B)
     const [toolMode, setToolMode] = useState<'select' | 'link'>('select');
     const [physicsActive, setPhysicsActive] = useState(false);
+    // True once the running simulation has settled and stopped animating
+    const [physicsSettled, setPhysicsSettled] = useState(false);
 
     // Hover states for Obsidian neighbor spotlight & halo feedback
     const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
@@ -622,6 +630,9 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
     const livePositionsRef = useRef(livePositions);
     livePositionsRef.current = livePositions;
 
+    // Wakes the physics loop after it went to sleep on a settled graph (set while active)
+    const physicsWakeRef = useRef<(() => void) | null>(null);
+
     useEffect(() => {
       if (!physicsActive) return;
 
@@ -644,7 +655,35 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
           };
         });
 
+      // Last saved position of each node, so only nodes that actually moved are sent
+      const saved = new Map(
+        nodes
+          .filter((n) => Boolean(n?.id))
+          .map((n) => [
+            n.id,
+            {
+              x: Math.round(clampFinite(Number(n.positionX), 0)),
+              y: Math.round(clampFinite(Number(n.positionY), 0)),
+            },
+          ])
+      );
+      const persistMoved = () => {
+        const moved: Array<{ id: string; positionX: number; positionY: number }> = [];
+        for (const sn of simNodesRef.current) {
+          const x = Math.round(clampFinite(sn.x, 0));
+          const y = Math.round(clampFinite(sn.y, 0));
+          const last = saved.get(sn.id);
+          if (!last || last.x !== x || last.y !== y) {
+            moved.push({ id: sn.id, positionX: x, positionY: y });
+            saved.set(sn.id, { x, y });
+          }
+        }
+        if (moved.length > 0) void onUpdateBatchPositions(moved);
+      };
+
       let rafId = 0;
+      let sleeping = false;
+      let calmFrames = 0;
       let lastPersist = performance.now();
 
       const loop = (now: number) => {
@@ -658,7 +697,12 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
           }
         }
 
-        stepForceSimulation(simNodesRef.current, edgesRef.current, draggedId, 0.72);
+        const maxSpeed = stepForceSimulation(
+          simNodesRef.current,
+          edgesRef.current,
+          draggedId,
+          0.72
+        );
 
         const nextMap = new Map<string, { x: number; y: number }>();
         for (const sn of simNodesRef.current) {
@@ -669,38 +713,54 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
         }
         setLivePositions(nextMap);
 
-        // Periodically persist every 1.8s while physics runs
-        if (now - lastPersist > 1800 && simNodesRef.current.length > 0) {
+        // Settled: save the moved nodes once and stop animating until something changes
+        calmFrames = !draggedId && maxSpeed < PHYSICS_SETTLE_SPEED ? calmFrames + 1 : 0;
+        if (calmFrames >= PHYSICS_SETTLE_FRAMES) {
+          persistMoved();
           lastPersist = now;
-          void onUpdateBatchPositions(
-            simNodesRef.current.map((sn) => ({
-              id: sn.id,
-              positionX: Math.round(clampFinite(sn.x, 0)),
-              positionY: Math.round(clampFinite(sn.y, 0)),
-            }))
-          );
+          sleeping = true;
+          setPhysicsSettled(true);
+          return;
+        }
+
+        // While still moving, save the moved nodes from time to time
+        if (now - lastPersist > PHYSICS_PERSIST_INTERVAL_MS) {
+          lastPersist = now;
+          persistMoved();
         }
 
         rafId = requestAnimationFrame(loop);
       };
 
+      physicsWakeRef.current = () => {
+        if (!sleeping) return;
+        sleeping = false;
+        calmFrames = 0;
+        setPhysicsSettled(false);
+        rafId = requestAnimationFrame(loop);
+      };
+
+      setPhysicsSettled(false);
       rafId = requestAnimationFrame(loop);
 
       return () => {
         cancelAnimationFrame(rafId);
-        // Save final settled coordinates when physics stops
-        if (simNodesRef.current.length > 0) {
-          void onUpdateBatchPositions(
-            simNodesRef.current.map((sn) => ({
-              id: sn.id,
-              positionX: Math.round(clampFinite(sn.x, 0)),
-              positionY: Math.round(clampFinite(sn.y, 0)),
-            }))
-          );
-        }
+        physicsWakeRef.current = null;
+        // Save the final coordinates of the nodes that moved
+        persistMoved();
       };
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [physicsActive, nodes.length]);
+
+    // Added, removed or reversed links change the forces: resume a sleeping simulation.
+    // Keyed on the link structure, because the edges array is rebuilt on every save.
+    const edgeStructureKey = useMemo(
+      () => edges.map((e) => `${e.id}:${e.sourceNodeId}>${e.targetNodeId}`).join('|'),
+      [edges]
+    );
+    useEffect(() => {
+      physicsWakeRef.current?.();
+    }, [edgeStructureKey]);
 
     // Find closest snap target node for magnetic linking
     const findSnapNodeAt = useCallback(
@@ -755,6 +815,8 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
             ) > 2
           ) {
             dragNodeRef.current.moved = true;
+            // Dragging a node disturbs a settled simulation
+            physicsWakeRef.current?.();
           }
           const nid = dragNodeRef.current.nodeId;
           setLivePositions((prev) => {
@@ -1689,7 +1751,11 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
           <button
             type="button"
             onClick={() => setPhysicsActive((v) => !v)}
-            title="Activer / figer la simulation physique élastique (style Obsidian Graph View)"
+            title={
+              physicsActive && physicsSettled
+                ? 'Simulation stable : en pause automatique jusqu’au prochain déplacement. Cliquer pour la désactiver.'
+                : 'Activer / figer la simulation physique élastique (style Obsidian Graph View)'
+            }
             className={cn(
               'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-colors',
               physicsActive
