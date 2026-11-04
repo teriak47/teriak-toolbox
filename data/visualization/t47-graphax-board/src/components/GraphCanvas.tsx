@@ -57,22 +57,30 @@ interface LinkingWireState {
 }
 
 interface PendingDelete {
-  kind: 'node' | 'edge';
+  kind: 'node' | 'edge' | 'nodes';
   id: string;
   label: string;
+  /** For 'nodes': the multiple selection being deleted */
+  ids?: string[];
 }
+
+type Positions = Array<{ id: string; positionX: number; positionY: number }>;
 
 interface GraphCanvasProps {
   nodes: GraphNode[];
   edges: GraphEdge[];
   categories: Category[];
   selectedNodeId: string | null;
+  /** Multiple selection (two nodes or more); empty otherwise */
+  selectedNodeIds: Set<string>;
   selectedEdgeId: string | null;
   autoEditEdgeId: string | null;
   searchQuery: string;
   searchMatchIds: Set<string>;
   onSelectNode: (nodeId: string | null) => void;
   onSelectEdge: (edgeId: string | null) => void;
+  /** Replaces the selection: none, one node, or a multiple selection */
+  onSelectNodes: (nodeIds: string[]) => void;
   onCreateNodeAt: (worldX: number, worldY: number) => Promise<GraphNode | null>;
   onCreateEdge: (sourceNodeId: string, targetNodeId: string) => Promise<void>;
   onCreateLinkedNodeAt: (
@@ -87,11 +95,11 @@ interface GraphCanvasProps {
     y: number,
     from?: { x: number; y: number }
   ) => Promise<void>;
-  onUpdateBatchPositions: (
-    positions: Array<{ id: string; positionX: number; positionY: number }>
-  ) => Promise<void>;
+  /** A label makes the move undoable; `from` is where a group drag started */
+  onUpdateBatchPositions: (positions: Positions, historyLabel?: string, from?: Positions) => Promise<void>;
   onCommitEdgeLabel: (edgeId: string, label: string) => Promise<void>;
   onDeleteNode: (nodeId: string) => Promise<unknown>;
+  onDeleteNodes: (nodeIds: string[]) => Promise<unknown>;
   onDeleteEdge: (edgeId: string) => Promise<unknown>;
   onOrganizeConstellation: () => Promise<void>;
   /** Moves a node to another category (null: unclassified) */
@@ -153,12 +161,14 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
       categories,
       onChangeNodeCategory,
       selectedNodeId,
+      selectedNodeIds,
       selectedEdgeId,
       autoEditEdgeId,
       searchQuery,
       searchMatchIds,
       onSelectNode,
       onSelectEdge,
+      onSelectNodes,
       onCreateNodeAt,
       onCreateEdge,
       onCreateLinkedNodeAt,
@@ -166,6 +176,7 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
       onUpdateBatchPositions,
       onCommitEdgeLabel,
       onDeleteNode,
+      onDeleteNodes,
       onDeleteEdge,
       onOrganizeConstellation,
     },
@@ -192,6 +203,10 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
     // Interaction tool mode: 'select' (move + halo link) or 'link' (click/drag node A -> node B)
     const [toolMode, setToolMode] = useState<'select' | 'link'>('select');
     const [physicsActive, setPhysicsActive] = useState(false);
+    const physicsActiveRef = useRef(physicsActive);
+    physicsActiveRef.current = physicsActive;
+    // Set when a group drag moved, so the click that ends it keeps the group selected
+    const dragMovedRef = useRef(false);
 
     // Hover states for Obsidian neighbor spotlight & halo feedback
     const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
@@ -218,7 +233,21 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
       /** Latest position under the cursor; the live physics reads it every frame */
       x?: number;
       y?: number;
+      /** Other nodes of the multiple selection, moved by the same amount */
+      group?: Array<{ id: string; startX: number; startY: number }>;
     } | null>(null);
+
+    // Shift+drag on the background draws a selection box (container pixels)
+    const [selectionBox, setSelectionBox] = useState<{
+      x0: number;
+      y0: number;
+      x1: number;
+      y1: number;
+    } | null>(null);
+    const selectionBoxRef = useRef(selectionBox);
+    selectionBoxRef.current = selectionBox;
+    // The click that ends a box selection must not clear it
+    const suppressBackgroundClickRef = useRef(false);
 
     const [linkingWire, setLinkingWireState] = useState<LinkingWireState | null>(null);
     const linkingWireRef = useRef<LinkingWireState | null>(null);
@@ -459,10 +488,17 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
     // A confirmation only applies to the item that was selected when it was asked
     useEffect(() => {
       setPendingDelete(null);
-    }, [selectedNodeId, selectedEdgeId]);
+    }, [selectedNodeId, selectedEdgeId, selectedNodeIds]);
 
     const requestDeleteSelection = useCallback(() => {
-      if (selectedNodeId) {
+      if (selectedNodeIds.size >= 2) {
+        setPendingDelete({
+          kind: 'nodes',
+          id: '',
+          label: String(selectedNodeIds.size),
+          ids: [...selectedNodeIds],
+        });
+      } else if (selectedNodeId) {
         const node = nodes.find((n) => n.id === selectedNodeId);
         setPendingDelete({
           kind: 'node',
@@ -473,7 +509,7 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
         const edge = edges.find((e) => e.id === selectedEdgeId);
         setPendingDelete({ kind: 'edge', id: selectedEdgeId, label: edge?.label ?? '' });
       }
-    }, [selectedNodeId, selectedEdgeId, nodes, edges]);
+    }, [selectedNodeId, selectedNodeIds, selectedEdgeId, nodes, edges]);
 
     // Category menu opened by a right click (without dragging) on a node, in container pixels
     const [nodeMenu, setNodeMenu] = useState<{ nodeId: string; x: number; y: number } | null>(null);
@@ -495,9 +531,10 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
     const confirmPendingDelete = useCallback(() => {
       if (!pendingDelete) return;
       setPendingDelete(null);
-      if (pendingDelete.kind === 'node') void onDeleteNode(pendingDelete.id);
+      if (pendingDelete.kind === 'nodes') void onDeleteNodes(pendingDelete.ids ?? []);
+      else if (pendingDelete.kind === 'node') void onDeleteNode(pendingDelete.id);
       else void onDeleteEdge(pendingDelete.id);
-    }, [pendingDelete, onDeleteNode, onDeleteEdge]);
+    }, [pendingDelete, onDeleteNode, onDeleteNodes, onDeleteEdge]);
 
     // Keyboard shortcuts: V (Select/Move), L (Link tool), Escape (cancel link/deselect),
     // Delete/Backspace (ask to remove the selection)
@@ -539,8 +576,9 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
         } else if (e.key === 'Escape') {
           setLinkingWire(null);
           setToolMode('select');
+          if (selectedNodeIds.size > 0) onSelectNodes([]);
         } else if (e.key === 'Delete' || e.key === 'Backspace') {
-          if (selectedNodeId || selectedEdgeId) {
+          if (selectedNodeId || selectedEdgeId || selectedNodeIds.size >= 2) {
             e.preventDefault();
             requestDeleteSelection();
           }
@@ -551,6 +589,8 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
       return () => window.removeEventListener('keydown', onKeyDown);
     }, [
       selectedNodeId,
+      selectedNodeIds,
+      onSelectNodes,
       selectedEdgeId,
       pendingDelete,
       requestDeleteSelection,
@@ -601,6 +641,16 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
     // Global mouse move & mouse up for dragging, panning, and linking (NO side-effects inside setState updaters!)
     useEffect(() => {
       const onMouseMove = (e: MouseEvent) => {
+        // 0. Drawing a selection box
+        if (selectionBoxRef.current) {
+          const rect = containerRef.current?.getBoundingClientRect();
+          if (rect) {
+            const box = selectionBoxRef.current;
+            setSelectionBox({ ...box, x1: e.clientX - rect.left, y1: e.clientY - rect.top });
+          }
+          return;
+        }
+
         // 1. Panning canvas
         if (panStateRef.current?.active) {
           const dx = e.clientX - panStateRef.current.startClientX;
@@ -634,11 +684,21 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
           const nid = dragNodeRef.current.nodeId;
           dragNodeRef.current.x = nx;
           dragNodeRef.current.y = ny;
+          const group = dragNodeRef.current.group ?? [];
+          const dx = nx - dragNodeRef.current.startX;
+          const dy = ny - dragNodeRef.current.startY;
           setLivePositions((prev) => {
             const next = new Map(prev);
             next.set(nid, { x: nx, y: ny });
+            for (const g of group) next.set(g.id, { x: g.startX + dx, y: g.startY + dy });
             return next;
           });
+          // With live physics, the simulation follows the rest of the group too
+          if (group.length > 0 && physicsActiveRef.current) {
+            setSimulationPositionsRef.current?.(
+              group.map((g) => ({ id: g.id, positionX: g.startX + dx, positionY: g.startY + dy }))
+            );
+          }
           return;
         }
 
@@ -657,6 +717,25 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
       };
 
       const onMouseUp = (e: MouseEvent) => {
+        const box = selectionBoxRef.current;
+        if (box) {
+          setSelectionBox(null);
+          const rect = containerRef.current?.getBoundingClientRect();
+          if (rect && Math.hypot(box.x1 - box.x0, box.y1 - box.y0) > 4) {
+            suppressBackgroundClickRef.current = true;
+            const a = screenToWorld(rect.left + Math.min(box.x0, box.x1), rect.top + Math.min(box.y0, box.y1));
+            const b = screenToWorld(rect.left + Math.max(box.x0, box.x1), rect.top + Math.max(box.y0, box.y1));
+            const inside = nodes
+              .filter((n) => {
+                const p = livePositionsRef.current.get(n.id) ?? { x: n.positionX, y: n.positionY };
+                return p.x >= a.x && p.x <= b.x && p.y >= a.y && p.y <= b.y;
+              })
+              .map((n) => n.id);
+            onSelectNodes(inside);
+          }
+          return;
+        }
+
         if (panStateRef.current?.active) {
           const moved = panStateRef.current.moved;
           panStateRef.current = null;
@@ -667,8 +746,26 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
         }
 
         if (dragNodeRef.current) {
-          const { nodeId, moved, startX, startY } = dragNodeRef.current;
+          const { nodeId, moved, startX, startY, group } = dragNodeRef.current;
           dragNodeRef.current = null;
+          dragMovedRef.current = moved && Boolean(group?.length);
+          if (moved && group && group.length > 0) {
+            // A group move is saved and undone as one step
+            const round = (v: number) => Math.round(v * 100) / 100;
+            const ids = [nodeId, ...group.map((g) => g.id)];
+            const after = ids.flatMap((id) => {
+              const p = livePositionsRef.current.get(id);
+              return p && Number.isFinite(p.x) && Number.isFinite(p.y)
+                ? [{ id, positionX: round(p.x), positionY: round(p.y) }]
+                : [];
+            });
+            const before = [
+              { id: nodeId, positionX: round(startX), positionY: round(startY) },
+              ...group.map((g) => ({ id: g.id, positionX: round(g.startX), positionY: round(g.startY) })),
+            ];
+            void onUpdateBatchPositions(after, `Déplacement de ${ids.length} nœuds`, before);
+            return;
+          }
           if (moved) {
             const finalPos = livePositionsRef.current.get(nodeId);
             if (finalPos && Number.isFinite(finalPos.x) && Number.isFinite(finalPos.y)) {
@@ -851,6 +948,16 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
         }}
         onMouseDown={(e) => {
           setNodeMenu(null);
+          // Shift+drag on the background draws a selection box
+          if (isCanvasBackground(e.target) && e.button === 0 && e.shiftKey && toolMode === 'select') {
+            const rect = containerRef.current?.getBoundingClientRect();
+            if (rect) {
+              const x = e.clientX - rect.left;
+              const y = e.clientY - rect.top;
+              setSelectionBox({ x0: x, y0: y, x1: x, y1: y });
+            }
+            return;
+          }
           // Middle-click or Left-click strictly on empty canvas background starts Pan
           if (isCanvasBackground(e.target)) {
             if (e.button === 0 || e.button === 1) {
@@ -866,8 +973,13 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
           }
         }}
         onClick={(e) => {
+          if (suppressBackgroundClickRef.current) {
+            suppressBackgroundClickRef.current = false;
+            return;
+          }
           if (isCanvasBackground(e.target)) {
             if (!panStateRef.current?.moved) {
+              onSelectNodes([]);
               onSelectNode(null);
               onSelectEdge(null);
               setLinkingWire(null);
@@ -1142,7 +1254,7 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
               const nodeMeta =
                 node.metadata && typeof node.metadata === 'object' ? node.metadata : {};
 
-              const isSelected = node.id === selectedNodeId;
+              const isSelected = node.id === selectedNodeId || selectedNodeIds.has(node.id);
               const isHovered = node.id === hoveredNodeId;
               const isHaloHovered = node.id === hoveredHaloNodeId;
               const isSnapTarget = linkingWire?.snapTargetId === node.id;
@@ -1285,8 +1397,17 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
                       }
 
                       // Standard Left-Click -> select & prepare smooth node drag
+                      // (the whole multiple selection when the node belongs to it)
                       if (e.button === 0) {
                         const world = screenToWorld(e.clientX, e.clientY);
+                        const group = selectedNodeIds.has(node.id)
+                          ? nodes
+                              .filter((n) => n.id !== node.id && selectedNodeIds.has(n.id))
+                              .map((n) => {
+                                const p = getNodePos(n);
+                                return { id: n.id, startX: p.x, startY: p.y };
+                              })
+                          : undefined;
                         dragNodeRef.current = {
                           nodeId: node.id,
                           offsetX: world.x - pos.x,
@@ -1294,12 +1415,33 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
                           startX: pos.x,
                           startY: pos.y,
                           moved: false,
+                          group,
                         };
                       }
                     }}
                     onClick={(e) => {
                       e.stopPropagation();
                       if (toolMode === 'link') return;
+                      // Ctrl+click (Cmd on Mac) adds the node to the selection, or removes it
+                      if (e.ctrlKey || e.metaKey) {
+                        const current =
+                          selectedNodeIds.size > 0
+                            ? [...selectedNodeIds]
+                            : selectedNodeId
+                              ? [selectedNodeId]
+                              : [];
+                        onSelectNodes(
+                          current.includes(node.id)
+                            ? current.filter((id) => id !== node.id)
+                            : [...current, node.id]
+                        );
+                        return;
+                      }
+                      // A plain click on a node of the group after dragging it keeps the group
+                      if (selectedNodeIds.has(node.id) && dragMovedRef.current) {
+                        dragMovedRef.current = false;
+                        return;
+                      }
                       onSelectEdge(null);
                       onSelectNode(node.id);
                     }}
@@ -1544,6 +1686,19 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
           );
         })()}
 
+        {selectionBox && (
+          <div
+            aria-hidden="true"
+            className="absolute pointer-events-none border border-cyan-400/80 bg-cyan-400/10 rounded-sm z-20"
+            style={{
+              left: Math.min(selectionBox.x0, selectionBox.x1),
+              top: Math.min(selectionBox.y0, selectionBox.y1),
+              width: Math.abs(selectionBox.x1 - selectionBox.x0),
+              height: Math.abs(selectionBox.y1 - selectionBox.y0),
+            }}
+          />
+        )}
+
         {pendingDelete && (
           <div
             role="alertdialog"
@@ -1554,7 +1709,12 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
             className="absolute top-4 left-1/2 -translate-x-1/2 flex items-center gap-3 px-4 py-2.5 rounded-2xl bg-zinc-900/95 border border-rose-500/40 shadow-2xl z-30 max-w-[calc(100%-2rem)]"
           >
             <p id="graphax-delete-confirm-title" className="text-xs text-zinc-200 min-w-0">
-              {pendingDelete.kind === 'node' ? (
+              {pendingDelete.kind === 'nodes' ? (
+                <>
+                  Supprimer les <strong className="text-zinc-50">{pendingDelete.label} nœuds</strong>{' '}
+                  sélectionnés et tous leurs liens ?
+                </>
+              ) : pendingDelete.kind === 'node' ? (
                 <>
                   Supprimer le nœud{' '}
                   <strong className="text-zinc-50 break-words">« {pendingDelete.label} »</strong> et

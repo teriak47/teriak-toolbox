@@ -34,6 +34,8 @@ A category can list default metadata keys (for example `IP`, `ASN`, `Pays`). The
 
 A new project can start from five category sets: OSINT investigation (people, organisations, online accounts, contacts, places, events), Cyber / CTI (threat actors, malware, vulnerabilities, IPs, domains, victims), lore, research, or none. Shapes mean the same in every set: a circle is a person, a hexagon something technical, an octagon a threat or risk, a diamond something uncertain, a cut corner evidence or a document, and a square the rest. Categories keep their order, and new ones are added at the end.
 
+Several nodes can be selected at once: `Ctrl+click` (`Cmd` on Mac) adds or removes a node, and `Shift`+drag on the background selects the nodes inside a box. Dragging one of them moves the whole group; `Delete` (after confirmation) or the side panel deletes them with their links. `Escape` clears the selection.
+
 Undo and redo are in the toolbar, and on `Ctrl+Z` and `Ctrl+Y` outside text fields. Moves, automatic layouts, node edits (title, notes, category, attributes), link edits (label, style, orientation, colour, notes, reversal), the category order and category edits can be undone, and so can creating or deleting a node (with its links), a link or a category. A deleted category comes back in its place, with the nodes that used it (unless they got another category since).
 
 Right-click a node (without dragging) to change its category from a menu; the new category's missing default keys are added. Drag categories in the sidebar to reorder them (or use the up and down arrows on the handle). Before a category is deleted, the editor lists the nodes that will become unclassified.

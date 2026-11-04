@@ -213,6 +213,44 @@ nodesRouter.patch('/projects/:projectId/positions', async (c) => {
   return c.json({ updated: updates.length });
 });
 
+// Delete several nodes of a project and all their links, in one transaction (multiple
+// selection). Ids of other projects or of missing nodes are ignored.
+const MAX_BATCH_DELETE = 2000;
+
+nodesRouter.post('/projects/:projectId/nodes/delete', async (c) => {
+  const projectId = c.req.param('projectId');
+  const body = await readBody<{ ids?: unknown }>(c);
+  if (!Array.isArray(body.ids) || body.ids.length === 0) {
+    return c.json({ error: 'Une liste de nœuds (ids) est attendue.' }, 400);
+  }
+  if (body.ids.length > MAX_BATCH_DELETE) {
+    return c.json({ error: 'Trop de nœuds à supprimer en une fois.' }, 400);
+  }
+  const ids = [...new Set(body.ids.filter((id): id is string => typeof id === 'string' && id !== ''))];
+
+  const db = await getDb();
+  if (!(await projectExists(db, projectId))) {
+    return c.json({ error: 'Projet introuvable.' }, 404);
+  }
+  const owned = [...(await nodesInProject(db, projectId, ids))];
+  if (owned.length > 0) {
+    await db
+      .query(
+        `
+        BEGIN TRANSACTION;
+        DELETE relation WHERE in IN $nids OR out IN $nids;
+        DELETE entity WHERE id IN $nids;
+        COMMIT TRANSACTION;
+      `,
+        { nids: owned.map((id) => toRecordId('entity', id)) }
+      )
+      .collect();
+    await touchProject(db, projectId);
+  }
+
+  return c.json({ deleted: owned.length });
+});
+
 // Delete node and all connected graph edges
 nodesRouter.delete('/nodes/:id', async (c) => {
   const id = c.req.param('id');
