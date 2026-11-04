@@ -534,6 +534,28 @@ describe('category defaults', () => {
   });
 });
 
+describe('project list', () => {
+  it('reports category, node and link counts per project', async () => {
+    const preset = await call('POST', '/api/projects', { name: 'Compté', preset: 'research' });
+    const counted = preset.json.project.id;
+    const a = await createNode(counted, 'A');
+    const b = await createNode(counted, 'B');
+    const c = await createNode(counted, 'C');
+    await call('POST', `/api/projects/${counted}/edges`, { sourceNodeId: a, targetNodeId: b });
+    await call('POST', `/api/projects/${counted}/edges`, { sourceNodeId: b, targetNodeId: c });
+    const empty = await createProject('Vide');
+
+    const { json } = await call('GET', '/api/projects');
+    const byId = Object.fromEntries(json.projects.map((p: { id: string }) => [p.id, p]));
+    assert.equal(byId[counted].categoryCount, preset.json.project.categoryCount);
+    assert.equal(byId[counted].nodeCount, 3);
+    assert.equal(byId[counted].edgeCount, 2);
+    assert.equal(byId[empty].categoryCount, 0);
+    assert.equal(byId[empty].nodeCount, 0);
+    assert.equal(byId[empty].edgeCount, 0);
+  });
+});
+
 describe('local-only guard', () => {
   it('accepts same-origin and header-less requests', async () => {
     assert.equal((await call('GET', '/api/health')).status, 200);

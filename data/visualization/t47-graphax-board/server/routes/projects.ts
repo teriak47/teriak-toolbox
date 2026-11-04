@@ -26,42 +26,36 @@ export const projectsRouter = new Hono();
 // List all projects with counts
 projectsRouter.get('/', async (c) => {
   const db = await getDb();
-  const [rawProjects, rawCategories, rawNodes, rawEdges] = await db
+  // Counts are computed by the database (GROUP BY) instead of loading every record
+  const [rawProjects, catCounts, nodeCounts, edgeCounts] = await db
     .query<
       [
         Record<string, unknown>[],
-        Array<{ projectId: string }>,
-        Array<{ projectId: string }>,
-        Array<{ projectId: string }>,
+        Array<{ projectId?: string; n: number }>,
+        Array<{ projectId?: string; n: number }>,
+        Array<{ projectId?: string; n: number }>,
       ]
     >(`
       SELECT * FROM project ORDER BY updatedAt DESC;
-      SELECT projectId FROM category;
-      SELECT projectId FROM entity;
-      SELECT projectId FROM relation;
+      SELECT projectId, count() AS n FROM category GROUP BY projectId;
+      SELECT projectId, count() AS n FROM entity GROUP BY projectId;
+      SELECT projectId, count() AS n FROM relation GROUP BY projectId;
     `)
     .collect();
 
-  const catCounts = new Map<string, number>();
-  for (const item of rawCategories ?? []) {
-    catCounts.set(item.projectId, (catCounts.get(item.projectId) ?? 0) + 1);
-  }
-  const nodeCounts = new Map<string, number>();
-  for (const item of rawNodes ?? []) {
-    nodeCounts.set(item.projectId, (nodeCounts.get(item.projectId) ?? 0) + 1);
-  }
-  const edgeCounts = new Map<string, number>();
-  for (const item of rawEdges ?? []) {
-    edgeCounts.set(item.projectId, (edgeCounts.get(item.projectId) ?? 0) + 1);
-  }
+  const toMap = (rows: Array<{ projectId?: string; n: number }> | undefined) =>
+    new Map((rows ?? []).map((row) => [String(row.projectId ?? ''), Number(row.n) || 0]));
+  const categoriesByProject = toMap(catCounts);
+  const nodesByProject = toMap(nodeCounts);
+  const edgesByProject = toMap(edgeCounts);
 
   const projects = (rawProjects ?? []).map((raw) => {
     const p = mapProject(raw);
     return {
       ...p,
-      categoryCount: catCounts.get(p.id) ?? 0,
-      nodeCount: nodeCounts.get(p.id) ?? 0,
-      edgeCount: edgeCounts.get(p.id) ?? 0,
+      categoryCount: categoriesByProject.get(p.id) ?? 0,
+      nodeCount: nodesByProject.get(p.id) ?? 0,
+      edgeCount: edgesByProject.get(p.id) ?? 0,
     };
   });
 

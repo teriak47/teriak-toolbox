@@ -35,7 +35,6 @@ import { INSPECTOR_SAVE_DELAY_MS, InspectorSidebar } from '@/components/Inspecto
 import { downloadProjectExport } from '@/lib/exportProject';
 import { CategoryModal } from '@/components/CategoryModal';
 import { getCategoryIcon } from '@/lib/icons';
-import { computeAutoLayout } from '@/lib/layout';
 import { computeConstellationLayout } from '@/lib/forceLayout';
 import { cn } from '@/lib/utils';
 import { AppFooter } from '@/components/AppFooter';
@@ -648,6 +647,8 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
     setLayoutMenuOpen(false);
     if (visibleEntities.length === 0) return;
 
+    // dagre is only loaded the first time a hierarchical layout is requested
+    const { computeAutoLayout } = await import('@/lib/layout');
     const newPositions = computeAutoLayout(visibleEntities, relations, direction);
     await handleUpdateBatchPositions(newPositions);
     setTimeout(() => {

@@ -1,9 +1,22 @@
-import { useCallback, useEffect, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useState } from 'react';
 import type { Project } from '@shared/types';
 import { api } from '@/api/client';
 import { Dashboard } from '@/components/Dashboard';
-import { Workspace } from '@/components/Workspace';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+
+// The graph workspace is loaded when a project is opened, so the project list starts faster
+const Workspace = lazy(() =>
+  import('@/components/Workspace').then((m) => ({ default: m.Workspace }))
+);
+
+function WorkspaceLoading() {
+  return (
+    <div className="h-screen w-screen bg-zinc-950 flex items-center justify-center gap-3 text-zinc-300">
+      <span className="s21-slit" aria-hidden="true" />
+      <span className="text-sm">Chargement de l'espace de travail…</span>
+    </div>
+  );
+}
 
 function readInitialProjectId(): string | null {
   const params = new URLSearchParams(window.location.search);
@@ -60,7 +73,9 @@ export function App() {
   if (activeProjectId) {
     return (
       <ErrorBoundary key={`ws-${activeProjectId}-${resetKey}`} onReset={() => setResetKey((k) => k + 1)}>
-        <Workspace projectId={activeProjectId} onBack={backToDashboard} />
+        <Suspense fallback={<WorkspaceLoading />}>
+          <Workspace projectId={activeProjectId} onBack={backToDashboard} />
+        </Suspense>
       </ErrorBoundary>
     );
   }
