@@ -79,4 +79,30 @@ describe('undo history', () => {
     }
     assert.equal(state.value, 2);
   });
+
+  it('puts an entry back when its replay fails, so it can be tried again', async () => {
+    const history = new UndoHistory();
+    let changes = 0;
+    history.onChange = () => changes++;
+    let ok = false;
+    history.record({ label: 'inversion', undo: () => Promise.resolve(ok), redo: () => true });
+    assert.equal(history.undo(), 'inversion');
+    assert.equal(history.canRedo, true);
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(history.canUndo, true, 'failed undo goes back to the undo list');
+    assert.equal(history.canRedo, false);
+    assert.equal(changes, 1);
+    ok = true;
+    history.undo();
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(history.canUndo, false);
+    assert.equal(history.canRedo, true);
+    // A failed redo goes back to the redo list; a rejected promise counts as a failure
+    history.record({ label: 'autre', undo: () => {}, redo: () => Promise.reject(new Error('x')) });
+    history.undo();
+    history.redo();
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(history.redoLabel, 'autre');
+    assert.equal(history.undoLabel, null);
+  });
 });

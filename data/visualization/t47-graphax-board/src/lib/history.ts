@@ -4,8 +4,12 @@
 export interface HistoryEntry {
   /** Short French description, shown in the button tooltip (e.g. "Déplacement du nœud") */
   label: string;
-  undo: () => void;
-  redo: () => void;
+  /**
+   * May return a promise: when it resolves to false (the change could not be saved), the
+   * entry goes back where it was, so the same undo or redo can be tried again
+   */
+  undo: () => ReplayResult;
+  redo: () => ReplayResult;
   /**
    * Entries with the same key recorded close together are merged into one (typing in a
    * field is saved in several bursts but is undone as a single edit)
@@ -13,6 +17,8 @@ export interface HistoryEntry {
   mergeKey?: string;
   at: number;
 }
+
+export type ReplayResult = void | boolean | Promise<void | boolean>;
 
 export const HISTORY_LIMIT = 100;
 export const MERGE_WINDOW_MS = 1500;
@@ -23,6 +29,8 @@ export class UndoHistory {
   private applying = false;
   private readonly limit: number;
   private readonly mergeWindowMs: number;
+  /** Called when a failed replay puts an entry back, so the buttons can be refreshed */
+  onChange: (() => void) | null = null;
 
   constructor(limit = HISTORY_LIMIT, mergeWindowMs = MERGE_WINDOW_MS) {
     this.limit = limit;
@@ -73,17 +81,18 @@ export class UndoHistory {
   undo(): string | null {
     const entry = this.past.pop();
     if (!entry) return null;
-    this.run(entry.undo);
     this.future.push(entry);
+    this.settle(this.run(entry.undo), entry, this.future, this.past);
     return entry.label;
   }
 
   redo(): string | null {
-    const entry = this.future.pop();
-    if (!entry) return null;
-    this.run(entry.redo);
+    const popped = this.future.pop();
+    if (!popped) return null;
     // A redone entry is not merged with the next action
-    this.past.push({ ...entry, mergeKey: undefined });
+    const entry = { ...popped, mergeKey: undefined };
+    this.past.push(entry);
+    this.settle(this.run(popped.redo), entry, this.past, this.future);
     return entry.label;
   }
 
@@ -92,12 +101,32 @@ export class UndoHistory {
     this.future = [];
   }
 
-  private run(fn: () => void): void {
+  private run(fn: () => ReplayResult): ReplayResult {
     this.applying = true;
     try {
-      fn();
+      return fn();
     } finally {
       this.applying = false;
+    }
+  }
+
+  // A replay that reports a failure moves its entry back to the list it came from
+  private settle(
+    result: ReplayResult,
+    entry: HistoryEntry,
+    movedTo: HistoryEntry[],
+    cameFrom: HistoryEntry[]
+  ): void {
+    const back = () => {
+      const index = movedTo.lastIndexOf(entry);
+      if (index < 0) return; // dropped since (a new action cleared the redo list)
+      movedTo.splice(index, 1);
+      cameFrom.push(entry);
+      this.onChange?.();
+    };
+    if (result === false) back();
+    else if (result instanceof Promise) {
+      result.then((ok) => ok === false && back(), back);
     }
   }
 }

@@ -81,7 +81,8 @@ type Positions = Array<{ id: string; positionX: number; positionY: number }>;
 
 interface HistoryActions {
   updateNode: (nodeId: string, patch: NodePatch) => Promise<void>;
-  updateEdge: (edgeId: string, patch: EdgePatch) => Promise<void>;
+  /** Resolves to false when a reversal failed, so its history entry stays in place */
+  updateEdge: (edgeId: string, patch: EdgePatch) => Promise<boolean>;
   applyPositions: (positions: Positions) => void;
   reorderCategories: (ids: string[]) => Promise<void>;
 }
@@ -123,6 +124,7 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
   // actionsRef so they never call a stale closure.
   const historyRef = useRef(new UndoHistory());
   const [, setHistoryVersion] = useState(0);
+  historyRef.current.onChange = () => setHistoryVersion((v) => v + 1);
   const [historyNotice, setHistoryNotice] = useState<string | null>(null);
   const entitiesRef = useRef(entities);
   entitiesRef.current = entities;
@@ -731,12 +733,12 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
           mergeKey: withReverse ? undefined : `edge:${edgeId}:${[...keys].sort().join(',')}`,
           // Undoing a reversal reverses the link again (its id changes each time)
           undo: () =>
-            void actionsRef.current?.updateEdge(
+            actionsRef.current?.updateEdge(
               resolveEdgeId(edgeId),
               withReverse ? { ...before, reverse: true } : before
             ),
           redo: () =>
-            void actionsRef.current?.updateEdge(resolveEdgeId(edgeId), withReverse ? patch : fields),
+            actionsRef.current?.updateEdge(resolveEdgeId(edgeId), withReverse ? patch : fields),
         });
       };
 
@@ -745,8 +747,9 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
         setRelations((prev) =>
           prev.map((e) => (e.id === edgeId ? { ...e, ...fields } : e))
         );
+        // Field edits are shown at once and kept for "Réessayer" when they fail
         await queueEdgeFields(edgeId, fields);
-        return;
+        return true;
       }
 
       // The unsaved fields travel with the reversal and stay queued if it fails
@@ -792,6 +795,7 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
       if (!reversed && edgePatchesRef.current.has(startId)) {
         keepForRetry(`edge:${startId}`, () => edgeFieldsOp(startId));
       }
+      return Boolean(reversed);
     },
     [runSave, enqueueEdgeOp, resolveEdgeId, queueEdgeFields, edgeFieldsOp, recordHistory]
   );
@@ -815,7 +819,8 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
       await handleUpdateNode(nodeId, gone ? { ...patch, categoryId: null } : patch);
     },
     updateEdge: async (edgeId, patch) => {
-      if (relationsRef.current.some((e) => e.id === edgeId)) await handleUpdateEdge(edgeId, patch);
+      if (!relationsRef.current.some((e) => e.id === edgeId)) return true; // skipped: link gone
+      return handleUpdateEdge(edgeId, patch);
     },
     applyPositions: (positions) => {
       const existing = new Set(entitiesRef.current.map((n) => n.id));

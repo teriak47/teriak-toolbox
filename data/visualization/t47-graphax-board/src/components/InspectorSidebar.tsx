@@ -51,7 +51,7 @@ interface InspectorSidebarProps {
       notes: string;
       reverse: boolean;
     }>
-  ) => Promise<void>;
+  ) => Promise<unknown>;
   onDeleteEdge: (edgeId: string) => Promise<void>;
   onOpenNewCategory: () => void;
   /** Filled by the inspector: hands over (and cancels) the typed edits of a node not saved yet */
