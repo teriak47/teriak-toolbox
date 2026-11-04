@@ -52,6 +52,19 @@ export const CATEGORY_COLORS: string[] = [
   '#6693aa', // cool series
 ];
 
+// Link colours: one lightness and chroma (oklch 0.78 / 0.10, like the accent blue),
+// eight hues, so every colour reads equally well on the dark canvas
+export const LINK_COLORS: Array<{ value: string; label: string }> = [
+  { value: '#6cc4ea', label: 'Bleu' },
+  { value: '#60ccc5', label: 'Turquoise' },
+  { value: '#82cb9b', label: 'Vert' },
+  { value: '#d5b36a', label: 'Sable' },
+  { value: '#e9a679', label: 'Orange' },
+  { value: '#f19e97', label: 'Corail' },
+  { value: '#e89dc0', label: 'Rose' },
+  { value: '#c1a9ee', label: 'Lavande' },
+];
+
 // Legacy "rounded" and "pill" values stay valid in saved data and are drawn as squares
 export const CATEGORY_SHAPES: Array<{ value: CategoryShape; label: string; radiusClass: string }> = [
   { value: 'sharp', label: 'Carré', radiusClass: '' },

@@ -36,6 +36,7 @@ export interface EdgeRecord {
   label: string;
   style: string;
   directed: boolean;
+  color?: string | null;
   notes: string;
   sourceHandle: string | null;
   targetHandle: string | null;

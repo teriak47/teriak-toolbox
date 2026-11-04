@@ -77,6 +77,7 @@ export function mapEdge(raw: Record<string, unknown>): GraphEdge {
     label: String(raw.label ?? ''),
     style,
     directed: raw.directed !== false,
+    color: normalizeColor(raw.color),
     notes: raw.notes ? String(raw.notes) : '',
     createdAt: String(raw.createdAt ?? new Date().toISOString()),
     updatedAt: String(raw.updatedAt ?? new Date().toISOString()),

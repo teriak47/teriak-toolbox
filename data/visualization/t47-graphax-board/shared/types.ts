@@ -79,6 +79,8 @@ export interface GraphEdge {
   label: string;
   style: EdgeStyle;
   directed: boolean;
+  /** Custom link colour (#rrggbb); null or missing draws the default grey */
+  color?: string | null;
   notes?: string;
   createdAt: string;
   updatedAt: string;

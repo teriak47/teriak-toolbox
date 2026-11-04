@@ -176,6 +176,7 @@ export const api = {
       label?: string;
       style?: EdgeStyle;
       directed?: boolean;
+      color?: string | null;
       notes?: string;
     }
   ) =>
@@ -190,6 +191,7 @@ export const api = {
       label: string;
       style: EdgeStyle;
       directed: boolean;
+      color: string | null;
       notes: string;
       reverse: boolean;
     }>

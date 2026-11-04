@@ -468,6 +468,7 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
         label: string;
         style: EdgeStyle;
         directed: boolean;
+        color: string | null;
         notes: string;
         reverse: boolean;
       }>

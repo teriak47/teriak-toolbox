@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import type { Category, EdgeStyle, GraphEdge, GraphNode, NodeMetadata } from '@shared/types';
 import { cn } from '@/lib/utils';
+import { LINK_COLORS } from '@/lib/icons';
 
 interface InspectorSidebarProps {
   selectedNode: GraphNode | null;
@@ -35,6 +36,7 @@ interface InspectorSidebarProps {
       label: string;
       style: EdgeStyle;
       directed: boolean;
+      color: string | null;
       notes: string;
       reverse: boolean;
     }>
@@ -633,6 +635,49 @@ export function InspectorSidebar({
                 </span>
                 <span className="text-xs opacity-80">Pointillés / Théorie</span>
               </button>
+            </div>
+          </div>
+
+          {/* Link colour */}
+          <div className="space-y-2">
+            <label className="block text-xs font-medium uppercase tracking-wider text-zinc-400">
+              Couleur du lien
+            </label>
+            <div className="flex flex-wrap items-center gap-1.5" role="radiogroup" aria-label="Couleur du lien">
+              <button
+                type="button"
+                role="radio"
+                aria-checked={!selectedEdge.color}
+                onClick={() => void onUpdateEdge(selectedEdge.id, { color: null })}
+                title="Par défaut (gris)"
+                className={cn(
+                  'h-7 px-2 border text-xs transition-colors',
+                  !selectedEdge.color
+                    ? 'border-cyan-400 text-zinc-100 bg-zinc-800'
+                    : 'border-filet text-zinc-400 hover:border-filet-fort'
+                )}
+              >
+                Défaut
+              </button>
+              {LINK_COLORS.map((c) => {
+                const active = selectedEdge.color === c.value;
+                return (
+                  <button
+                    key={c.value}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    aria-label={c.label}
+                    title={c.label}
+                    onClick={() => void onUpdateEdge(selectedEdge.id, { color: c.value })}
+                    className={cn(
+                      'w-7 h-7 border-2 transition-transform',
+                      active ? 'border-zinc-100 scale-110' : 'border-transparent hover:scale-105'
+                    )}
+                    style={{ background: c.value }}
+                  />
+                );
+              })}
             </div>
           </div>
 

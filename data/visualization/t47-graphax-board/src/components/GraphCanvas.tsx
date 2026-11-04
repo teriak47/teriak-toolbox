@@ -811,15 +811,21 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
                   !searchMatchIds.has(edge.sourceNodeId) &&
                   !searchMatchIds.has(edge.targetNodeId));
 
-              const strokeColor = isSelected
-                ? 'var(--accent-fort)'
-                : relation === 'incoming'
+              // A custom colour stays visible when the link is selected or hovered; the
+              // direction colours of a selected node take over, then fall back to it
+              const customColor = edge.color ?? null;
+              const strokeColor =
+                relation === 'incoming'
                   ? 'var(--lien-entrant)'
                   : relation !== null
                     ? 'var(--lien-sortant)'
-                    : isIncidentSpotlight || isHovered
-                      ? 'var(--accent)'
-                      : 'var(--filet-fort)';
+                    : customColor
+                      ? customColor
+                      : isSelected
+                        ? 'var(--accent-fort)'
+                        : isIncidentSpotlight || isHovered
+                          ? 'var(--accent)'
+                          : 'var(--filet-fort)';
 
               const strokeWidth =
                 isSelected || isHovered
@@ -904,7 +910,11 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
                             width={edgeLabelHalfSize(labelText).halfWidth * 2}
                             height={edgeLabelHalfSize(labelText).halfHeight * 2}
                             fill="var(--surface-puits)"
-                            stroke={isSelected ? 'var(--accent-fort)' : 'var(--filet)'}
+                            stroke={
+                              isSelected
+                                ? 'var(--accent-fort)'
+                                : (customColor ?? 'var(--filet)')
+                            }
                             strokeWidth={1}
                             strokeDasharray={isDashed ? '3 2' : undefined}
                           />

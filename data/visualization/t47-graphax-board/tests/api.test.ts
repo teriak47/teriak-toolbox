@@ -556,6 +556,67 @@ describe('project list', () => {
   });
 });
 
+describe('link colours', () => {
+  it('stores, changes, resets and validates a link colour', async () => {
+    const projectId = await createProject();
+    const a = await createNode(projectId, 'A');
+    const b = await createNode(projectId, 'B');
+
+    const created = await call('POST', `/api/projects/${projectId}/edges`, {
+      sourceNodeId: a,
+      targetNodeId: b,
+      color: '#C1A9EE',
+    });
+    assert.equal(created.status, 201);
+    assert.equal(created.json.edge.color, '#c1a9ee');
+    const id = created.json.edge.id;
+
+    assert.equal((await call('PATCH', `/api/edges/${id}`, { color: 'violet' })).status, 400);
+    assert.equal(
+      (await call('POST', `/api/projects/${projectId}/edges`, { sourceNodeId: b, targetNodeId: a, color: 12 }))
+        .status,
+      400
+    );
+
+    const changed = await call('PATCH', `/api/edges/${id}`, { color: '#6cc4ea' });
+    assert.equal(changed.json.edge.color, '#6cc4ea');
+    const untouched = await call('PATCH', `/api/edges/${id}`, { label: 'sans couleur envoyée' });
+    assert.equal(untouched.json.edge.color, '#6cc4ea');
+
+    const reset = await call('PATCH', `/api/edges/${id}`, { color: null });
+    assert.equal(reset.json.edge.color, null);
+  });
+
+  it('keeps the colour through a reversal and an export/import', async () => {
+    const projectId = await createProject();
+    const a = await createNode(projectId, 'A');
+    const b = await createNode(projectId, 'B');
+    const { json } = await call('POST', `/api/projects/${projectId}/edges`, {
+      sourceNodeId: a,
+      targetNodeId: b,
+      color: '#82cb9b',
+    });
+
+    const reversed = await call('PATCH', `/api/edges/${json.edge.id}`, { reverse: true });
+    assert.equal(reversed.json.edge.color, '#82cb9b');
+    assert.equal(reversed.json.edge.sourceNodeId, b);
+
+    const exported = await call('GET', `/api/projects/${projectId}/export`);
+    assert.equal(exported.json.edges[0].color, '#82cb9b');
+    const imported = await call('POST', '/api/projects/import', exported.json);
+    const graph = await call('GET', `/api/projects/${imported.json.project.id}`);
+    assert.equal(graph.json.edges[0].color, '#82cb9b');
+  });
+
+  it('draws links without a colour in the default grey', async () => {
+    const projectId = await createProject();
+    const a = await createNode(projectId, 'A');
+    const b = await createNode(projectId, 'B');
+    const { json } = await call('POST', `/api/projects/${projectId}/edges`, { sourceNodeId: a, targetNodeId: b });
+    assert.equal(json.edge.color, null);
+  });
+});
+
 describe('local-only guard', () => {
   it('accepts same-origin and header-less requests', async () => {
     assert.equal((await call('GET', '/api/health')).status, 200);

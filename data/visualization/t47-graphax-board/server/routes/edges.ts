@@ -3,9 +3,19 @@ import { getDb, generateId, toRecordId } from '../db.ts';
 import { mapEdge, touchProject } from '../mappers.ts';
 import { nodesInProject, projectExists } from '../guards.ts';
 import type { EdgeStyle } from '../../shared/types.ts';
-import { normalizeHandle, optString, readBody } from '../validation.ts';
+import { normalizeColor, normalizeHandle, optString, readBody } from '../validation.ts';
 
 export const edgesRouter = new Hono();
+
+const INVALID_COLOR = 'Couleur de lien invalide : format #rrggbb attendu.';
+
+// A link colour is optional: null or "" resets it to the default grey. Returns undefined
+// when the field was not sent and `false` when the value is not a colour.
+function readEdgeColor(value: unknown): string | null | undefined | false {
+  if (value === undefined) return undefined;
+  if (value === null || value === '') return null;
+  return normalizeColor(value) ?? false;
+}
 
 // Create a native SurrealDB RELATE edge between two nodes
 edgesRouter.post('/projects/:projectId/edges', async (c) => {
@@ -18,6 +28,7 @@ edgesRouter.post('/projects/:projectId/edges', async (c) => {
     label?: string;
     style?: EdgeStyle;
     directed?: boolean;
+    color?: string | null;
     notes?: string;
   }>(c);
 
@@ -31,6 +42,8 @@ edgesRouter.post('/projects/:projectId/edges', async (c) => {
 
   const sourceNodeId = String(body.sourceNodeId);
   const targetNodeId = String(body.targetNodeId);
+  const color = readEdgeColor(body.color);
+  if (color === false) return c.json({ error: INVALID_COLOR }, 400);
 
   const db = await getDb();
   if (!(await projectExists(db, projectId))) {
@@ -53,6 +66,7 @@ edgesRouter.post('/projects/:projectId/edges', async (c) => {
         label: $label,
         style: $style,
         directed: $directed,
+        color: $color,
         notes: $notes,
         sourceHandle: $sourceHandle,
         targetHandle: $targetHandle,
@@ -67,6 +81,7 @@ edgesRouter.post('/projects/:projectId/edges', async (c) => {
         label: (optString(body.label) ?? '').trim(),
         style,
         directed,
+        color: color ?? null,
         notes: optString(body.notes) ?? '',
         sourceHandle: normalizeHandle(body.sourceHandle),
         targetHandle: normalizeHandle(body.targetHandle),
@@ -90,11 +105,15 @@ edgesRouter.patch('/edges/:id', async (c) => {
     label?: string;
     style?: EdgeStyle;
     directed?: boolean;
+    color?: string | null;
     notes?: string;
     sourceHandle?: string | null;
     targetHandle?: string | null;
     reverse?: boolean;
   }>(c);
+
+  const color = readEdgeColor(body.color);
+  if (color === false) return c.json({ error: INVALID_COLOR }, 400);
 
   const db = await getDb();
   const now = new Date().toISOString();
@@ -124,6 +143,7 @@ edgesRouter.patch('/edges/:id', async (c) => {
           label: $label,
           style: $style,
           directed: $directed,
+          color: $color,
           notes: $notes,
           sourceHandle: $sourceHandle,
           targetHandle: $targetHandle,
@@ -140,6 +160,7 @@ edgesRouter.patch('/edges/:id', async (c) => {
           label: optString(body.label)?.trim() ?? current.label,
           style: body.style ? (body.style === 'dashed' ? 'dashed' : 'solid') : current.style,
           directed: typeof body.directed === 'boolean' ? body.directed : current.directed,
+          color: color === undefined ? (current.color ?? null) : color,
           notes: optString(body.notes) ?? current.notes ?? '',
           sourceHandle: current.targetHandle ?? null,
           targetHandle: current.sourceHandle ?? null,
@@ -175,6 +196,10 @@ edgesRouter.patch('/edges/:id', async (c) => {
   if (typeof body.directed === 'boolean') {
     sets.push('directed = $directed');
     params.directed = body.directed;
+  }
+  if (color !== undefined) {
+    sets.push('color = $color');
+    params.color = color;
   }
   if (typeof body.notes === 'string') {
     sets.push('notes = $notes');
