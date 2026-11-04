@@ -6,6 +6,8 @@ import {
   useMemo,
   useRef,
   useState,
+  type ReactNode,
+  type SVGProps,
 } from 'react';
 import {
   Link2,
@@ -26,10 +28,11 @@ import { useViewport } from '@/hooks/useViewport';
 import { computeEdgeGeometry, edgeLabelHalfSize } from '@/lib/edgeGeometry';
 import { usePhysicsSimulation } from '@/hooks/usePhysicsSimulation';
 import {
-  boxBoundary,
-  boxPoints,
+  circleRadius,
   clampFinite,
   nodeHalf,
+  shapeExtent,
+  shapePoints,
   type Viewport,
 } from '@/lib/canvasGeometry';
 
@@ -83,6 +86,35 @@ interface GraphCanvasProps {
   onOrganizeConstellation: () => Promise<void>;
 }
 
+// Draws a node shape (or a ring around it) centred on 0,0
+function ShapeOutline({
+  shape,
+  half,
+  children,
+  ...props
+}: {
+  shape: CategoryShape | undefined;
+  half: number;
+  children?: ReactNode;
+} & SVGProps<SVGPolygonElement> & SVGProps<SVGCircleElement>) {
+  if (shape === 'circle') {
+    return (
+      <circle r={circleRadius(half)} {...(props as SVGProps<SVGCircleElement>)}>
+        {children}
+      </circle>
+    );
+  }
+  return (
+    <polygon
+      points={shapePoints(shape, half)}
+      strokeLinejoin="miter"
+      {...(props as SVGProps<SVGPolygonElement>)}
+    >
+      {children}
+    </polygon>
+  );
+}
+
 function renderNodeShape(
   shape: CategoryShape | undefined,
   r: number,
@@ -90,14 +122,13 @@ function renderNodeShape(
   stroke: string,
   strokeWidth: number
 ) {
-  // Legacy "rounded" and "pill" categories are drawn as plain square boxes
   return (
-    <polygon
-      points={boxPoints(nodeHalf(r), shape === 'cut')}
+    <ShapeOutline
+      shape={shape}
+      half={nodeHalf(r)}
       fill={fill}
       stroke={stroke}
       strokeWidth={strokeWidth}
-      strokeLinejoin="miter"
     />
   );
 }
@@ -270,6 +301,16 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
       }
       return m;
     }, [categories]);
+
+    // Shape of each node, from its category (for drawing and for clipping links)
+    const nodeShapes = useMemo(() => {
+      const m = new Map<string, CategoryShape | undefined>();
+      for (const n of nodes) {
+        if (n?.id) m.set(n.id, n.categoryId ? categoryMap.get(n.categoryId)?.shape : undefined);
+      }
+      return m;
+    }, [nodes, categoryMap]);
+    const getNodeShape = useCallback((nodeId: string) => nodeShapes.get(nodeId), [nodeShapes]);
 
     // Degree count & neighbor adjacency (for Obsidian node sizing & spotlight hover)
     const { degreeMap, neighborMap, incidentEdgesMap } = useMemo(() => {
@@ -632,8 +673,8 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
 
     // Precompute edge geometries (parallel curve separation + exact perimeter clipping)
     const renderedEdges = useMemo(
-      () => computeEdgeGeometry(nodes, edges, getNodePos, getNodeRadius),
-      [nodes, edges, getNodePos, getNodeRadius]
+      () => computeEdgeGeometry(nodes, edges, getNodePos, getNodeRadius, getNodeShape),
+      [nodes, edges, getNodePos, getNodeRadius, getNodeShape]
     );
 
     // Commit inline edge label safely (ref-guarded so Enter + unmount blur never double-fires)
@@ -981,7 +1022,9 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
                       strokeDasharray="6 4"
                     />
                     {(() => {
-                      const halfBox = snapNode ? nodeHalf(getNodeRadius(snapNode.id)) + 7 : 5;
+                      const halfBox = snapNode
+                        ? shapeExtent(getNodeShape(snapNode.id), nodeHalf(getNodeRadius(snapNode.id))) + 7
+                        : 5;
                       return (
                         <rect
                           x={p2.x - halfBox}
@@ -1069,11 +1112,9 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
                 >
                   {/* 360° OUTER LINK HALO RING — Drag anywhere on this ring to link effortlessly! */}
                   {toolMode === 'select' && (
-                    <rect
-                      x={-(nodeHalf(r) + 8)}
-                      y={-(nodeHalf(r) + 8)}
-                      width={(nodeHalf(r) + 8) * 2}
-                      height={(nodeHalf(r) + 8) * 2}
+                    <ShapeOutline
+                      shape={cat?.shape}
+                      half={nodeHalf(r) + 8}
                       fill="none"
                       stroke={isHaloHovered || isLinkSource ? 'var(--accent-fort)' : color}
                       strokeWidth={11}
@@ -1098,16 +1139,14 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
                       }}
                     >
                       <title>Glisser ce cadre vers un autre nœud pour créer un lien</title>
-                    </rect>
+                    </ShapeOutline>
                   )}
 
                   {/* Subtle dashed visual ring when hovered */}
                   {(isHovered || isHaloHovered || isLinkSource) && (
-                    <rect
-                      x={-(nodeHalf(r) + 9)}
-                      y={-(nodeHalf(r) + 9)}
-                      width={(nodeHalf(r) + 9) * 2}
-                      height={(nodeHalf(r) + 9) * 2}
+                    <ShapeOutline
+                      shape={cat?.shape}
+                      half={nodeHalf(r) + 9}
                       fill="none"
                       stroke={isHaloHovered || isLinkSource ? 'var(--accent-fort)' : color}
                       strokeWidth={1.3}
@@ -1119,11 +1158,9 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
 
                   {/* Selection / Search outer ring */}
                   {(isSelected || isSearchHit) && (
-                    <rect
-                      x={-(nodeHalf(r) + 4.5)}
-                      y={-(nodeHalf(r) + 4.5)}
-                      width={(nodeHalf(r) + 4.5) * 2}
-                      height={(nodeHalf(r) + 4.5) * 2}
+                    <ShapeOutline
+                      shape={cat?.shape}
+                      half={nodeHalf(r) + 4.5}
                       fill="none"
                       stroke={isSelected ? 'var(--accent-fort)' : 'var(--attention)'}
                       strokeWidth={2}

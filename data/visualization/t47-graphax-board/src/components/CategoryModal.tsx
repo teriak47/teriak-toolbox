@@ -15,6 +15,7 @@ import {
   getShapeRadiusClass,
 } from '@/lib/icons';
 import { cn } from '@/lib/utils';
+import { ShapeGlyph } from '@/components/ShapeGlyph';
 
 interface CategoryModalProps {
   isOpen: boolean;
@@ -101,22 +102,33 @@ export function CategoryModal({
         </div>
 
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
-          {/* Live Badge Preview */}
-          <div className="flex items-center justify-between px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-filet/80">
-            <span className="text-xs text-zinc-400">Aperçu sur carte :</span>
-            <span
-              className={cn(
-                'inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium',
-                getShapeRadiusClass(shape)
-              )}
-              style={{
-                backgroundColor: `${color}22`,
-                color,
-                border: `1px solid ${color}55`,
-              }}
-            >
-              <PreviewIcon className="w-3.5 h-3.5" />
-              <span>{name.trim() || 'Nom de catégorie'}</span>
+          {/* Live preview: the node as drawn on the graph, and the category badge */}
+          <div className="flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-filet/80">
+            <span className="text-xs text-zinc-400">Aperçu sur le graphe :</span>
+            <span className="flex items-center gap-3">
+              <span className="relative inline-flex items-center justify-center w-12 h-12">
+                <ShapeGlyph
+                  shape={shape}
+                  size={48}
+                  stroke={color}
+                  fill="var(--surface-carte)"
+                  strokeWidth={1.6}
+                />
+                <PreviewIcon className="absolute w-4 h-4" style={{ color }} />
+              </span>
+              <span
+                className={cn(
+                  'inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium',
+                  getShapeRadiusClass(shape)
+                )}
+                style={{
+                  backgroundColor: `${color}22`,
+                  color,
+                  border: `1px solid ${color}55`,
+                }}
+              >
+                <span>{name.trim() || 'Nom de catégorie'}</span>
+              </span>
             </span>
           </div>
 
@@ -203,23 +215,25 @@ export function CategoryModal({
           {/* Shape Selector */}
           <div>
             <label className="block text-xs font-medium text-zinc-300 mb-1.5">
-              Style de bordure
+              Forme du nœud
             </label>
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Forme du nœud">
               {CATEGORY_SHAPES.map((s) => (
                 <button
                   key={s.value}
                   type="button"
+                  role="radio"
+                  aria-checked={shape === s.value}
                   onClick={() => setShape(s.value)}
                   className={cn(
-                    'px-2.5 py-1.5 text-xs font-medium border transition-colors',
-                    s.radiusClass,
+                    'flex items-center gap-2 px-2.5 py-1.5 text-xs font-medium border transition-colors',
                     shape === s.value
                       ? 'bg-cyan-500/15 border-cyan-400 text-cyan-300'
                       : 'bg-zinc-950 border-filet text-zinc-400 hover:text-zinc-200'
                   )}
                 >
-                  {s.label}
+                  <ShapeGlyph shape={s.value} size={16} />
+                  <span>{s.label}</span>
                 </button>
               ))}
             </div>

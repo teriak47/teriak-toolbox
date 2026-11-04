@@ -1,6 +1,6 @@
-import type { GraphEdge, GraphNode } from '../../shared/types.ts';
+import type { CategoryShape, GraphEdge, GraphNode } from '../../shared/types.ts';
 // Relative imports so the module also runs under node --test
-import { boxBoundary, clampFinite, nodeHalf } from './canvasGeometry.ts';
+import { clampFinite, nodeHalf, shapeBoundary } from './canvasGeometry.ts';
 
 export interface EdgeGeometry {
   edge: GraphEdge;
@@ -58,7 +58,8 @@ export function computeEdgeGeometry(
   nodes: GraphNode[],
   edges: GraphEdge[],
   getNodePos: (node: GraphNode) => { x: number; y: number },
-  getNodeRadius: (nodeId: string) => number
+  getNodeRadius: (nodeId: string) => number,
+  getNodeShape: (nodeId: string) => CategoryShape | undefined = () => undefined
 ): EdgeGeometry[] {
   const nodeById = new Map<string, GraphNode>();
   for (const n of nodes) {
@@ -119,7 +120,7 @@ export function computeEdgeGeometry(
       const sdx = cx - p1.x;
       const sdy = cy - p1.y;
       const sLen = Math.hypot(sdx, sdy) || 1;
-      const b1 = boxBoundary(nodeHalf(r1), sdx / sLen, sdy / sLen);
+      const b1 = shapeBoundary(getNodeShape(srcNode.id), nodeHalf(r1), sdx / sLen, sdy / sLen);
       const sx = p1.x + (sdx / sLen) * (b1 + 3);
       const sy = p1.y + (sdy / sLen) * (b1 + 3);
 
@@ -129,7 +130,7 @@ export function computeEdgeGeometry(
       const eLen = Math.hypot(edx, edy) || 1;
       const eux = edx / eLen;
       const euy = edy / eLen;
-      const b2 = boxBoundary(nodeHalf(r2), eux, euy);
+      const b2 = shapeBoundary(getNodeShape(tgtNode.id), nodeHalf(r2), eux, euy);
       const endPad = edge.directed ? b2 + 4 : b2 + 3;
       const tx = p2.x - eux * endPad;
       const ty = p2.y - euy * endPad;
