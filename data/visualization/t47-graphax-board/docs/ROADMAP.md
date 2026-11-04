@@ -25,7 +25,7 @@ Effort: **S** small, **M** medium, **L** large.
 | O3 | Done | Project list | Counting loaded every category, node and link record; counts now come from `GROUP BY` with `count()` in the database. Measured on 4 projects with 20,000 nodes and 20,000 links: about 30 % faster (≈250 ms to ≈175 ms), since SurrealDB still scans the rows but no longer returns them. | Faster dashboard with large databases | S |
 | O4 | Done | Create, demo, import | Records were created one at a time; they are now written with batched inserts in one transaction (done with C2). | Speed and atomicity | S |
 | O5 | Done | Bundle size | The client bundle was 562 kB in one file. The workspace, the Markdown preview (`react-markdown`, `remark-gfm`) and `dagre` are now loaded on demand: the initial bundle is 275 kB (86 kB gzipped, from 173 kB), and the build no longer warns about chunk size. | Faster start | S |
-| O6 | Planned | Large components | `GraphCanvas.tsx` (≈1,800 lines) and `Workspace.tsx` (≈1,270 lines) can be split into hooks such as `useSaveQueue`, `useViewport` and `usePhysics`. Do this before V4, A5 and A6. | Maintainability, testable code | L |
+| O6 | Done (part) | Large components | `GraphCanvas.tsx` (1,909 lines) and `Workspace.tsx` (1,321) mixed state, persistence, camera, physics and geometry. Extracted: `useSaveQueue` (save tracking and retry), `useViewport` (camera, wheel zoom, coordinate conversions), `usePhysicsSimulation` (live layout), and the pure `canvasGeometry` and `edgeGeometry` modules, now unit tested. `GraphCanvas.tsx` is down to 1,512 lines and `Workspace.tsx` to 1,262. Still open: splitting the canvas markup (nodes, links, mini-map, dock) into components. | Maintainability, testable code | L |
 
 ## 3. Visual improvements
 

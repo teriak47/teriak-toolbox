@@ -21,19 +21,22 @@ import {
 } from 'lucide-react';
 import type { Category, CategoryShape, GraphEdge, GraphNode } from '@shared/types';
 import { getCategoryIcon } from '@/lib/icons';
-import { stepForceSimulation, type SimNode } from '@/lib/forceLayout';
 import { cn } from '@/lib/utils';
+import { useViewport } from '@/hooks/useViewport';
+import { computeEdgeGeometry } from '@/lib/edgeGeometry';
+import { usePhysicsSimulation } from '@/hooks/usePhysicsSimulation';
+import {
+  boxBoundary,
+  boxPoints,
+  clampFinite,
+  nodeHalf,
+  type Viewport,
+} from '@/lib/canvasGeometry';
 
 export interface GraphCanvasHandle {
   fitView: (animated?: boolean) => void;
   centerOnPoint: (worldX: number, worldY: number, targetZoom?: number) => void;
   getViewportCenter: () => { x: number; y: number };
-}
-
-interface Viewport {
-  x: number;
-  y: number;
-  zoom: number;
 }
 
 interface LinkingWireState {
@@ -78,60 +81,6 @@ interface GraphCanvasProps {
   onDeleteNode: (nodeId: string) => Promise<void>;
   onDeleteEdge: (edgeId: string) => Promise<void>;
   onOrganizeConstellation: () => Promise<void>;
-}
-
-function clampFinite(val: number, fallback: number, min?: number, max?: number): number {
-  if (!Number.isFinite(val)) return fallback;
-  let out = val;
-  if (min !== undefined && out < min) out = min;
-  if (max !== undefined && out > max) out = max;
-  return out;
-}
-
-function sanitizeViewport(vp: Viewport, fallback: Viewport = { x: 400, y: 300, zoom: 1 }): Viewport {
-  return {
-    x: clampFinite(vp.x, fallback.x, -50000, 50000),
-    y: clampFinite(vp.y, fallback.y, -50000, 50000),
-    zoom: clampFinite(vp.zoom, fallback.zoom, 0.16, 3.2),
-  };
-}
-
-// SECTION 21 geometry: no curves. Nodes are square boxes; "cut" boxes lose two opposite
-// corners along the 21 degree slope (width / height = tan 21 degrees).
-// Live physics stops animating once every node moves slower than this for a few frames
-const PHYSICS_SETTLE_SPEED = 0.15;
-const PHYSICS_SETTLE_FRAMES = 30;
-// While nodes still move, their positions are saved at most this often
-const PHYSICS_PERSIST_INTERVAL_MS = 5000;
-
-const NODE_HALF_RATIO = 0.92;
-const CUT_SLOPE = Math.tan((21 * Math.PI) / 180);
-
-function nodeHalf(r: number): number {
-  return r * NODE_HALF_RATIO;
-}
-
-// Distance from a box centre to its border along the unit direction (ux, uy)
-function boxBoundary(half: number, ux: number, uy: number): number {
-  const m = Math.max(Math.abs(ux), Math.abs(uy));
-  return m > 0 ? half / m : half;
-}
-
-function boxPoints(half: number, cut: boolean): string {
-  if (!cut) {
-    return `${-half},${-half} ${half},${-half} ${half},${half} ${-half},${half}`;
-  }
-  const w = half * 0.38;
-  const h = Math.min(w / CUT_SLOPE, half * 1.6);
-  const pts: Array<[number, number]> = [
-    [-half, -half],
-    [half - w, -half],
-    [half, -half + h],
-    [half, half],
-    [-half + w, half],
-    [-half, half - h],
-  ];
-  return pts.map(([x, y]) => `${x.toFixed(2)},${y.toFixed(2)}`).join(' ');
 }
 
 function renderNodeShape(
@@ -181,19 +130,15 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
     const containerRef = useRef<HTMLDivElement>(null);
     const svgRef = useRef<SVGSVGElement>(null);
 
-    const [viewport, setViewportState] = useState<Viewport>({ x: 400, y: 300, zoom: 1 });
-    const viewportRef = useRef<Viewport>(viewport);
-    viewportRef.current = viewport;
-
-    const setViewport = useCallback(
-      (updater: Viewport | ((prev: Viewport) => Viewport)) => {
-        setViewportState((prev) => {
-          const next = typeof updater === 'function' ? updater(prev) : updater;
-          return sanitizeViewport(next, prev);
-        });
-      },
-      []
-    );
+    const {
+      viewport,
+      viewportRef,
+      setViewport,
+      screenToWorld,
+      animateViewportTo,
+      centerOnPoint,
+      getViewportCenter,
+    } = useViewport(containerRef);
 
     // Live node positions during drag or physics simulation
     const [livePositions, setLivePositions] = useState<Map<string, { x: number; y: number }>>(
@@ -203,8 +148,6 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
     // Interaction tool mode: 'select' (move + halo link) or 'link' (click/drag node A -> node B)
     const [toolMode, setToolMode] = useState<'select' | 'link'>('select');
     const [physicsActive, setPhysicsActive] = useState(false);
-    // True once the running simulation has settled and stopped animating
-    const [physicsSettled, setPhysicsSettled] = useState(false);
 
     // Hover states for Obsidian neighbor spotlight & halo feedback
     const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
@@ -376,53 +319,6 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
       [livePositions]
     );
 
-    // Coordinate transforms
-    const screenToWorld = useCallback((clientX: number, clientY: number) => {
-      const rect = containerRef.current?.getBoundingClientRect();
-      const sx = clientX - (rect?.left ?? 0);
-      const sy = clientY - (rect?.top ?? 0);
-      const vp = viewportRef.current;
-      const z = clampFinite(vp.zoom, 1, 0.16, 3.2);
-      return {
-        x: clampFinite((sx - vp.x) / z, 0),
-        y: clampFinite((sy - vp.y) / z, 0),
-      };
-    }, []);
-
-    // Smooth camera animation helper
-    const animFrameRef = useRef<number | null>(null);
-    const animateViewportTo = useCallback(
-      (rawTarget: Viewport, duration = 360) => {
-        const target = sanitizeViewport(rawTarget, viewportRef.current);
-        if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
-        const start = viewportRef.current;
-        const startTime = performance.now();
-
-        const tick = (now: number) => {
-          const t = Math.min(1, Math.max(0, (now - startTime) / Math.max(16, duration)));
-          const ease = 1 - Math.pow(1 - t, 3);
-          setViewport({
-            x: start.x + (target.x - start.x) * ease,
-            y: start.y + (target.y - start.y) * ease,
-            zoom: start.zoom + (target.zoom - start.zoom) * ease,
-          });
-          if (t < 1) {
-            animFrameRef.current = requestAnimationFrame(tick);
-          } else {
-            animFrameRef.current = null;
-          }
-        };
-        animFrameRef.current = requestAnimationFrame(tick);
-      },
-      [setViewport]
-    );
-
-    useEffect(() => {
-      return () => {
-        if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
-      };
-    }, []);
-
     const fitView = useCallback(
       (animated = true) => {
         const rect = containerRef.current?.getBoundingClientRect();
@@ -471,37 +367,6 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
       [nodes, getNodePos, animateViewportTo, setViewport]
     );
 
-    const centerOnPoint = useCallback(
-      (worldX: number, worldY: number, targetZoom = 1.25) => {
-        const rect = containerRef.current?.getBoundingClientRect();
-        if (!rect || rect.width <= 0 || rect.height <= 0) return;
-        const wx = clampFinite(worldX, 0);
-        const wy = clampFinite(worldY, 0);
-        const z = clampFinite(targetZoom, 1.25, 0.16, 3.2);
-        animateViewportTo(
-          {
-            x: rect.width / 2 - wx * z,
-            y: rect.height / 2 - wy * z,
-            zoom: z,
-          },
-          420
-        );
-      },
-      [animateViewportTo]
-    );
-
-    const getViewportCenter = useCallback(() => {
-      const rect = containerRef.current?.getBoundingClientRect();
-      const vp = viewportRef.current;
-      const cx = (rect?.width && rect.width > 0 ? rect.width : 900) / 2;
-      const cy = (rect?.height && rect.height > 0 ? rect.height : 650) / 2;
-      const z = clampFinite(vp.zoom, 1, 0.16, 3.2);
-      return {
-        x: clampFinite((cx - vp.x) / z, 0),
-        y: clampFinite((cy - vp.y) / z, 0),
-      };
-    }, []);
-
     useImperativeHandle(
       ref,
       () => ({
@@ -511,33 +376,6 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
       }),
       [fitView, centerOnPoint, getViewportCenter]
     );
-
-    // Wheel zoom centered on mouse cursor
-    useEffect(() => {
-      const el = containerRef.current;
-      if (!el) return;
-
-      const onWheel = (e: WheelEvent) => {
-        e.preventDefault();
-        const rect = el.getBoundingClientRect();
-        const mx = e.clientX - rect.left;
-        const my = e.clientY - rect.top;
-
-        setViewport((prev) => {
-          const factor = Math.exp(-clampFinite(e.deltaY, 0, -500, 500) * 0.0014);
-          const nextZoom = clampFinite(prev.zoom * factor, prev.zoom, 0.16, 3.2);
-          const scale = nextZoom / prev.zoom;
-          return {
-            zoom: nextZoom,
-            x: mx - (mx - prev.x) * scale,
-            y: my - (my - prev.y) * scale,
-          };
-        });
-      };
-
-      el.addEventListener('wheel', onWheel, { passive: false });
-      return () => el.removeEventListener('wheel', onWheel);
-    }, [setViewport]);
 
     // Keyboard deletion is never immediate: Delete/Backspace asks first, then
     // Enter (or Delete/Backspace again) confirms and Escape cancels
@@ -622,145 +460,19 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
       setLinkingWire,
     ]);
 
-    // Live Obsidian-style Force Physics Loop (when toggled ON)
-    const simNodesRef = useRef<SimNode[]>([]);
-    const edgesRef = useRef(edges);
-    edgesRef.current = edges;
-
     const livePositionsRef = useRef(livePositions);
     livePositionsRef.current = livePositions;
 
-    // Wakes the physics loop after it went to sleep on a settled graph (set while active)
-    const physicsWakeRef = useRef<(() => void) | null>(null);
-
-    useEffect(() => {
-      if (!physicsActive) return;
-
-      // Seed simNodes from current live positions
-      const existing = new Map(simNodesRef.current.map((s) => [s.id, s]));
-      simNodesRef.current = nodes
-        .filter((n) => Boolean(n?.id))
-        .map((n) => {
-          const prevSim = existing.get(n.id);
-          const live = livePositionsRef.current.get(n.id) ?? {
-            x: clampFinite(Number(n.positionX), 0),
-            y: clampFinite(Number(n.positionY), 0),
-          };
-          return {
-            id: n.id,
-            x: clampFinite(live.x, 0),
-            y: clampFinite(live.y, 0),
-            vx: clampFinite(prevSim?.vx ?? 0, 0),
-            vy: clampFinite(prevSim?.vy ?? 0, 0),
-          };
-        });
-
-      // Last saved position of each node, so only nodes that actually moved are sent
-      const saved = new Map(
-        nodes
-          .filter((n) => Boolean(n?.id))
-          .map((n) => [
-            n.id,
-            {
-              x: Math.round(clampFinite(Number(n.positionX), 0)),
-              y: Math.round(clampFinite(Number(n.positionY), 0)),
-            },
-          ])
-      );
-      const persistMoved = () => {
-        const moved: Array<{ id: string; positionX: number; positionY: number }> = [];
-        for (const sn of simNodesRef.current) {
-          const x = Math.round(clampFinite(sn.x, 0));
-          const y = Math.round(clampFinite(sn.y, 0));
-          const last = saved.get(sn.id);
-          if (!last || last.x !== x || last.y !== y) {
-            moved.push({ id: sn.id, positionX: x, positionY: y });
-            saved.set(sn.id, { x, y });
-          }
-        }
-        if (moved.length > 0) void onUpdateBatchPositions(moved);
-      };
-
-      let rafId = 0;
-      let sleeping = false;
-      let calmFrames = 0;
-      let lastPersist = performance.now();
-
-      const loop = (now: number) => {
-        const draggedId = dragNodeRef.current?.nodeId ?? null;
-        if (draggedId) {
-          const live = livePositionsRef.current.get(draggedId);
-          const simTarget = simNodesRef.current.find((s) => s.id === draggedId);
-          if (live && simTarget) {
-            simTarget.x = clampFinite(live.x, simTarget.x);
-            simTarget.y = clampFinite(live.y, simTarget.y);
-          }
-        }
-
-        const maxSpeed = stepForceSimulation(
-          simNodesRef.current,
-          edgesRef.current,
-          draggedId,
-          0.72
-        );
-
-        const nextMap = new Map<string, { x: number; y: number }>();
-        for (const sn of simNodesRef.current) {
-          nextMap.set(sn.id, {
-            x: clampFinite(sn.x, 0),
-            y: clampFinite(sn.y, 0),
-          });
-        }
-        setLivePositions(nextMap);
-
-        // Settled: save the moved nodes once and stop animating until something changes
-        calmFrames = !draggedId && maxSpeed < PHYSICS_SETTLE_SPEED ? calmFrames + 1 : 0;
-        if (calmFrames >= PHYSICS_SETTLE_FRAMES) {
-          persistMoved();
-          lastPersist = now;
-          sleeping = true;
-          setPhysicsSettled(true);
-          return;
-        }
-
-        // While still moving, save the moved nodes from time to time
-        if (now - lastPersist > PHYSICS_PERSIST_INTERVAL_MS) {
-          lastPersist = now;
-          persistMoved();
-        }
-
-        rafId = requestAnimationFrame(loop);
-      };
-
-      physicsWakeRef.current = () => {
-        if (!sleeping) return;
-        sleeping = false;
-        calmFrames = 0;
-        setPhysicsSettled(false);
-        rafId = requestAnimationFrame(loop);
-      };
-
-      setPhysicsSettled(false);
-      rafId = requestAnimationFrame(loop);
-
-      return () => {
-        cancelAnimationFrame(rafId);
-        physicsWakeRef.current = null;
-        // Save the final coordinates of the nodes that moved
-        persistMoved();
-      };
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [physicsActive, nodes.length]);
-
-    // Added, removed or reversed links change the forces: resume a sleeping simulation.
-    // Keyed on the link structure, because the edges array is rebuilt on every save.
-    const edgeStructureKey = useMemo(
-      () => edges.map((e) => `${e.id}:${e.sourceNodeId}>${e.targetNodeId}`).join('|'),
-      [edges]
-    );
-    useEffect(() => {
-      physicsWakeRef.current?.();
-    }, [edgeStructureKey]);
+    // Live Obsidian-style force physics (when toggled ON); sleeps once the graph settles
+    const { physicsSettled, wakePhysics } = usePhysicsSimulation({
+      active: physicsActive,
+      nodes,
+      edges,
+      draggedNodeIdRef: dragNodeRef,
+      livePositionsRef,
+      setLivePositions,
+      onUpdateBatchPositions,
+    });
 
     // Find closest snap target node for magnetic linking
     const findSnapNodeAt = useCallback(
@@ -816,7 +528,7 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
           ) {
             dragNodeRef.current.moved = true;
             // Dragging a node disturbs a settled simulation
-            physicsWakeRef.current?.();
+            wakePhysics();
           }
           const nid = dragNodeRef.current.nodeId;
           setLivePositions((prev) => {
@@ -919,119 +631,10 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
     ]);
 
     // Precompute edge geometries (parallel curve separation + exact perimeter clipping)
-    const renderedEdges = useMemo(() => {
-      const nodeById = new Map<string, GraphNode>();
-      for (const n of nodes) {
-        if (n?.id) nodeById.set(n.id, n);
-      }
-
-      // Group edges by unordered node pair for clean parallel curve separation
-      const pairGroups = new Map<string, string[]>();
-      for (const e of edges) {
-        if (!e?.id) continue;
-        const key =
-          e.sourceNodeId < e.targetNodeId
-            ? `${e.sourceNodeId}::${e.targetNodeId}`
-            : `${e.targetNodeId}::${e.sourceNodeId}`;
-        const list = pairGroups.get(key) ?? [];
-        list.push(e.id);
-        pairGroups.set(key, list);
-      }
-
-      return edges
-        .map((edge) => {
-          if (!edge?.id) return null;
-          const srcNode = nodeById.get(edge.sourceNodeId);
-          const tgtNode = nodeById.get(edge.targetNodeId);
-          if (!srcNode || !tgtNode) return null;
-
-          const p1 = getNodePos(srcNode);
-          const p2 = getNodePos(tgtNode);
-          const r1 = getNodeRadius(srcNode.id);
-          const r2 = getNodeRadius(tgtNode.id);
-
-          const dx = p2.x - p1.x;
-          const dy = p2.y - p1.y;
-          const dist = Math.hypot(dx, dy);
-          if (!Number.isFinite(dist) || dist < 1) return null;
-
-          const pairKey =
-            edge.sourceNodeId < edge.targetNodeId
-              ? `${edge.sourceNodeId}::${edge.targetNodeId}`
-              : `${edge.targetNodeId}::${edge.sourceNodeId}`;
-          const siblings = pairGroups.get(pairKey) ?? [edge.id];
-          const idx = siblings.indexOf(edge.id);
-          const curveStep = siblings.length > 1 ? (idx - (siblings.length - 1) / 2) * 48 : 0;
-
-          // Canonical normal so A->B and B->A curve to opposite sides!
-          const canonA = edge.sourceNodeId < edge.targetNodeId ? p1 : p2;
-          const canonB = edge.sourceNodeId < edge.targetNodeId ? p2 : p1;
-          const cdx = canonB.x - canonA.x;
-          const cdy = canonB.y - canonA.y;
-          const cdist = Math.hypot(cdx, cdy) || 1;
-          const nx = -cdy / cdist;
-          const ny = cdx / cdist;
-
-          const cx = (p1.x + p2.x) / 2 + nx * curveStep;
-          const cy = (p1.y + p2.y) / 2 + ny * curveStep;
-
-          // Start tangent p1 -> control
-          const sdx = cx - p1.x;
-          const sdy = cy - p1.y;
-          const sLen = Math.hypot(sdx, sdy) || 1;
-          const b1 = boxBoundary(nodeHalf(r1), sdx / sLen, sdy / sLen);
-          const sx = p1.x + (sdx / sLen) * (b1 + 3);
-          const sy = p1.y + (sdy / sLen) * (b1 + 3);
-
-          // End tangent control -> p2
-          const edx = p2.x - cx;
-          const edy = p2.y - cy;
-          const eLen = Math.hypot(edx, edy) || 1;
-          const eux = edx / eLen;
-          const euy = edy / eLen;
-          const b2 = boxBoundary(nodeHalf(r2), eux, euy);
-          const endPad = edge.directed ? b2 + 5 : b2 + 3;
-          const tx = p2.x - eux * endPad;
-          const ty = p2.y - euy * endPad;
-
-          if (!Number.isFinite(sx) || !Number.isFinite(sy) || !Number.isFinite(tx) || !Number.isFinite(ty)) {
-            return null;
-          }
-
-          const pathD =
-            Math.abs(curveStep) < 0.5
-              ? `M ${sx.toFixed(1)} ${sy.toFixed(1)} L ${tx.toFixed(1)} ${ty.toFixed(1)}`
-              : `M ${sx.toFixed(1)} ${sy.toFixed(1)} L ${cx.toFixed(1)} ${cy.toFixed(1)} L ${tx.toFixed(1)} ${ty.toFixed(1)}`;
-
-          // Parallel links bend at a single point; the label sits on that bend
-          const mx = Math.abs(curveStep) < 0.5 ? (sx + tx) / 2 : cx;
-          const my = Math.abs(curveStep) < 0.5 ? (sy + ty) / 2 : cy;
-
-          // Arrowhead polygon at (tx, ty)
-          const arrowLen = 9.5;
-          const arrowHalfW = 4.3;
-          const bx = tx - eux * arrowLen;
-          const by = ty - euy * arrowLen;
-          const pnx = -euy;
-          const pny = eux;
-          const arrowPoints = `${(tx + eux * 2).toFixed(1)},${(ty + euy * 2).toFixed(1)} ${(
-            bx +
-            pnx * arrowHalfW
-          ).toFixed(1)},${(by + pny * arrowHalfW).toFixed(1)} ${(
-            bx -
-            pnx * arrowHalfW
-          ).toFixed(1)},${(by - pny * arrowHalfW).toFixed(1)}`;
-
-          return {
-            edge,
-            pathD,
-            mx: clampFinite(mx, 0),
-            my: clampFinite(my, 0),
-            arrowPoints,
-          };
-        })
-        .filter((item): item is NonNullable<typeof item> => item !== null);
-    }, [nodes, edges, getNodePos, getNodeRadius]);
+    const renderedEdges = useMemo(
+      () => computeEdgeGeometry(nodes, edges, getNodePos, getNodeRadius),
+      [nodes, edges, getNodePos, getNodeRadius]
+    );
 
     // Commit inline edge label safely (ref-guarded so Enter + unmount blur never double-fires)
     const commitInlineLabel = useCallback(() => {
