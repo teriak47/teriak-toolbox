@@ -11,6 +11,7 @@ import { projectsRouter } from './routes/projects.ts';
 import { categoriesRouter } from './routes/categories.ts';
 import { nodesRouter } from './routes/nodes.ts';
 import { edgesRouter } from './routes/edges.ts';
+import { restoreRouter } from './routes/restore.ts';
 
 export const app = new Hono();
 
@@ -40,6 +41,7 @@ app.route('/api/projects', projectsRouter);
 app.route('/api', categoriesRouter);
 app.route('/api', nodesRouter);
 app.route('/api', edgesRouter);
+app.route('/api', restoreRouter);
 
 const distDir = path.resolve(import.meta.dirname, '..', 'dist');
 if (fs.existsSync(distDir)) {

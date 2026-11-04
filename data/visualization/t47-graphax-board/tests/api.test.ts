@@ -734,6 +734,94 @@ describe('link colours', () => {
   });
 });
 
+describe('restore (undo of deletions)', () => {
+  async function graph(projectId: string) {
+    return (await call('GET', `/api/projects/${projectId}`)).json;
+  }
+
+  it('brings back a deleted node with its links, ids and category', async () => {
+    const projectId = await createProject('Restauration');
+    const cat = (await call('POST', `/api/projects/${projectId}/categories`, {
+      name: 'Personne', color: '#60ccc5', icon: 'user', shape: 'circle',
+    })).json.category;
+    const a = await createNode(projectId, 'A');
+    const b = await createNode(projectId, 'B', 200);
+    await call('PATCH', `/api/nodes/${a}`, { categoryId: cat.id, metadata: { IP: '192.0.2.1' } });
+    await call('POST', `/api/projects/${projectId}/edges`, { sourceNodeId: a, targetNodeId: b, label: 'connaît' });
+    const before = await graph(projectId);
+    const node = before.nodes.find((n: { id: string }) => n.id === a);
+    const edge = before.edges[0];
+
+    await call('DELETE', `/api/nodes/${a}`);
+    assert.equal((await graph(projectId)).edges.length, 0);
+
+    const body = { nodes: [node], edges: [edge] };
+    const first = await call('POST', `/api/projects/${projectId}/restore`, body);
+    assert.equal(first.status, 200);
+    assert.equal(first.json.nodes[0].id, a);
+    assert.equal(first.json.edges[0].id, edge.id);
+    // A retried request gives the same result, without duplicates
+    assert.equal((await call('POST', `/api/projects/${projectId}/restore`, body)).status, 200);
+
+    const after = await graph(projectId);
+    assert.equal(after.nodes.length, 2);
+    assert.equal(after.edges.length, 1);
+    const back = after.nodes.find((n: { id: string }) => n.id === a);
+    assert.equal(back.categoryId, cat.id);
+    assert.deepEqual(back.metadata, { IP: '192.0.2.1' });
+    assert.equal(after.edges[0].label, 'connaît');
+    assert.equal(after.edges[0].sourceNodeId, a);
+  });
+
+  it('puts a deleted category back in its place and gives its nodes back to it', async () => {
+    const projectId = await createProject('Restauration catégories');
+    const cats = [];
+    for (const name of ['Un', 'Deux', 'Trois']) {
+      cats.push((await call('POST', `/api/projects/${projectId}/categories`, {
+        name, color: '#60ccc5', icon: 'user', shape: 'circle',
+      })).json.category);
+    }
+    const n1 = await createNode(projectId, 'N1');
+    const n2 = await createNode(projectId, 'N2', 100);
+    await call('PATCH', `/api/nodes/${n1}`, { categoryId: cats[1].id });
+    await call('PATCH', `/api/nodes/${n2}`, { categoryId: cats[1].id });
+    await call('DELETE', `/api/categories/${cats[1].id}`);
+    // Meanwhile N2 gets another category: the restore must not take it back
+    await call('PATCH', `/api/nodes/${n2}`, { categoryId: cats[2].id });
+
+    const res = await call('POST', `/api/projects/${projectId}/restore`, {
+      categories: [{ ...cats[1], index: 1 }],
+      assignments: [{ categoryId: cats[1].id, nodeIds: [n1, n2] }],
+    });
+    assert.equal(res.status, 200);
+    assert.deepEqual(res.json.categories.map((c: { name: string }) => c.name), ['Un', 'Deux', 'Trois']);
+    const g = await graph(projectId);
+    assert.deepEqual(g.categories.map((c: { name: string }) => c.name), ['Un', 'Deux', 'Trois']);
+    assert.equal(g.nodes.find((n: { id: string }) => n.id === n1).categoryId, cats[1].id);
+    assert.equal(g.nodes.find((n: { id: string }) => n.id === n2).categoryId, cats[2].id);
+  });
+
+  it('skips links to nodes that are gone and refuses foreign or invalid records', async () => {
+    const projectId = await createProject('Restauration refus');
+    const other = await createProject('Autre projet');
+    const a = await createNode(projectId, 'A');
+    const foreign = await createNode(other, 'Étranger');
+    const res = await call('POST', `/api/projects/${projectId}/restore`, {
+      edges: [{ id: 'abc123', sourceNodeId: a, targetNodeId: 'missing0' }],
+    });
+    assert.equal(res.status, 200);
+    assert.equal(res.json.edges.length, 0);
+
+    const g = await graph(other);
+    const stolen = await call('POST', `/api/projects/${projectId}/restore`, { nodes: [g.nodes[0]] });
+    assert.equal(stolen.status, 400);
+    assert.equal((await graph(other)).nodes[0].id, foreign);
+    assert.equal((await call('POST', `/api/projects/${projectId}/restore`, { nodes: [{ id: 'a b' }] })).status, 400);
+    assert.equal((await call('POST', `/api/projects/${projectId}/restore`, {})).status, 400);
+    assert.equal((await call('POST', '/api/projects/nope/restore', { nodes: [{ id: 'x1' }] })).status, 404);
+  });
+});
+
 describe('local-only guard', () => {
   it('accepts same-origin and header-less requests', async () => {
     assert.equal((await call('GET', '/api/health')).status, 200);
