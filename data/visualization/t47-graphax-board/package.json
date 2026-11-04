@@ -20,7 +20,6 @@
     "@hono/node-server": "^2.1.5",
     "@surrealdb/node": "^3.1.0",
     "@surrealdb/node-native": "^3.3.5",
-    "@xyflow/react": "^12.12.0",
     "clsx": "^2.1.1",
     "hono": "^4.13.14",
     "lucide-react": "^1.66.0",
@@ -39,7 +38,6 @@
     "@vitejs/plugin-react": "^6.1.2",
     "concurrently": "^10.0.6",
     "tailwindcss": "^4.0.0",
-    "tsx": "^4.23.15",
     "typescript": "^5.7.0",
     "vite": "^8.0.0"
   }
