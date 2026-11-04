@@ -20,7 +20,9 @@ import {
   checkValueForKey,
   collectMetadataKeys,
   describeValue,
+  missingCategoryKeys,
   valueLink,
+  withCategoryKeys,
 } from '@/lib/metadata';
 
 interface InspectorSidebarProps {
@@ -263,9 +265,46 @@ export function InspectorSidebar({
     }
   };
 
+  // Changing the category adds its default keys (empty) that the node does not have yet.
+  // Typed edits still waiting are sent in the same request, so neither overwrites the other.
+  const changeCategory = (nodeId: string, nextCat: string | null) => {
+    if (nodeTimerRef.current) {
+      clearTimeout(nodeTimerRef.current);
+      nodeTimerRef.current = null;
+    }
+    const pending =
+      pendingNodeFlushRef.current?.nodeId === nodeId ? pendingNodeFlushRef.current.patch : {};
+    pendingNodeFlushRef.current = null;
+    setCategoryId(nextCat);
+    const cat = categories.find((c) => c.id === nextCat);
+    const added = missingCategoryKeys(cat, rowsToMetadata(metaRows));
+    const patch: Parameters<typeof onUpdateNode>[1] = { ...pending, categoryId: nextCat };
+    if (added.length > 0) {
+      const nextRows = [
+        ...metaRows,
+        ...added.map((key) => ({ id: `${Date.now()}-${key}`, key, value: '' })),
+      ];
+      setMetaRows(nextRows);
+      patch.metadata = rowsToMetadata(nextRows);
+    }
+    void onUpdateNode(nodeId, patch);
+  };
+
+  const addCategoryKeys = (keys: string[]) => {
+    const meta = withCategoryKeys({ metadataKeys: keys }, rowsToMetadata(metaRows));
+    const existing = new Set(metaRows.map((r) => r.key.trim()));
+    updateMetaRows([
+      ...metaRows,
+      ...Object.keys(meta)
+        .filter((k) => !existing.has(k))
+        .map((key) => ({ id: `${Date.now()}-${key}`, key, value: '' })),
+    ]);
+  };
+
   // ==================== NODE INSPECTOR ====================
   if (selectedNode) {
     const activeCat = categories.find((c) => c.id === categoryId) ?? null;
+    const categoryMissingKeys = missingCategoryKeys(activeCat, rowsToMetadata(metaRows));
 
     return (
       <aside className="w-[390px] shrink-0 h-full bg-zinc-900/95 border-l border-filet flex flex-col overflow-hidden z-20">
@@ -331,11 +370,7 @@ export function InspectorSidebar({
             </div>
             <select
               value={categoryId ?? ''}
-              onChange={(e) => {
-                const nextCat = e.target.value || null;
-                setCategoryId(nextCat);
-                void onUpdateNode(selectedNode.id, { categoryId: nextCat });
-              }}
+              onChange={(e) => changeCategory(selectedNode.id, e.target.value || null)}
               className="w-full px-3 py-2 text-sm rounded-lg bg-zinc-950 border border-filet text-zinc-100 focus:border-cyan-500 focus:outline-none"
             >
               <option value="">— Non classé —</option>
@@ -368,10 +403,42 @@ export function InspectorSidebar({
               </button>
             </div>
 
-            {/* Quick Metadata Preset Chips */}
+            {/* Quick Metadata Preset Chips: the category's missing default keys first */}
             <div className="flex flex-wrap gap-1">
+              {categoryMissingKeys.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => addCategoryKeys(categoryMissingKeys)}
+                  title={`Ajouter les champs par défaut de « ${activeCat?.name} »`}
+                  className="px-2 py-0.5 rounded-md border text-xs font-medium transition-colors hover:brightness-125"
+                  style={{
+                    color: activeCat?.color,
+                    borderColor: `color-mix(in oklab, ${activeCat?.color} 45%, transparent)`,
+                    backgroundColor: `color-mix(in oklab, ${activeCat?.color} 10%, transparent)`,
+                  }}
+                >
+                  + Champs de la catégorie ({categoryMissingKeys.length})
+                </button>
+              )}
+              {categoryMissingKeys.map((key) => (
+                <button
+                  key={`cat-${key}`}
+                  type="button"
+                  onClick={() => addCategoryKeys([key])}
+                  title={`Champ par défaut de « ${activeCat?.name} »`}
+                  className="px-2 py-0.5 rounded-md border text-xs transition-colors hover:brightness-125"
+                  style={{
+                    color: activeCat?.color,
+                    borderColor: `color-mix(in oklab, ${activeCat?.color} 35%, transparent)`,
+                  }}
+                >
+                  + {key}
+                </button>
+              ))}
               {METADATA_PRESETS.filter(
-                (p) => !metaRows.some((r) => r.key.toLowerCase() === p.key.toLowerCase())
+                (p) =>
+                  !metaRows.some((r) => r.key.toLowerCase() === p.key.toLowerCase()) &&
+                  !categoryMissingKeys.some((k) => k.toLowerCase() === p.key.toLowerCase())
               ).map((preset) => (
                 <button
                   key={preset.key}

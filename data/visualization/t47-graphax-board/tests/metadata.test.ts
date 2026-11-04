@@ -1,13 +1,17 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import { normalizeCategoryKeys, normalizeKeyList } from '../shared/types.ts';
 import {
+  cardEntries,
   checkValueForKey,
   collectMetadataKeys,
   describeValue,
   detectValueType,
   matchesMetadataQuery,
+  missingCategoryKeys,
   parseMetadataQuery,
   valueLink,
+  withCategoryKeys,
 } from '../src/lib/metadata.ts';
 
 describe('metadata value types', () => {
@@ -118,5 +122,48 @@ describe('metadata keys and search', () => {
     assert.ok(matchesMetadataQuery(meta, parseMetadataQuery('Domaine:')!));
     assert.ok(!matchesMetadataQuery(meta, parseMetadataQuery('IP:')!));
     assert.ok(!matchesMetadataQuery(meta, parseMetadataQuery('fiabilite:probable')!));
+    // An empty default field does not count as having the key
+    assert.ok(!matchesMetadataQuery({ IP: '', Pays: ' ' }, parseMetadataQuery('IP:')!));
+    assert.ok(!matchesMetadataQuery({ Pays: '' }, parseMetadataQuery('Pays:')!));
+  });
+});
+
+describe('category default keys', () => {
+  it('cleans key lists', () => {
+    assert.deepEqual(normalizeKeyList(['  IP ', 'ip', 'Pays', 3, '', 'Première vue', 'premiere VUE'], 12), [
+      'IP',
+      'Pays',
+      'Première vue',
+    ]);
+    assert.deepEqual(normalizeKeyList('IP', 12), []);
+    assert.deepEqual(normalizeKeyList(['a', 'b', 'c'], 2), ['a', 'b']);
+    assert.equal(normalizeKeyList(['x'.repeat(100)], 12)[0].length, 60);
+  });
+
+  it('keeps card keys among the default keys, two at most', () => {
+    assert.deepEqual(normalizeCategoryKeys(['IP', 'ASN', 'Pays'], ['ip', 'Port', 'Pays', 'ASN']), {
+      metadataKeys: ['IP', 'ASN', 'Pays'],
+      cardKeys: ['IP', 'Pays'],
+    });
+    assert.deepEqual(normalizeCategoryKeys(undefined, ['IP']), { metadataKeys: [], cardKeys: [] });
+  });
+
+  it('adds missing default keys without touching existing values', () => {
+    const cat = { metadataKeys: ['IP', 'ASN', 'Première vue'], cardKeys: ['IP'] };
+    const meta = { ip: '192.0.2.1', Note: 'x', 'premiere vue': '' };
+    assert.deepEqual(missingCategoryKeys(cat, meta), ['ASN']);
+    assert.deepEqual(withCategoryKeys(cat, meta), { ...meta, ASN: '' });
+    assert.deepEqual(withCategoryKeys(null, meta), meta);
+    assert.deepEqual(withCategoryKeys(cat, undefined), { IP: '', ASN: '', 'Première vue': '' });
+  });
+
+  it('lists the card values that are filled, in the category order', () => {
+    const cat = { metadataKeys: ['IP', 'Pays'], cardKeys: ['Pays', 'IP'] };
+    assert.deepEqual(cardEntries(cat, { IP: ' 192.0.2.1 ', pays: 'FR' }), [
+      { key: 'pays', value: 'FR' },
+      { key: 'IP', value: '192.0.2.1' },
+    ]);
+    assert.deepEqual(cardEntries(cat, { IP: '', Pays: '  ' }), []);
+    assert.deepEqual(cardEntries(undefined, { IP: '1' }), []);
   });
 });

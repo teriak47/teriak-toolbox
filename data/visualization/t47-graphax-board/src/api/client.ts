@@ -12,6 +12,16 @@ import type {
   ProjectPreset,
 } from '@shared/types';
 
+// What the category editor sends: style, default keys and card keys
+export type CategoryInput = {
+  name: string;
+  color: string;
+  icon: CategoryIconName;
+  shape: CategoryShape;
+  metadataKeys: string[];
+  cardKeys: string[];
+};
+
 async function request<T>(path: string, init?: RequestInit, retries = 3): Promise<T> {
   let res: Response;
   try {
@@ -91,7 +101,7 @@ export const api = {
   // Categories
   createCategory: (
     projectId: string,
-    input: { name: string; color: string; icon: CategoryIconName; shape: CategoryShape }
+    input: CategoryInput
   ) =>
     request<{ category: Category }>(`/api/projects/${projectId}/categories`, {
       method: 'POST',
@@ -100,7 +110,7 @@ export const api = {
 
   updateCategory: (
     categoryId: string,
-    input: Partial<{ name: string; color: string; icon: CategoryIconName; shape: CategoryShape }>
+    input: Partial<CategoryInput>
   ) =>
     request<{ category: Category }>(`/api/categories/${categoryId}`, {
       method: 'PATCH',

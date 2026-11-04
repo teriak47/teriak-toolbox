@@ -15,6 +15,8 @@ export interface CategoryRecord {
   color: string;
   icon: string;
   shape: string;
+  metadataKeys?: string[];
+  cardKeys?: string[];
 }
 
 export interface NodeRecord {

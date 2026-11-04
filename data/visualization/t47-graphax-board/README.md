@@ -30,6 +30,8 @@ Run the automated API tests with `pnpm test`; they use a temporary database and 
 
 The interface follows the SECTION 21 design system used across Teriak47 projects: warm bistre dark surfaces, a single cold blue accent, square corners with 21° cuts, straight links, eye-slit status markers and a footer signature. Chakra Petch and Fragment Mono (OFL-1.1, bundled with `@fontsource`) are loaded locally, so nothing is downloaded. The tokens are in `src/ds/`. Category colours and shapes in existing projects are kept; legacy rounded shapes are drawn as squares. Nodes can be square, cut-corner, hexagonal, diamond-shaped, octagonal or round, and links end on each outline.
 
+A category can list default metadata keys (for example `IP`, `ASN`, `Pays`). They are added, empty, to its new nodes and to a node moved into it, and up to two of them can be shown under the node title. The inspector offers a node's missing keys in one click, and the preset categories (OSINT, lore, research) come with their own keys.
+
 The version shown in the footer comes from `package.json`, which must match `tool.yaml` (checked by `pnpm test`). `/api/health` also reports it.
 
 Open the local Vite address shown in the terminal. The application starts a local API backed by SurrealDB. It cannot run by opening `index.html` directly. To build and start the unified server:

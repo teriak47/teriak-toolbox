@@ -201,6 +201,9 @@ describe('atomic writes', () => {
     const graph = await call('GET', `/api/projects/${json.project.id}`);
     assert.equal(graph.json.categories.length, json.project.categoryCount);
     assert.ok(graph.json.categories.length > 0);
+    const ip = graph.json.categories.find((c: { name: string }) => c.name === 'Infrastructure / IP');
+    assert.ok(ip.metadataKeys.includes('IP'));
+    assert.deepEqual(ip.cardKeys, ['IP']);
   });
 
   it('creates the demo project in full', async () => {
@@ -217,7 +220,17 @@ describe('atomic writes', () => {
       format: 'graphax-project',
       version: 1,
       project: { id: 'old', name: 'Import fictif', description: '' },
-      categories: [{ id: 'c1', name: 'Personne', color: '#47c0ef', icon: 'user', shape: 'sharp' }],
+      categories: [
+        {
+          id: 'c1',
+          name: 'Personne',
+          color: '#47c0ef',
+          icon: 'user',
+          shape: 'sharp',
+          metadataKeys: ['Alias', 'Rôle'],
+          cardKeys: ['Rôle', 'Inconnue'],
+        },
+      ],
       nodes: [
         { id: 'n1', categoryId: 'c1', title: 'A', content: '', positionX: 0, positionY: 0, metadata: { Clé: 'v' } },
         { id: 'n2', categoryId: null, title: 'B', content: '', positionX: 10, positionY: 0, metadata: {} },
@@ -235,6 +248,8 @@ describe('atomic writes', () => {
     const [category] = graph.json.categories;
     const a = graph.json.nodes.find((n: { title: string }) => n.title === 'A');
     assert.equal(a.categoryId, category.id);
+    assert.deepEqual(category.metadataKeys, ['Alias', 'Rôle']);
+    assert.deepEqual(category.cardKeys, ['Rôle']);
     assert.deepEqual(a.metadata, { Clé: 'v' });
     assert.equal(graph.json.edges.length, 1);
     assert.equal(graph.json.edges[0].style, 'dashed');
@@ -429,6 +444,33 @@ describe('input validation', () => {
 
     const project = await call('POST', '/api/projects', { name: 'Preset piégé', preset: 'toString' });
     assert.equal(project.status, 201);
+  });
+
+  it('stores category default keys and card keys', async () => {
+    const projectId = await createProject();
+    const url = `/api/projects/${projectId}/categories`;
+    const created = await call('POST', url, {
+      name: 'Serveur',
+      metadataKeys: [' IP ', 'ip', 'ASN', 42, 'Pays'],
+      cardKeys: ['ip', 'Port'],
+    });
+    assert.equal(created.status, 201);
+    assert.deepEqual(created.json.category.metadataKeys, ['IP', 'ASN', 'Pays']);
+    assert.deepEqual(created.json.category.cardKeys, ['IP']);
+
+    const id = created.json.category.id;
+    const patched = await call('PATCH', `/api/categories/${id}`, { cardKeys: ['Pays', 'ASN', 'IP'] });
+    assert.deepEqual(patched.json.category.cardKeys, ['Pays', 'ASN']);
+    // Removing a default key drops it from the card too
+    const trimmed = await call('PATCH', `/api/categories/${id}`, { metadataKeys: ['ASN'] });
+    assert.deepEqual(trimmed.json.category.cardKeys, ['ASN']);
+
+    assert.equal((await call('POST', url, { name: 'X', metadataKeys: 'IP' })).status, 400);
+    assert.equal((await call('PATCH', `/api/categories/${id}`, { cardKeys: { a: 1 } })).status, 400);
+
+    const plain = await call('POST', url, { name: 'Sans clés' });
+    assert.deepEqual(plain.json.category.metadataKeys, []);
+    assert.deepEqual(plain.json.category.cardKeys, []);
   });
 
   it('validates category colour, icon and shape', async () => {

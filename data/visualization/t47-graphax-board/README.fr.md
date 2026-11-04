@@ -51,6 +51,7 @@ La version affichée dans le pied de page vient de `package.json`, qui doit corr
 - **`Ctrl + K` :** Recherche instantanée avec centrage automatique de la caméra sur l'indice sélectionné.
   Tapez `Clé:valeur` (ex. `IP:192.0.2`) pour chercher dans un attribut précis, ou `Clé:` pour trouver les nœuds qui ont cet attribut.
 - **Attributs (métadonnées) :** les clés déjà utilisées dans le projet sont proposées à la saisie ; le type des valeurs est reconnu (URL, IP, date, empreinte…), une valeur qui ne correspond pas à sa clé est signalée, une URL peut s'ouvrir dans un nouvel onglet (jamais une URL désamorcée comme `hxxps://exemple[.]org`) et chaque valeur peut être copiée.
+- **Champs par défaut d'une catégorie :** dans la fenêtre de la catégorie, listez les champs (ex. `IP`, `ASN`, `Pays`) ajoutés vides à ses nouveaux nœuds et quand un nœud passe dans cette catégorie ; l'œil affiche jusqu'à deux de ces valeurs sous le titre du nœud. Les champs manquants d'un nœud existant sont proposés en un clic dans le panneau d'inspection. Les catégories des modèles (OSINT, lore, recherche) en ont déjà.
 - **`Suppr` (`Delete`) ou `Retour arrière` :** Demande la suppression du nœud ou du lien sélectionné ; `Entrée` confirme, `Échap` annule.
 
 ## Protection de l'API locale

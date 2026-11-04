@@ -1,13 +1,18 @@
 import { useEffect, useState } from 'react';
-import { Trash2, X } from 'lucide-react';
+import { Eye, EyeOff, Plus, Trash2, X } from 'lucide-react';
 import {
   DEFAULT_CATEGORY_COLOR,
   DEFAULT_CATEGORY_ICON,
   DEFAULT_CATEGORY_SHAPE,
+  MAX_CARD_KEYS,
+  MAX_CATEGORY_KEYS,
+  MAX_METADATA_KEY_LENGTH,
+  normalizeCategoryKeys,
   type Category,
   type CategoryIconName,
   type CategoryShape,
 } from '@shared/types';
+import type { CategoryInput } from '@/api/client';
 import {
   CATEGORY_COLORS,
   CATEGORY_ICON_MAP,
@@ -21,14 +26,16 @@ interface CategoryModalProps {
   isOpen: boolean;
   initialCategory?: Category | null;
   onClose: () => void;
-  onSave: (data: {
-    name: string;
-    color: string;
-    icon: CategoryIconName;
-    shape: CategoryShape;
-  }) => Promise<void>;
+  onSave: (data: CategoryInput) => Promise<void>;
   onDelete?: (categoryId: string) => Promise<void>;
+  /** Keys already used in the project, offered while typing a default key */
+  knownKeys?: string[];
 }
+
+type KeyRow = { id: string; key: string; onCard: boolean };
+
+let keyRowSeq = 0;
+const newKeyRow = (key = '', onCard = false): KeyRow => ({ id: `k${++keyRowSeq}`, key, onCard });
 
 export function CategoryModal({
   isOpen,
@@ -36,11 +43,13 @@ export function CategoryModal({
   onClose,
   onSave,
   onDelete,
+  knownKeys = [],
 }: CategoryModalProps) {
   const [name, setName] = useState('');
   const [color, setColor] = useState(DEFAULT_CATEGORY_COLOR);
   const [icon, setIcon] = useState<CategoryIconName>(DEFAULT_CATEGORY_ICON);
   const [shape, setShape] = useState<CategoryShape>(DEFAULT_CATEGORY_SHAPE);
+  const [keyRows, setKeyRows] = useState<KeyRow[]>([]);
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -50,6 +59,8 @@ export function CategoryModal({
       setColor(initialCategory?.color ?? DEFAULT_CATEGORY_COLOR);
       setIcon(initialCategory?.icon ?? DEFAULT_CATEGORY_ICON);
       setShape(initialCategory?.shape ?? DEFAULT_CATEGORY_SHAPE);
+      const card = new Set(initialCategory?.cardKeys ?? []);
+      setKeyRows((initialCategory?.metadataKeys ?? []).map((k) => newKeyRow(k, card.has(k))));
       setConfirmDelete(false);
     }
   }, [isOpen, initialCategory]);
@@ -57,13 +68,20 @@ export function CategoryModal({
   if (!isOpen) return null;
 
   const PreviewIcon = CATEGORY_ICON_MAP[icon]?.icon ?? CATEGORY_ICON_MAP.tag.icon;
+  const cardCount = keyRows.filter((r) => r.onCard && r.key.trim()).length;
+  const updateKeyRow = (id: string, patch: Partial<KeyRow>) =>
+    setKeyRows((rows) => rows.map((r) => (r.id === id ? { ...r, ...patch } : r)));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || saving) return;
     setSaving(true);
     try {
-      await onSave({ name: name.trim(), color, icon, shape });
+      const keys = normalizeCategoryKeys(
+        keyRows.map((r) => r.key),
+        keyRows.filter((r) => r.onCard).map((r) => r.key)
+      );
+      await onSave({ name: name.trim(), color, icon, shape, ...keys });
       onClose();
     } finally {
       setSaving(false);
@@ -87,7 +105,7 @@ export function CategoryModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-      <div className="w-full max-w-md rounded-2xl bg-zinc-900 border border-filet shadow-2xl overflow-hidden">
+      <div className="w-full max-w-md max-h-[calc(100vh-2rem)] flex flex-col rounded-2xl bg-zinc-900 border border-filet shadow-2xl overflow-hidden">
         <div className="flex items-center justify-between px-5 py-4 border-b border-filet">
           <h3 className="text-sm font-semibold text-zinc-100">
             {initialCategory ? 'Modifier la catégorie' : 'Nouvelle catégorie'}
@@ -101,7 +119,7 @@ export function CategoryModal({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-5 space-y-4">
+        <form onSubmit={handleSubmit} className="p-5 space-y-4 overflow-y-auto">
           {/* Live preview: the node as drawn on the graph, and the category badge */}
           <div className="flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-filet/80">
             <span className="text-xs text-zinc-400">Aperçu sur le graphe :</span>
@@ -237,6 +255,84 @@ export function CategoryModal({
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* Default metadata keys, and the ones shown on the node card */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs font-medium text-zinc-300">Champs par défaut</label>
+              <button
+                type="button"
+                disabled={keyRows.length >= MAX_CATEGORY_KEYS}
+                onClick={() => setKeyRows((rows) => [...rows, newKeyRow()])}
+                className="inline-flex items-center gap-1 text-xs text-cyan-400 hover:text-cyan-300 font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <Plus className="w-3 h-3" />
+                <span>Champ</span>
+              </button>
+            </div>
+            <p className="text-xs text-zinc-500 mb-2">
+              Ajoutés vides aux nœuds de cette catégorie. L'œil affiche la valeur sous le titre du
+              nœud ({MAX_CARD_KEYS} max).
+            </p>
+            {keyRows.length === 0 ? (
+              <p className="text-xs text-zinc-500 italic">Aucun champ (ex. IP, Pays, Statut…).</p>
+            ) : (
+              <div className="space-y-1.5">
+                {keyRows.map((row) => {
+                  const cardFull = !row.onCard && cardCount >= MAX_CARD_KEYS;
+                  const cardTitle = row.onCard
+                    ? 'Affiché sur la carte du nœud (cliquer pour masquer)'
+                    : cardFull
+                      ? `${MAX_CARD_KEYS} champs sont déjà affichés sur la carte`
+                      : 'Afficher la valeur sur la carte du nœud';
+                  return (
+                    <div key={row.id} className="flex items-center gap-1.5">
+                      <input
+                        type="text"
+                        list="graphax-category-keys"
+                        value={row.key}
+                        maxLength={MAX_METADATA_KEY_LENGTH}
+                        onChange={(e) => updateKeyRow(row.id, { key: e.target.value })}
+                        placeholder="Clé (ex. IP)"
+                        aria-label="Nom du champ"
+                        className="flex-1 min-w-0 px-2.5 py-1.5 text-xs font-mono rounded-md bg-zinc-950 border border-filet text-zinc-200 placeholder-zinc-500 focus:border-cyan-500 focus:outline-none"
+                      />
+                      <button
+                        type="button"
+                        aria-pressed={row.onCard}
+                        disabled={cardFull}
+                        title={cardTitle}
+                        aria-label={cardTitle}
+                        onClick={() => updateKeyRow(row.id, { onCard: !row.onCard })}
+                        className={cn(
+                          'p-1.5 rounded-md border transition-colors disabled:opacity-35 disabled:cursor-not-allowed',
+                          row.onCard
+                            ? 'bg-cyan-500/15 border-cyan-400 text-cyan-300'
+                            : 'bg-zinc-950 border-filet text-zinc-500 hover:text-zinc-200'
+                        )}
+                      >
+                        {row.onCard ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                      </button>
+                      <button
+                        type="button"
+                        title="Retirer ce champ"
+                        aria-label="Retirer ce champ"
+                        onClick={() => setKeyRows((rows) => rows.filter((r) => r.id !== row.id))}
+                        className="p-1.5 rounded-md text-zinc-500 hover:text-rose-400 hover:bg-zinc-800 transition-colors"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            <datalist id="graphax-category-keys">
+              {knownKeys.map((k) => (
+                <option key={k} value={k} />
+              ))}
+            </datalist>
           </div>
 
           {/* Actions */}
