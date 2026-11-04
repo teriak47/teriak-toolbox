@@ -6,7 +6,7 @@ Graphax is a local interactive graph board for investigations, research, and sto
 
 **Beta:** the application is under development and has not yet received a complete security and functionality review. Keep independent backups of important projects.
 
-Reversing a link now keeps pending edits, and a failed save is reported with a retry action instead of showing "saved". The remaining review items (see the repository issue tracker) are still open, so keep exported backups of important projects.
+Reversing a link now keeps pending edits, and a failed save is reported with a retry action instead of showing "saved". Deleting the selected node or link with the Delete or Backspace key now asks for confirmation first. The remaining review items (see the repository issue tracker) are still open, so keep exported backups of important projects.
 
 ## Run locally
 
@@ -33,6 +33,8 @@ pnpm start
 ```
 
 The project uses local disk storage under `data/` in the tool directory, whichever folder the server is started from; set `GRAPHAX_DATA_DIR` to use another location. This directory is ignored by Git and must not be published. Export and back up projects separately when needed.
+
+Planned fixes, optimisations and features are listed in the [roadmap](docs/ROADMAP.md).
 
 Older versions on Windows created the database in a nested folder such as `<working directory>/D/…/data/graphax.db`. If no database exists at the expected place, Graphax copies one found there and logs it; the original is left untouched.
 

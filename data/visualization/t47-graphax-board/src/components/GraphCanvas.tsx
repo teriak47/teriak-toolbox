@@ -46,6 +46,12 @@ interface LinkingWireState {
   isClickLink?: boolean;
 }
 
+interface PendingDelete {
+  kind: 'node' | 'edge';
+  id: string;
+  label: string;
+}
+
 interface GraphCanvasProps {
   nodes: GraphNode[];
   edges: GraphEdge[];
@@ -525,11 +531,58 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
       return () => el.removeEventListener('wheel', onWheel);
     }, [setViewport]);
 
-    // Keyboard shortcuts: V (Select/Move), L (Link tool), Escape (cancel link/deselect), Delete (remove selected)
+    // Keyboard deletion is never immediate: Delete/Backspace asks first, then
+    // Enter (or Delete/Backspace again) confirms and Escape cancels
+    const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
+
+    // A confirmation only applies to the item that was selected when it was asked
+    useEffect(() => {
+      setPendingDelete(null);
+    }, [selectedNodeId, selectedEdgeId]);
+
+    const requestDeleteSelection = useCallback(() => {
+      if (selectedNodeId) {
+        const node = nodes.find((n) => n.id === selectedNodeId);
+        setPendingDelete({
+          kind: 'node',
+          id: selectedNodeId,
+          label: node?.title || 'Sans titre',
+        });
+      } else if (selectedEdgeId) {
+        const edge = edges.find((e) => e.id === selectedEdgeId);
+        setPendingDelete({ kind: 'edge', id: selectedEdgeId, label: edge?.label ?? '' });
+      }
+    }, [selectedNodeId, selectedEdgeId, nodes, edges]);
+
+    const confirmPendingDelete = useCallback(() => {
+      if (!pendingDelete) return;
+      setPendingDelete(null);
+      if (pendingDelete.kind === 'node') void onDeleteNode(pendingDelete.id);
+      else void onDeleteEdge(pendingDelete.id);
+    }, [pendingDelete, onDeleteNode, onDeleteEdge]);
+
+    // Keyboard shortcuts: V (Select/Move), L (Link tool), Escape (cancel link/deselect),
+    // Delete/Backspace (ask to remove the selection)
     useEffect(() => {
       const onKeyDown = (e: KeyboardEvent) => {
-        const tag = (e.target as HTMLElement)?.tagName;
-        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+        const target = e.target as HTMLElement | null;
+        const tag = target?.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target?.isContentEditable) {
+          return;
+        }
+
+        if (pendingDelete) {
+          if (e.key === 'Enter' || e.key === 'Delete' || e.key === 'Backspace') {
+            e.preventDefault();
+            confirmPendingDelete();
+            return;
+          }
+          if (e.key === 'Escape') {
+            e.preventDefault();
+            setPendingDelete(null);
+            return;
+          }
+        }
 
         if (e.key === 'v' || e.key === 'V') {
           setToolMode('select');
@@ -540,15 +593,24 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
         } else if (e.key === 'Escape') {
           setLinkingWire(null);
           setToolMode('select');
-        } else if (e.key === 'Delete') {
-          if (selectedNodeId) void onDeleteNode(selectedNodeId);
-          else if (selectedEdgeId) void onDeleteEdge(selectedEdgeId);
+        } else if (e.key === 'Delete' || e.key === 'Backspace') {
+          if (selectedNodeId || selectedEdgeId) {
+            e.preventDefault();
+            requestDeleteSelection();
+          }
         }
       };
 
       window.addEventListener('keydown', onKeyDown);
       return () => window.removeEventListener('keydown', onKeyDown);
-    }, [selectedNodeId, selectedEdgeId, onDeleteNode, onDeleteEdge, setLinkingWire]);
+    }, [
+      selectedNodeId,
+      selectedEdgeId,
+      pendingDelete,
+      requestDeleteSelection,
+      confirmPendingDelete,
+      setLinkingWire,
+    ]);
 
     // Live Obsidian-style Force Physics Loop (when toggled ON)
     const simNodesRef = useRef<SimNode[]>([]);
@@ -1526,6 +1588,53 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
                 pour faire apparaître votre premier nœud.
               </p>
             </div>
+          </div>
+        )}
+
+        {/* ==================== KEYBOARD DELETE CONFIRMATION (TOP CENTER) ==================== */}
+        {pendingDelete && (
+          <div
+            role="alertdialog"
+            aria-labelledby="graphax-delete-confirm-title"
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+            onDoubleClick={(e) => e.stopPropagation()}
+            className="absolute top-4 left-1/2 -translate-x-1/2 flex items-center gap-3 px-4 py-2.5 rounded-2xl bg-zinc-900/95 border border-rose-500/40 shadow-2xl z-30 max-w-[calc(100%-2rem)]"
+          >
+            <p id="graphax-delete-confirm-title" className="text-xs text-zinc-200 min-w-0">
+              {pendingDelete.kind === 'node' ? (
+                <>
+                  Supprimer le nœud{' '}
+                  <strong className="text-zinc-50 break-words">« {pendingDelete.label} »</strong> et
+                  tous ses liens ?
+                </>
+              ) : pendingDelete.label ? (
+                <>
+                  Supprimer le lien{' '}
+                  <strong className="text-zinc-50 break-words">« {pendingDelete.label} »</strong> ?
+                </>
+              ) : (
+                <>Supprimer ce lien ?</>
+              )}
+              <span className="block text-[11px] text-zinc-400 mt-0.5">
+                Entrée pour confirmer, Échap pour annuler.
+              </span>
+            </p>
+            <button
+              type="button"
+              autoFocus
+              onClick={confirmPendingDelete}
+              className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium bg-rose-600 text-white hover:bg-rose-500"
+            >
+              Supprimer
+            </button>
+            <button
+              type="button"
+              onClick={() => setPendingDelete(null)}
+              className="shrink-0 text-xs text-zinc-400 hover:text-zinc-200"
+            >
+              Annuler
+            </button>
           </div>
         )}
 
