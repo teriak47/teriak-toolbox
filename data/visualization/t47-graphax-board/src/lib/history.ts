@@ -29,6 +29,8 @@ export class UndoHistory {
   private applying = false;
   /** Replays whose outcome is not known yet; undo and redo wait for them */
   private pending = 0;
+  /** Counts recorded actions, so a late failure can tell whether the user acted since */
+  private generation = 0;
   private readonly limit: number;
   private readonly mergeWindowMs: number;
   /** Called when a failed replay puts an entry back, so the buttons can be refreshed */
@@ -68,6 +70,7 @@ export class UndoHistory {
   /** Adds a new action; it drops whatever could be redone. Ignored during undo/redo. */
   record(entry: Omit<HistoryEntry, 'at'> & { at?: number }): void {
     if (this.applying) return;
+    this.generation += 1;
     const at = entry.at ?? Date.now();
     const last = this.past.at(-1);
     this.future = [];
@@ -128,9 +131,19 @@ export class UndoHistory {
     movedTo: HistoryEntry[],
     cameFrom: HistoryEntry[]
   ): void {
+    const generation = this.generation;
     const back = () => {
+      // If the user did something while the replay was being saved, the failed step is not
+      // put back: its place in the history is gone, and trying it later would undo the
+      // wrong thing. It is dropped, as a new action drops the redo list.
+      if (this.generation !== generation) {
+        const stale = movedTo.lastIndexOf(entry);
+        if (stale >= 0) movedTo.splice(stale, 1);
+        this.onChange?.();
+        return;
+      }
       const index = movedTo.lastIndexOf(entry);
-      if (index < 0) return; // dropped since (a new action cleared the redo list)
+      if (index < 0) return;
       movedTo.splice(index, 1);
       cameFrom.push(entry);
       this.onChange?.();

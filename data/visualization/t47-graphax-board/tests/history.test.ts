@@ -126,4 +126,17 @@ describe('undo history', () => {
     assert.equal(history.undoLabel, 'inversion', 'the failed undo is back');
     assert.equal(history.canRedo, false);
   });
+
+  it('drops a failed replay when the user acted while it was being saved', async () => {
+    const history = new UndoHistory();
+    let finish: (ok: boolean) => void = () => {};
+    history.record({ label: 'inversion', undo: () => new Promise<boolean>((r) => (finish = r)), redo: () => {} });
+    history.undo();
+    history.record({ label: 'libellé', undo: () => {}, redo: () => {} });
+    finish(false);
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(history.undoLabel, 'libellé', 'the newer edit stays the next undo');
+    history.undo();
+    assert.equal(history.canUndo, false, 'the failed reversal is not put back');
+  });
 });
