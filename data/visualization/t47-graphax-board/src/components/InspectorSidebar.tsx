@@ -151,6 +151,10 @@ export function InspectorSidebar({
 
   // A change made elsewhere (category picked on the canvas) takes the edits still waiting here
   // and sends them in its own request, so the delayed save cannot overwrite it afterwards
+  // Bumped when typed edits are handed over: the fields then show the node's values again,
+  // even when the change that took them (an undo) leaves those values as they were before
+  const [handoverTick, setHandoverTick] = useState(0);
+
   const takePendingNodeEdit: TakePendingNodeEdit = (nodeId) => {
     if (pendingNodeFlushRef.current?.nodeId !== nodeId) return {};
     if (nodeTimerRef.current) {
@@ -159,6 +163,7 @@ export function InspectorSidebar({
     }
     const { patch } = pendingNodeFlushRef.current;
     pendingNodeFlushRef.current = null;
+    setHandoverTick((t) => t + 1);
     return patch;
   };
   if (takePendingEditRef) takePendingEditRef.current = takePendingNodeEdit;
@@ -171,6 +176,7 @@ export function InspectorSidebar({
     }
     const pending = pendingEdgeFlushRef.current;
     pendingEdgeFlushRef.current = null;
+    setHandoverTick((t) => t + 1);
     return pending;
   };
   if (takePendingEdgeEditRef) takePendingEdgeEditRef.current = takePendingEdgeEdit;
@@ -244,7 +250,13 @@ export function InspectorSidebar({
       return Object.entries(incoming).map(([k, v], idx) => ({ id: `${idx}-${k}`, key: k, value: v }));
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedNode?.title, selectedNode?.content, selectedNode?.categoryId, selectedNode?.metadata]);
+  }, [
+    selectedNode?.title,
+    selectedNode?.content,
+    selectedNode?.categoryId,
+    selectedNode?.metadata,
+    handoverTick,
+  ]);
 
   // Sync when selectedEdge ID changes (or external inline label commit updates label)
   useEffect(() => {
@@ -265,7 +277,7 @@ export function InspectorSidebar({
       setEdgeLabel(selectedEdge.label);
       setEdgeNotes(selectedEdge.notes ?? '');
     }
-  }, [selectedEdge?.label, selectedEdge?.notes, selectedEdge]);
+  }, [selectedEdge?.label, selectedEdge?.notes, selectedEdge, handoverTick]);
 
   if (!selectedNode && !selectedEdge) return null;
 
