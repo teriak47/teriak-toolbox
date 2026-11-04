@@ -42,6 +42,8 @@ export interface GraphCanvasHandle {
   fitView: (animated?: boolean) => void;
   centerOnPoint: (worldX: number, worldY: number, targetZoom?: number) => void;
   getViewportCenter: () => { x: number; y: number };
+  /** Moves nodes on screen at once (undo/redo), even while the live physics runs */
+  setNodePositions: (positions: Array<{ id: string; positionX: number; positionY: number }>) => void;
 }
 
 interface LinkingWireState {
@@ -78,7 +80,13 @@ interface GraphCanvasProps {
     worldX: number,
     worldY: number
   ) => Promise<void>;
-  onUpdateNodePosition: (nodeId: string, x: number, y: number) => Promise<void>;
+  /** `from` is where the drag started, used as the undo position */
+  onUpdateNodePosition: (
+    nodeId: string,
+    x: number,
+    y: number,
+    from?: { x: number; y: number }
+  ) => Promise<void>;
   onUpdateBatchPositions: (
     positions: Array<{ id: string; positionX: number; positionY: number }>
   ) => Promise<void>;
@@ -207,6 +215,9 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
       startX: number;
       startY: number;
       moved: boolean;
+      /** Latest position under the cursor; the live physics reads it every frame */
+      x?: number;
+      y?: number;
     } | null>(null);
 
     const [linkingWire, setLinkingWireState] = useState<LinkingWireState | null>(null);
@@ -413,12 +424,30 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
       [nodes, getNodePos, animateViewportTo, setViewport]
     );
 
+    // Filled once the physics hook exists (below): a programmatic move also updates the
+    // simulation's own coordinates, then wakes it
+    const wakePhysicsRef = useRef<(() => void) | null>(null);
+    const setSimulationPositionsRef = useRef<
+      ((positions: Array<{ id: string; positionX: number; positionY: number }>) => void) | null
+    >(null);
+
     useImperativeHandle(
       ref,
       () => ({
         fitView,
         centerOnPoint,
         getViewportCenter,
+        setNodePositions: (positions) => {
+          setLivePositions((prev) => {
+            const next = new Map(prev);
+            for (const p of positions) {
+              next.set(p.id, { x: clampFinite(p.positionX, 0), y: clampFinite(p.positionY, 0) });
+            }
+            return next;
+          });
+          setSimulationPositionsRef.current?.(positions);
+          wakePhysicsRef.current?.();
+        },
       }),
       [fitView, centerOnPoint, getViewportCenter]
     );
@@ -534,7 +563,7 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
     livePositionsRef.current = livePositions;
 
     // Live Obsidian-style force physics (when toggled ON); sleeps once the graph settles
-    const { physicsSettled, wakePhysics } = usePhysicsSimulation({
+    const { physicsSettled, wakePhysics, setSimulationPositions } = usePhysicsSimulation({
       active: physicsActive,
       nodes,
       edges,
@@ -543,6 +572,8 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
       setLivePositions,
       onUpdateBatchPositions,
     });
+    wakePhysicsRef.current = wakePhysics;
+    setSimulationPositionsRef.current = setSimulationPositions;
 
     // Find closest snap target node for magnetic linking
     const findSnapNodeAt = useCallback(
@@ -601,6 +632,8 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
             wakePhysics();
           }
           const nid = dragNodeRef.current.nodeId;
+          dragNodeRef.current.x = nx;
+          dragNodeRef.current.y = ny;
           setLivePositions((prev) => {
             const next = new Map(prev);
             next.set(nid, { x: nx, y: ny });
@@ -634,7 +667,7 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
         }
 
         if (dragNodeRef.current) {
-          const { nodeId, moved } = dragNodeRef.current;
+          const { nodeId, moved, startX, startY } = dragNodeRef.current;
           dragNodeRef.current = null;
           if (moved) {
             const finalPos = livePositionsRef.current.get(nodeId);
@@ -642,7 +675,8 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
               void onUpdateNodePosition(
                 nodeId,
                 Math.round(finalPos.x * 100) / 100,
-                Math.round(finalPos.y * 100) / 100
+                Math.round(finalPos.y * 100) / 100,
+                { x: Math.round(startX * 100) / 100, y: Math.round(startY * 100) / 100 }
               );
             }
           }

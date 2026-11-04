@@ -51,12 +51,17 @@ interface InspectorSidebarProps {
       notes: string;
       reverse: boolean;
     }>
-  ) => Promise<void>;
+  ) => Promise<unknown>;
   onDeleteEdge: (edgeId: string) => Promise<void>;
   onOpenNewCategory: () => void;
   /** Filled by the inspector: hands over (and cancels) the typed edits of a node not saved yet */
   takePendingEditRef?: MutableRefObject<TakePendingNodeEdit | null>;
+  /** Same for a link's label and notes */
+  takePendingEdgeEditRef?: MutableRefObject<TakePendingEdgeEdit | null>;
 }
+
+export type PendingEdgeEdit = Partial<{ label: string; notes: string }>;
+export type TakePendingEdgeEdit = () => { edgeId: string; patch: PendingEdgeEdit } | null;
 
 export type PendingNodeEdit = Partial<{ title: string; content: string; metadata: NodeMetadata }>;
 export type TakePendingNodeEdit = (nodeId: string) => PendingNodeEdit;
@@ -104,6 +109,7 @@ export function InspectorSidebar({
   onDeleteEdge,
   onOpenNewCategory,
   takePendingEditRef,
+  takePendingEdgeEditRef,
 }: InspectorSidebarProps) {
   // Node draft state
   const [title, setTitle] = useState('');
@@ -145,6 +151,10 @@ export function InspectorSidebar({
 
   // A change made elsewhere (category picked on the canvas) takes the edits still waiting here
   // and sends them in its own request, so the delayed save cannot overwrite it afterwards
+  // Bumped when typed edits are handed over: the fields then show the node's values again,
+  // even when the change that took them (an undo) leaves those values as they were before
+  const [handoverTick, setHandoverTick] = useState(0);
+
   const takePendingNodeEdit: TakePendingNodeEdit = (nodeId) => {
     if (pendingNodeFlushRef.current?.nodeId !== nodeId) return {};
     if (nodeTimerRef.current) {
@@ -153,9 +163,23 @@ export function InspectorSidebar({
     }
     const { patch } = pendingNodeFlushRef.current;
     pendingNodeFlushRef.current = null;
+    setHandoverTick((t) => t + 1);
     return patch;
   };
   if (takePendingEditRef) takePendingEditRef.current = takePendingNodeEdit;
+
+  const takePendingEdgeEdit: TakePendingEdgeEdit = () => {
+    if (!pendingEdgeFlushRef.current) return null;
+    if (edgeTimerRef.current) {
+      clearTimeout(edgeTimerRef.current);
+      edgeTimerRef.current = null;
+    }
+    const pending = pendingEdgeFlushRef.current;
+    pendingEdgeFlushRef.current = null;
+    setHandoverTick((t) => t + 1);
+    return pending;
+  };
+  if (takePendingEdgeEditRef) takePendingEdgeEditRef.current = takePendingEdgeEdit;
 
   const pendingEdgeFlushRef = useRef<{
     edgeId: string;
@@ -209,10 +233,12 @@ export function InspectorSidebar({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedNode?.id]);
 
-  // Follow changes made outside the inspector (category picked on the canvas, which can also
-  // add default keys), unless an edit typed here is still waiting to be saved
+  // Follow changes made outside the inspector (category picked on the canvas, undo / redo),
+  // unless an edit typed here is still waiting to be saved
   useEffect(() => {
     if (!selectedNode || pendingNodeFlushRef.current?.nodeId === selectedNode.id) return;
+    setTitle(selectedNode.title);
+    setContent(selectedNode.content);
     setCategoryId(selectedNode.categoryId);
     const incoming = selectedNode.metadata ?? {};
     setMetaRows((rows) => {
@@ -224,7 +250,13 @@ export function InspectorSidebar({
       return Object.entries(incoming).map(([k, v], idx) => ({ id: `${idx}-${k}`, key: k, value: v }));
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedNode?.categoryId, selectedNode?.metadata]);
+  }, [
+    selectedNode?.title,
+    selectedNode?.content,
+    selectedNode?.categoryId,
+    selectedNode?.metadata,
+    handoverTick,
+  ]);
 
   // Sync when selectedEdge ID changes (or external inline label commit updates label)
   useEffect(() => {
@@ -243,8 +275,9 @@ export function InspectorSidebar({
   useEffect(() => {
     if (selectedEdge && !pendingEdgeFlushRef.current) {
       setEdgeLabel(selectedEdge.label);
+      setEdgeNotes(selectedEdge.notes ?? '');
     }
-  }, [selectedEdge?.label, selectedEdge]);
+  }, [selectedEdge?.label, selectedEdge?.notes, selectedEdge, handoverTick]);
 
   if (!selectedNode && !selectedEdge) return null;
 

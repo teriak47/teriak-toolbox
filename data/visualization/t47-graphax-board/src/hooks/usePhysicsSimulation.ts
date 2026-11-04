@@ -26,7 +26,7 @@ interface PhysicsOptions {
   nodes: GraphNode[];
   edges: GraphEdge[];
   /** Node currently dragged by the user: it follows the cursor, not the forces */
-  draggedNodeIdRef: RefObject<{ nodeId: string } | null>;
+  draggedNodeIdRef: RefObject<{ nodeId: string; x?: number; y?: number } | null>;
   livePositionsRef: RefObject<Map<string, Point>>;
   setLivePositions: Dispatch<SetStateAction<Map<string, Point>>>;
   onUpdateBatchPositions: (positions: PositionUpdate[]) => Promise<void>;
@@ -106,9 +106,15 @@ export function usePhysicsSimulation({
     let lastPersist = performance.now();
 
     const loop = (now: number) => {
-      const draggedId = draggedNodeIdRef.current?.nodeId ?? null;
+      const dragged = draggedNodeIdRef.current;
+      const draggedId = dragged?.nodeId ?? null;
       if (draggedId) {
-        const live = livePositionsRef.current.get(draggedId);
+        // The cursor position is read from the drag itself: the rendered live positions can
+        // be one move behind, and this frame replaces them all
+        const live =
+          dragged?.x !== undefined && dragged?.y !== undefined
+            ? { x: dragged.x, y: dragged.y }
+            : livePositionsRef.current.get(draggedId);
         const simTarget = simNodesRef.current.find((s) => s.id === draggedId);
         if (live && simTarget) {
           simTarget.x = clampFinite(live.x, simTarget.x);
@@ -183,5 +189,19 @@ export function usePhysicsSimulation({
 
   const wakePhysics = useCallback(() => physicsWakeRef.current?.(), []);
 
-  return { physicsSettled, wakePhysics };
+  // Moves nodes inside the simulation too (undo / redo), so the next frame does not put back
+  // the old coordinates; their speed is reset
+  const setSimulationPositions = useCallback((positions: PositionUpdate[]) => {
+    const byId = new Map(positions.map((p) => [p.id, p]));
+    for (const sn of simNodesRef.current) {
+      const p = byId.get(sn.id);
+      if (!p) continue;
+      sn.x = clampFinite(p.positionX, sn.x);
+      sn.y = clampFinite(p.positionY, sn.y);
+      sn.vx = 0;
+      sn.vy = 0;
+    }
+  }, []);
+
+  return { physicsSettled, wakePhysics, setSimulationPositions };
 }

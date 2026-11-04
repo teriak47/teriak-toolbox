@@ -19,6 +19,8 @@ import {
   Search,
   X,
   GripVertical,
+  Redo2,
+  Undo2,
 } from 'lucide-react';
 import type {
   Category,
@@ -33,6 +35,7 @@ import { GraphCanvas, type GraphCanvasHandle } from '@/components/GraphCanvas';
 import {
   INSPECTOR_SAVE_DELAY_MS,
   InspectorSidebar,
+  type TakePendingEdgeEdit,
   type TakePendingNodeEdit,
 } from '@/components/InspectorSidebar';
 import { downloadProjectExport } from '@/lib/exportProject';
@@ -47,6 +50,7 @@ import { CategoryModal } from '@/components/CategoryModal';
 import { getCategoryIcon } from '@/lib/icons';
 import { computeConstellationLayout } from '@/lib/forceLayout';
 import { cn, moveItem } from '@/lib/utils';
+import { UndoHistory, type HistoryEntry } from '@/lib/history';
 import { AppFooter } from '@/components/AppFooter';
 import logoWhite from '@/ds/assets/logo-white.svg';
 
@@ -59,10 +63,54 @@ interface WorkspaceProps {
   onBack: () => void;
 }
 
+type NodePatch = Partial<{
+  title: string;
+  categoryId: string | null;
+  content: string;
+  metadata: NodeMetadata;
+}>;
+type EdgePatch = Partial<{
+  label: string;
+  style: EdgeStyle;
+  directed: boolean;
+  color: string | null;
+  notes: string;
+  reverse: boolean;
+}>;
+type Positions = Array<{ id: string; positionX: number; positionY: number }>;
+
+interface HistoryActions {
+  updateNode: (nodeId: string, patch: NodePatch) => Promise<void>;
+  /** Resolves to false when a reversal failed, so its history entry stays in place */
+  updateEdge: (edgeId: string, patch: EdgePatch) => Promise<boolean>;
+  applyPositions: (positions: Positions) => void;
+  reorderCategories: (ids: string[]) => Promise<void>;
+}
+
+// Labels shown in the undo / redo tooltips
+function nodeEditLabel(patch: NodePatch): string {
+  if ('categoryId' in patch) return 'Changement de catégorie';
+  if ('title' in patch) return 'Modification du titre';
+  if ('content' in patch) return 'Modification des notes';
+  if ('metadata' in patch) return 'Modification des attributs';
+  return 'Modification du nœud';
+}
+
+function edgeEditLabel(patch: EdgePatch): string {
+  if (patch.reverse) return 'Inversion du lien';
+  if ('label' in patch) return 'Modification du libellé';
+  if ('style' in patch) return 'Style du lien';
+  if ('directed' in patch) return 'Orientation du lien';
+  if ('color' in patch) return 'Couleur du lien';
+  if ('notes' in patch) return 'Notes du lien';
+  return 'Modification du lien';
+}
+
 export function Workspace({ projectId, onBack }: WorkspaceProps) {
   const canvasRef = useRef<GraphCanvasHandle>(null);
   // Lets a change made on the canvas take the inspector's unsaved edits (see InspectorSidebar)
   const takePendingEditRef = useRef<TakePendingNodeEdit | null>(null);
+  const takePendingEdgeEditRef = useRef<TakePendingEdgeEdit | null>(null);
 
   // Core domain state
   const [project, setProject] = useState<Project | null>(null);
@@ -71,6 +119,23 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
   categoriesRef.current = categories;
   const [entities, setEntities] = useState<GraphNode[]>([]);
   const [relations, setRelations] = useState<GraphEdge[]>([]);
+
+  // Undo / redo (A1). Entries replay the same handlers as the user's actions, through
+  // actionsRef so they never call a stale closure.
+  const historyRef = useRef(new UndoHistory());
+  const [, setHistoryVersion] = useState(0);
+  historyRef.current.onChange = () => setHistoryVersion((v) => v + 1);
+  const [historyNotice, setHistoryNotice] = useState<string | null>(null);
+  const entitiesRef = useRef(entities);
+  entitiesRef.current = entities;
+  const relationsRef = useRef(relations);
+  relationsRef.current = relations;
+  const actionsRef = useRef<HistoryActions | null>(null);
+  const recordHistory = useCallback((entry: Omit<HistoryEntry, 'at'>) => {
+    if (historyRef.current.isApplying) return;
+    historyRef.current.record(entry);
+    setHistoryVersion((v) => v + 1);
+  }, []);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const {
@@ -88,6 +153,8 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
   // Unsaved edits kept per node, and a per-edge queue so a reversal can never
   // overtake a label edit on the same link
   const nodePatchesRef = useRef(new Map<string, Record<string, unknown>>());
+  // Pending save of each node, so its saves never overlap
+  const nodeQueuesRef = useRef(new Map<string, Promise<unknown>>());
   // Unsaved field edits per link; a retry always sends the latest merged values
   const edgePatchesRef = useRef(new Map<string, Record<string, unknown>>());
   // Unsaved node positions: single drags and batch layouts share one latest-value map
@@ -113,6 +180,8 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
 
   // Selection & inline editing state
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const selectedNodeIdRef = useRef(selectedNodeId);
+  selectedNodeIdRef.current = selectedNodeId;
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [autoEditEdgeId, setAutoEditEdgeId] = useState<string | null>(null);
 
@@ -149,6 +218,8 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
         if (cancelled) return;
         setProject(payload.project);
         setProjectNameDraft(payload.project.name);
+        historyRef.current.clear();
+        setHistoryVersion((v) => v + 1);
         setCategories(payload.categories);
         setEntities(payload.nodes);
         setRelations(payload.edges);
@@ -374,20 +445,51 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
 
   // Persist single node position
   const handleUpdateNodePosition = useCallback(
-    async (nodeId: string, posX: number, posY: number) => {
+    async (nodeId: string, posX: number, posY: number, from?: { x: number; y: number }) => {
+      const node = entitiesRef.current.find((n) => n.id === nodeId);
+      // The drag start is the undo position: during a long drag, the live physics may have
+      // already saved intermediate coordinates of the dragged node
+      const startX = from?.x ?? node?.positionX;
+      const startY = from?.y ?? node?.positionY;
+      if (node && startX !== undefined && startY !== undefined && (startX !== posX || startY !== posY)) {
+        const before = [{ id: nodeId, positionX: startX, positionY: startY }];
+        const after = [{ id: nodeId, positionX: posX, positionY: posY }];
+        recordHistory({
+          label: 'Déplacement du nœud',
+          undo: () => actionsRef.current?.applyPositions(before),
+          redo: () => actionsRef.current?.applyPositions(after),
+        });
+      }
       setEntities((prev) =>
         prev.map((n) => (n.id === nodeId ? { ...n, positionX: posX, positionY: posY } : n))
       );
       pendingPositionsRef.current.set(nodeId, { id: nodeId, positionX: posX, positionY: posY });
       await savePositions();
     },
-    [savePositions]
+    [savePositions, recordHistory]
   );
 
   // Persist batch node positions (from live physics or layout)
+  // Live physics saves without a label (not undoable); a layout passes one and can be undone
   const handleUpdateBatchPositions = useCallback(
-    async (positions: Array<{ id: string; positionX: number; positionY: number }>) => {
+    async (
+      positions: Array<{ id: string; positionX: number; positionY: number }>,
+      historyLabel?: string
+    ) => {
       if (positions.length === 0) return;
+      if (historyLabel) {
+        const byId = new Map(entitiesRef.current.map((n) => [n.id, n]));
+        const before = positions.flatMap((p) => {
+          const n = byId.get(p.id);
+          return n ? [{ id: p.id, positionX: n.positionX, positionY: n.positionY }] : [];
+        });
+        const after = positions.map((p) => ({ ...p }));
+        recordHistory({
+          label: historyLabel,
+          undo: () => actionsRef.current?.applyPositions(before),
+          redo: () => actionsRef.current?.applyPositions(after),
+        });
+      }
       const map = new Map(positions.map((p) => [p.id, p]));
       setEntities((prev) =>
         prev.map((n) => {
@@ -398,7 +500,7 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
       for (const p of positions) pendingPositionsRef.current.set(p.id, { ...p });
       await savePositions();
     },
-    [savePositions]
+    [savePositions, recordHistory]
   );
 
   // Sends the merged unsaved field edits of a link. Overlapping edits supersede each other,
@@ -441,12 +543,22 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
   const handleCommitEdgeLabel = useCallback(
     async (edgeId: string, newLabel: string) => {
       setAutoEditEdgeId((curr) => (curr === edgeId ? null : curr));
+      const edge = relationsRef.current.find((e) => e.id === resolveEdgeId(edgeId));
+      if (edge && edge.label !== newLabel) {
+        const before = edge.label;
+        recordHistory({
+          label: 'Modification du libellé',
+          mergeKey: `edge:${edgeId}:label`,
+          undo: () => actionsRef.current?.updateEdge(resolveEdgeId(edgeId), { label: before }),
+          redo: () => actionsRef.current?.updateEdge(resolveEdgeId(edgeId), { label: newLabel }),
+        });
+      }
       setRelations((prev) =>
         prev.map((e) => (e.id === edgeId ? { ...e, label: newLabel } : e))
       );
       await queueEdgeFields(edgeId, { label: newLabel });
     },
-    [queueEdgeFields]
+    [queueEdgeFields, resolveEdgeId, recordHistory]
   );
 
   // Node updates from Inspector
@@ -460,22 +572,46 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
         metadata: NodeMetadata;
       }>
     ) => {
+      const node = entitiesRef.current.find((n) => n.id === nodeId);
+      if (node) {
+        const keys = Object.keys(patch) as Array<keyof typeof patch>;
+        const before = Object.fromEntries(keys.map((k) => [k, node[k]])) as typeof patch;
+        recordHistory({
+          label: nodeEditLabel(patch),
+          mergeKey: `node:${nodeId}:${[...keys].sort().join(',')}`,
+          undo: () => void actionsRef.current?.updateNode(nodeId, before),
+          redo: () => void actionsRef.current?.updateNode(nodeId, patch),
+        });
+      }
       setEntities((prev) =>
         prev.map((n) => (n.id === nodeId ? { ...n, ...patch } : n))
       );
-      // Merge with any earlier patch that failed, so a retry never loses a field
-      const merged = { ...(nodePatchesRef.current.get(nodeId) ?? {}), ...patch };
-      nodePatchesRef.current.set(nodeId, merged);
+      // Merge with any unsent or failed patch, so a retry never loses a field
+      nodePatchesRef.current.set(nodeId, { ...(nodePatchesRef.current.get(nodeId) ?? {}), ...patch });
       await runSave(
-        async () => {
-          const { node } = await api.updateNode(nodeId, merged);
-          nodePatchesRef.current.delete(nodeId);
-          setEntities((prev) => prev.map((n) => (n.id === nodeId ? node : n)));
+        () => {
+          // Saves of one node run one after the other and each sends the latest merged
+          // patch, so an older request can never finish last and overwrite an undo
+          const previous = nodeQueuesRef.current.get(nodeId) ?? Promise.resolve();
+          const next = previous.then(async () => {
+            const sent = nodePatchesRef.current.get(nodeId);
+            if (!sent) return;
+            const { node } = await api.updateNode(nodeId, sent);
+            if (nodePatchesRef.current.get(nodeId) !== sent) return; // a newer edit follows
+            nodePatchesRef.current.delete(nodeId);
+            setEntities((prev) => prev.map((n) => (n.id === nodeId ? node : n)));
+          });
+          const settled = next.catch(() => undefined);
+          nodeQueuesRef.current.set(nodeId, settled);
+          void settled.then(() => {
+            if (nodeQueuesRef.current.get(nodeId) === settled) nodeQueuesRef.current.delete(nodeId);
+          });
+          return next;
         },
         { retryKey: `node:${nodeId}` }
       );
     },
-    [runSave]
+    [runSave, recordHistory]
   );
 
   // Category picked on the canvas (menu or number key): the node also gets the new
@@ -508,10 +644,12 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
   const categoryOrderVersionRef = useRef(0);
   const categoryOrderQueueRef = useRef<Promise<unknown>>(Promise.resolve());
 
-  const handleReorderCategories = useCallback(
-    async (from: number, to: number) => {
-      if (from === to) return;
-      const next = moveItem(categories, from, to);
+  // Saves a category order (ids); categories missing from the list keep their place after it
+  const applyCategoryOrder = useCallback(
+    async (ids: string[]) => {
+      const byId = new Map(categoriesRef.current.map((c) => [c.id, c]));
+      const listed = ids.flatMap((id) => (byId.has(id) ? [byId.get(id)!] : []));
+      const next = [...listed, ...categoriesRef.current.filter((c) => !ids.includes(c.id))];
       setCategories(next);
       categoryOrderVersionRef.current += 1;
       categoryOrderRef.current = { ids: next.map((c) => c.id), version: categoryOrderVersionRef.current };
@@ -534,7 +672,22 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
         { retryKey: 'category-order' }
       );
     },
-    [categories, projectId, runSave]
+    [projectId, runSave]
+  );
+
+  const handleReorderCategories = useCallback(
+    async (from: number, to: number) => {
+      if (from === to) return;
+      const before = categoriesRef.current.map((c) => c.id);
+      const after = moveItem(before, from, to);
+      recordHistory({
+        label: 'Ordre des catégories',
+        undo: () => void actionsRef.current?.reorderCategories(before),
+        redo: () => void actionsRef.current?.reorderCategories(after),
+      });
+      await applyCategoryOrder(after);
+    },
+    [applyCategoryOrder, recordHistory]
   );
 
   const handleDeleteNode = useCallback(async (nodeId: string) => {
@@ -563,12 +716,40 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
       const { reverse, ...fields } = patch;
       const hasFields = Object.keys(fields).length > 0;
 
+      // A reversal is not applied optimistically: it is recorded only once the server has
+      // done it, otherwise undoing it would flip a link that never changed. An undo or redo
+      // replaying it must not be recorded, so this is decided now, before any await.
+      const replaying = historyRef.current.isApplying;
+      const edge = relationsRef.current.find((e) => e.id === resolveEdgeId(edgeId));
+      const record = (withReverse: boolean) => {
+        if (!edge || replaying) return;
+        const keys = Object.keys(fields) as Array<keyof typeof fields>;
+        if (!withReverse && keys.length === 0) return;
+        const before = Object.fromEntries(
+          keys.map((k) => [k, edge[k] ?? (k === 'color' ? null : k === 'notes' ? '' : edge[k])])
+        ) as typeof fields;
+        recordHistory({
+          label: edgeEditLabel(withReverse ? patch : fields),
+          mergeKey: withReverse ? undefined : `edge:${edgeId}:${[...keys].sort().join(',')}`,
+          // Undoing a reversal reverses the link again (its id changes each time)
+          undo: () =>
+            actionsRef.current?.updateEdge(
+              resolveEdgeId(edgeId),
+              withReverse ? { ...before, reverse: true } : before
+            ),
+          redo: () =>
+            actionsRef.current?.updateEdge(resolveEdgeId(edgeId), withReverse ? patch : fields),
+        });
+      };
+
       if (!reverse) {
+        record(false);
         setRelations((prev) =>
           prev.map((e) => (e.id === edgeId ? { ...e, ...fields } : e))
         );
+        // Field edits are shown at once and kept for "Réessayer" when they fail
         await queueEdgeFields(edgeId, fields);
-        return;
+        return true;
       }
 
       // The unsaved fields travel with the reversal and stay queued if it fails
@@ -607,13 +788,104 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
           return true as const;
         })
       );
+      // Done: the reversal (with its fields) can be undone. Failed: only the fields, which
+      // stay queued for the retry, are recorded
+      record(Boolean(reversed));
       // A reversal is not replayed (it would flip the link twice), but its fields are
       if (!reversed && edgePatchesRef.current.has(startId)) {
         keepForRetry(`edge:${startId}`, () => edgeFieldsOp(startId));
       }
+      return Boolean(reversed);
     },
-    [runSave, enqueueEdgeOp, resolveEdgeId, queueEdgeFields, edgeFieldsOp]
+    [runSave, enqueueEdgeOp, resolveEdgeId, queueEdgeFields, edgeFieldsOp, recordHistory]
   );
+
+  // Moves nodes on screen at once (also while the physics runs), then saves them
+  const applyPositions = useCallback(
+    (positions: Array<{ id: string; positionX: number; positionY: number }>) => {
+      canvasRef.current?.setNodePositions(positions);
+      void handleUpdateBatchPositions(positions);
+    },
+    [handleUpdateBatchPositions]
+  );
+  // Deletions are not undoable yet: entries about a node or link deleted since are skipped
+  actionsRef.current = {
+    updateNode: async (nodeId, patch) => {
+      if (!entitiesRef.current.some((n) => n.id === nodeId)) return;
+      // A category deleted since cannot be given back: the node is left without one, as the
+      // deletion would have done had the node still used it
+      const gone =
+        patch.categoryId && !categoriesRef.current.some((c) => c.id === patch.categoryId);
+      await handleUpdateNode(nodeId, gone ? { ...patch, categoryId: null } : patch);
+    },
+    updateEdge: async (edgeId, patch) => {
+      if (!relationsRef.current.some((e) => e.id === edgeId)) return true; // skipped: link gone
+      return handleUpdateEdge(edgeId, patch);
+    },
+    applyPositions: (positions) => {
+      const existing = new Set(entitiesRef.current.map((n) => n.id));
+      const kept = positions.filter((p) => existing.has(p.id));
+      if (kept.length > 0) applyPositions(kept);
+    },
+    reorderCategories: applyCategoryOrder,
+  };
+
+  // Edits still waiting in the inspector are saved (and recorded) first: before an undo
+  // they are what gets undone, and before a redo they drop the redo list, as any new edit does
+  const flushPendingEdits = useCallback(() => {
+    const nodeId = selectedNodeIdRef.current;
+    if (nodeId) {
+      const pending = takePendingEditRef.current?.(nodeId) ?? {};
+      if (Object.keys(pending).length > 0) void handleUpdateNode(nodeId, pending);
+    }
+    const pendingEdge = takePendingEdgeEditRef.current?.();
+    if (pendingEdge && Object.keys(pendingEdge.patch).length > 0) {
+      void handleUpdateEdge(pendingEdge.edgeId, pendingEdge.patch);
+    }
+  }, [handleUpdateNode, handleUpdateEdge]);
+
+  const undo = useCallback(() => {
+    flushPendingEdits();
+    const label = historyRef.current.undo();
+    setHistoryVersion((v) => v + 1);
+    if (label) setHistoryNotice(`Annulé : ${label}`);
+  }, [flushPendingEdits]);
+
+  const redo = useCallback(() => {
+    flushPendingEdits();
+    const label = historyRef.current.redo();
+    setHistoryVersion((v) => v + 1);
+    if (label) setHistoryNotice(`Rétabli : ${label}`);
+  }, [flushPendingEdits]);
+
+  useEffect(() => {
+    if (!historyNotice) return;
+    const timer = setTimeout(() => setHistoryNotice(null), 2500);
+    return () => clearTimeout(timer);
+  }, [historyNotice]);
+
+  // Ctrl+Z / Ctrl+Y (or Ctrl+Shift+Z); inside a text field the browser's own undo applies
+  const undoRedoRef = useRef({ undo, redo });
+  undoRedoRef.current = { undo, redo };
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+      const target = e.target as HTMLElement | null;
+      if (target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.isContentEditable) {
+        return;
+      }
+      const key = e.key.toLowerCase();
+      if (key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        undoRedoRef.current.undo();
+      } else if (key === 'y' || (key === 'z' && e.shiftKey)) {
+        e.preventDefault();
+        undoRedoRef.current.redo();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
 
   const handleDeleteEdge = useCallback(async (edgeId: string) => {
     setRelations((prev) => prev.filter((e) => e.id !== edgeId));
@@ -667,7 +939,7 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
     if (visibleEntities.length === 0) return;
 
     const newPositions = computeConstellationLayout(visibleEntities, relations);
-    await handleUpdateBatchPositions(newPositions);
+    await handleUpdateBatchPositions(newPositions, 'Disposition en constellation');
     setTimeout(() => {
       canvasRef.current?.fitView(true);
     }, 30);
@@ -680,7 +952,7 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
     // dagre is only loaded the first time a hierarchical layout is requested
     const { computeAutoLayout } = await import('@/lib/layout');
     const newPositions = computeAutoLayout(visibleEntities, relations, direction);
-    await handleUpdateBatchPositions(newPositions);
+    await handleUpdateBatchPositions(newPositions, 'Disposition hiérarchique');
     setTimeout(() => {
       canvasRef.current?.fitView(true);
     }, 30);
@@ -999,6 +1271,41 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
 
         {/* Right: Quick Actions */}
         <div className="flex items-center gap-2 shrink-0">
+          {historyNotice && (
+            <span role="status" className="hidden lg:inline text-xs text-zinc-400 max-w-[220px] truncate">
+              {historyNotice}
+            </span>
+          )}
+          <div className="flex items-center rounded-xl border border-filet bg-zinc-950 overflow-hidden">
+            <button
+              type="button"
+              onClick={undo}
+              disabled={!historyRef.current.canUndo}
+              title={
+                historyRef.current.canUndo
+                  ? `Annuler : ${historyRef.current.undoLabel} (Ctrl+Z)`
+                  : 'Rien à annuler'
+              }
+              aria-label="Annuler"
+              className="px-2 py-1.5 text-zinc-300 hover:bg-zinc-800 disabled:text-zinc-600 disabled:hover:bg-transparent transition-colors"
+            >
+              <Undo2 className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={redo}
+              disabled={!historyRef.current.canRedo}
+              title={
+                historyRef.current.canRedo
+                  ? `Rétablir : ${historyRef.current.redoLabel} (Ctrl+Y)`
+                  : 'Rien à rétablir'
+              }
+              aria-label="Rétablir"
+              className="px-2 py-1.5 border-l border-filet text-zinc-300 hover:bg-zinc-800 disabled:text-zinc-600 disabled:hover:bg-transparent transition-colors"
+            >
+              <Redo2 className="w-3.5 h-3.5" />
+            </button>
+          </div>
           <button
             type="button"
             onClick={handleCreateNodeCenter}
@@ -1362,6 +1669,7 @@ export function Workspace({ projectId, onBack }: WorkspaceProps) {
           allNodes={entities}
           categories={categories}
           takePendingEditRef={takePendingEditRef}
+          takePendingEdgeEditRef={takePendingEdgeEditRef}
           onClose={() => {
             setSelectedNodeId(null);
             setSelectedEdgeId(null);
