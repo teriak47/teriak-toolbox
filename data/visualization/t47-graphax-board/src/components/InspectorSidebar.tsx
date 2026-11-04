@@ -1,6 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import {
   ArrowLeftRight,
   ArrowRight,
@@ -44,6 +42,8 @@ interface InspectorSidebarProps {
   onDeleteEdge: (edgeId: string) => Promise<void>;
   onOpenNewCategory: () => void;
 }
+
+const MarkdownPreview = lazy(() => import('@/components/MarkdownPreview'));
 
 // Delay before typed edits in the inspector are sent to the API
 export const INSPECTOR_SAVE_DELAY_MS = 350;
@@ -462,9 +462,11 @@ export function InspectorSidebar({
             ) : (
               <div className="w-full min-h-[240px] px-3.5 py-3 rounded-xl bg-zinc-950 border border-filet overflow-y-auto">
                 {content.trim() ? (
-                  <div className="markdown-preview">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
-                  </div>
+                  <Suspense
+                    fallback={<p className="text-xs text-zinc-500">Chargement de l'aperçu…</p>}
+                  >
+                    <MarkdownPreview content={content} />
+                  </Suspense>
                 ) : (
                   <p className="text-xs text-zinc-500 italic">
                     Aucune note rédigée pour ce nœud. Basculez sur « Éditer » pour écrire.

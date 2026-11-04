@@ -22,9 +22,9 @@ Effort: **S** small, **M** medium, **L** large.
 |---|---|---|---|---|---|
 | O1 | Planned | Live physics | The loop never stops once the graph settles, sets React state on every frame (re-rendering the whole SVG), is O(n²), and saves every node position every 1.8 s. | CPU and battery use, smoothness beyond ~150 nodes | M |
 | O2 | Done | Batch positions | The server ran one query per node, sequentially; it now updates them in one transaction (done with C3). | Faster layouts | S |
-| O3 | Planned | Project list | Counting loads every category, node and link in the database instead of using `GROUP BY` with `count()`. | Fast dashboard with large databases | S |
+| O3 | Done | Project list | Counting loaded every category, node and link record; counts now come from `GROUP BY` with `count()` in the database. Measured on 4 projects with 20,000 nodes and 20,000 links: about 30 % faster (≈250 ms to ≈175 ms), since SurrealDB still scans the rows but no longer returns them. | Faster dashboard with large databases | S |
 | O4 | Done | Create, demo, import | Records were created one at a time; they are now written with batched inserts in one transaction (done with C2). | Speed and atomicity | S |
-| O5 | Planned | Bundle size | The client bundle is 562 kB; `react-markdown`, `remark-gfm` and `dagre` can be loaded on demand, and unused dependencies removed (C7). | Faster start | S |
+| O5 | Done | Bundle size | The client bundle was 562 kB in one file. The workspace, the Markdown preview (`react-markdown`, `remark-gfm`) and `dagre` are now loaded on demand: the initial bundle is 275 kB (86 kB gzipped, from 173 kB), and the build no longer warns about chunk size. | Faster start | S |
 | O6 | Planned | Large components | `GraphCanvas.tsx` (≈1,800 lines) and `Workspace.tsx` (≈1,270 lines) can be split into hooks such as `useSaveQueue`, `useViewport` and `usePhysics`. Do this before V4, A5 and A6. | Maintainability, testable code | L |
 
 ## 3. Visual improvements
