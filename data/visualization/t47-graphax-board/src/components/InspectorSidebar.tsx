@@ -209,10 +209,12 @@ export function InspectorSidebar({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedNode?.id]);
 
-  // Follow changes made outside the inspector (category picked on the canvas, which can also
-  // add default keys), unless an edit typed here is still waiting to be saved
+  // Follow changes made outside the inspector (category picked on the canvas, undo / redo),
+  // unless an edit typed here is still waiting to be saved
   useEffect(() => {
     if (!selectedNode || pendingNodeFlushRef.current?.nodeId === selectedNode.id) return;
+    setTitle(selectedNode.title);
+    setContent(selectedNode.content);
     setCategoryId(selectedNode.categoryId);
     const incoming = selectedNode.metadata ?? {};
     setMetaRows((rows) => {
@@ -224,7 +226,7 @@ export function InspectorSidebar({
       return Object.entries(incoming).map(([k, v], idx) => ({ id: `${idx}-${k}`, key: k, value: v }));
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedNode?.categoryId, selectedNode?.metadata]);
+  }, [selectedNode?.title, selectedNode?.content, selectedNode?.categoryId, selectedNode?.metadata]);
 
   // Sync when selectedEdge ID changes (or external inline label commit updates label)
   useEffect(() => {
@@ -243,8 +245,9 @@ export function InspectorSidebar({
   useEffect(() => {
     if (selectedEdge && !pendingEdgeFlushRef.current) {
       setEdgeLabel(selectedEdge.label);
+      setEdgeNotes(selectedEdge.notes ?? '');
     }
-  }, [selectedEdge?.label, selectedEdge]);
+  }, [selectedEdge?.label, selectedEdge?.notes, selectedEdge]);
 
   if (!selectedNode && !selectedEdge) return null;
 

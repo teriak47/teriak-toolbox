@@ -42,6 +42,8 @@ export interface GraphCanvasHandle {
   fitView: (animated?: boolean) => void;
   centerOnPoint: (worldX: number, worldY: number, targetZoom?: number) => void;
   getViewportCenter: () => { x: number; y: number };
+  /** Moves nodes on screen at once (undo/redo), even while the live physics runs */
+  setNodePositions: (positions: Array<{ id: string; positionX: number; positionY: number }>) => void;
 }
 
 interface LinkingWireState {
@@ -413,12 +415,25 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
       [nodes, getNodePos, animateViewportTo, setViewport]
     );
 
+    // Filled once the physics hook exists (below): wakes the layout after a programmatic move
+    const wakePhysicsRef = useRef<(() => void) | null>(null);
+
     useImperativeHandle(
       ref,
       () => ({
         fitView,
         centerOnPoint,
         getViewportCenter,
+        setNodePositions: (positions) => {
+          setLivePositions((prev) => {
+            const next = new Map(prev);
+            for (const p of positions) {
+              next.set(p.id, { x: clampFinite(p.positionX, 0), y: clampFinite(p.positionY, 0) });
+            }
+            return next;
+          });
+          wakePhysicsRef.current?.();
+        },
       }),
       [fitView, centerOnPoint, getViewportCenter]
     );
@@ -543,6 +558,7 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
       setLivePositions,
       onUpdateBatchPositions,
     });
+    wakePhysicsRef.current = wakePhysics;
 
     // Find closest snap target node for magnetic linking
     const findSnapNodeAt = useCallback(
