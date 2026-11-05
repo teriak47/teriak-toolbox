@@ -68,7 +68,7 @@ export function buildMarkdownReport({ project, categories, nodes, edges, date = 
       const arrow = e.directed ? '→' : '—';
       const nature = e.style === 'dashed' ? 'Hypothèse' : 'Fait';
       out.push(
-        `| ${cell(titleOf.get(e.sourceNodeId) ?? '?')} | ${cell(e.label || arrow)} | ${cell(titleOf.get(e.targetNodeId) ?? '?')} | ${nature} |`
+        `| ${cell(titleOf.get(e.sourceNodeId) ?? '?')} | ${cell(e.label ? `${arrow} ${e.label}` : arrow)} | ${cell(titleOf.get(e.targetNodeId) ?? '?')} | ${nature} |`
       );
     }
     out.push('');

@@ -24,11 +24,11 @@ describe('markdown report', () => {
         node('a', 'Alice', 'c1', { reliability: 'B2', metadata: { Pays: 'FR', Vide: ' ', 'Note|pipe': 'a|b' }, content: '## Profil\nVue à Lyon' }),
         node('b', 'Bob', null),
       ],
-      edges: [edge('e1', 'a', 'b', { label: 'connaît', style: 'dashed' }), edge('e2', 'b', 'a', { directed: false })],
+      edges: [edge('e1', 'a', 'b', { label: 'connaît', style: 'dashed' }), edge('e2', 'b', 'a', { directed: false }), edge('e3', 'b', 'a', { label: 'collègue', directed: false })],
       date: new Date('2026-11-05T12:00:00Z'),
     });
     assert.match(md, /^# Opération Test\n\nPérimètre fictif\n/);
-    assert.match(md, /2 nœuds, 2 liens/);
+    assert.match(md, /2 nœuds, 3 liens/);
     assert.match(md, /## Personne \(1\)\n\n### Alice/);
     assert.ok(!md.includes('## Lieu'), 'empty categories are left out');
     assert.match(md, /## Non classé \(1\)\n\n### Bob/);
@@ -37,7 +37,8 @@ describe('markdown report', () => {
     assert.ok(!md.includes('Vide'), 'empty attributes are left out');
     assert.match(md, /\| Note\\\|pipe \| a\\\|b \|/);
     assert.match(md, /> ## Profil\n> Vue à Lyon/);
-    assert.match(md, /\| Alice \| connaît \| Bob \| Hypothèse \|/);
+    assert.match(md, /\| Alice \| → connaît \| Bob \| Hypothèse \|/);
     assert.match(md, /\| Bob \| — \| Alice \| Fait \|/);
+    assert.match(md, /\| Bob \| — collègue \| Alice \| Fait \|/);
   });
 });

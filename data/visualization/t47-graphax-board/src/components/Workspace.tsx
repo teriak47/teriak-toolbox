@@ -1485,8 +1485,17 @@ export function Workspace({ projectId, onBack, onOpenProject }: WorkspaceProps) 
     setExporting(true);
     setExportNotice(null);
     try {
+      // Edits still waiting in the inspector go into the export too: they are applied, then
+      // the export reads the state once it has rendered
+      flushPendingEdits();
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
       if (kind === 'md') {
-        const md = buildMarkdownReport({ project, categories, nodes: entities, edges: relations });
+        const md = buildMarkdownReport({
+          project,
+          categories: categoriesRef.current,
+          nodes: entitiesRef.current,
+          edges: relationsRef.current,
+        });
         downloadBlob(new Blob([md], { type: 'text/markdown;charset=utf-8' }), exportFileName(project.name, new Date(), 'md'));
         return;
       }
