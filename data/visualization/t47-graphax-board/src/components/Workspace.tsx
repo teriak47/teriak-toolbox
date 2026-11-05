@@ -1545,8 +1545,28 @@ export function Workspace({ projectId, onBack, onOpenProject }: WorkspaceProps) 
       setHistoryNotice('Aucun chemin ne relie ces deux nœuds.');
       return;
     }
+    const edgeIds = pathEdgeIds(ids, relations);
+    // The path is the shortest one in the whole graph: filters that would hide part of it
+    // (a hidden category, a link style or link type filter) are lifted, and the user is told
+    const pathNodes = entities.filter((n) => ids.includes(n.id));
+    const pathEdges = relations.filter((r) => edgeIds.has(r.id));
+    const hidesNode = pathNodes.some((n) => hiddenCategoryIds.has(n.categoryId ?? UNCLASSIFIED_FILTER_ID));
+    const hidesEdge = pathEdges.some(
+      (r) =>
+        (edgeFilter === 'solid' && r.style !== 'solid') ||
+        (edgeFilter === 'dashed' && r.style !== 'dashed') ||
+        (edgeColorFilter !== null && (r.color ?? 'default') !== edgeColorFilter)
+    );
+    if (hidesNode) setHiddenCategoryIds(new Set());
+    if (hidesEdge) {
+      setEdgeFilter('all');
+      setEdgeColorFilter(null);
+    }
+    if (hidesNode || hidesEdge) {
+      setHistoryNotice('Filtres levés pour montrer tout le chemin.');
+    }
     setFocus(null);
-    setPathView({ ids, edgeIds: pathEdgeIds(ids, relations) });
+    setPathView({ ids, edgeIds });
     setSelectedNodeIds([]);
     setTimeout(() => canvasRef.current?.fitView(true), 50);
   };
