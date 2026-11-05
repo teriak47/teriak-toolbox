@@ -290,7 +290,8 @@ export function Workspace({ projectId, onBack, onOpenProject }: WorkspaceProps) 
   const saveLinkTypeName = async (color: string, name: string) => {
     setRenamingLinkType(null);
     if (!project) return;
-    const next = { ...(project.linkTypes ?? {}) };
+    const previous = project.linkTypes ?? {};
+    const next = { ...previous };
     const trimmed = name.trim();
     if ((next[color] ?? '') === trimmed) return;
     if (trimmed) next[color] = trimmed;
@@ -300,6 +301,8 @@ export function Workspace({ projectId, onBack, onOpenProject }: WorkspaceProps) 
       const { project: saved } = await api.updateProject(project.id, { linkTypes: next });
       setProject((curr) => (curr ? { ...curr, linkTypes: saved.linkTypes } : curr));
     } catch (err) {
+      // The name shown goes back to the stored one, so the same name can be tried again
+      setProject((curr) => (curr && curr.linkTypes === next ? { ...curr, linkTypes: previous } : curr));
       setHistoryNotice(err instanceof Error ? err.message : 'Enregistrement du type de lien impossible.');
     }
   };
@@ -642,6 +645,7 @@ export function Workspace({ projectId, onBack, onOpenProject }: WorkspaceProps) 
             label: '',
             style: defaultStyle,
             directed: true,
+            ...(edgeColorFilter && edgeColorFilter !== 'default' ? { color: edgeColorFilter } : {}),
           });
           return { node, edge };
         } catch (err) {
@@ -665,7 +669,7 @@ export function Workspace({ projectId, onBack, onOpenProject }: WorkspaceProps) 
         () => actionsRef.current?.deleteNode(nodeId)
       );
     },
-    [projectId, categories, hiddenCategoryIds, edgeFilter, runSave, recordPresence, nodeSnapshot]
+    [projectId, categories, hiddenCategoryIds, edgeFilter, edgeColorFilter, runSave, recordPresence, nodeSnapshot]
   );
 
   // Persists the latest unsaved positions. Single drags and batches write into the same map,
