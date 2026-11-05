@@ -464,19 +464,27 @@ export function Workspace({ projectId, onBack, onOpenProject }: WorkspaceProps) 
   }, [categories]);
 
   // Visible entities after category filter
+  // A neighbourhood whose root was deleted, or a path with a deleted node, no longer applies
+  const entityIds = useMemo(() => new Set(entities.map((n) => n.id)), [entities]);
+  const activeFocus = focus && entityIds.has(focus.nodeId) ? focus : null;
+  const activePath = pathView && pathView.ids.every((id) => entityIds.has(id)) ? pathView : null;
+  useEffect(() => {
+    if (focus && !activeFocus) setFocus(null);
+    if (pathView && !activePath) setPathView(null);
+  }, [focus, activeFocus, pathView, activePath]);
   const focusIds = useMemo(
-    () => (focus ? neighbourhood(focus.nodeId, relations, focus.depth) : null),
-    [focus, relations]
+    () => (activeFocus ? neighbourhood(activeFocus.nodeId, relations, activeFocus.depth) : null),
+    [activeFocus, relations]
   );
   const visibleEntities = useMemo(() => {
     return entities.filter((n) => {
       const key = n.categoryId ?? UNCLASSIFIED_FILTER_ID;
       if (hiddenCategoryIds.has(key)) return false;
       if (focusIds && !focusIds.has(n.id)) return false;
-      if (pathView && !pathView.ids.includes(n.id)) return false;
+      if (activePath && !activePath.ids.includes(n.id)) return false;
       return true;
     });
-  }, [entities, hiddenCategoryIds, focusIds, pathView]);
+  }, [entities, hiddenCategoryIds, focusIds, activePath]);
 
   const visibleEntityIds = useMemo(
     () => new Set(visibleEntities.map((n) => n.id)),
@@ -485,7 +493,7 @@ export function Workspace({ projectId, onBack, onOpenProject }: WorkspaceProps) 
 
   // Links of the path shown, worked out from the current relations so that a link
   // replaced under a new id (a reversed arrow) stays in the path
-  const pathEdges = useMemo(() => (pathView ? pathEdgeIds(pathView.ids, relations) : null), [pathView, relations]);
+  const pathEdges = useMemo(() => (activePath ? pathEdgeIds(activePath.ids, relations) : null), [activePath, relations]);
 
   // Filtered relations
   const visibleRelations = useMemo(() => {
@@ -654,6 +662,9 @@ export function Workspace({ projectId, onBack, onOpenProject }: WorkspaceProps) 
       if (!created) return null;
       const nodeId = created.node.id;
       setEntities((prev) => [...prev, created.node]);
+      // A new node has no links, so a neighbourhood or path view would hide it at once
+      setFocus(null);
+      setPathView(null);
       setSelectedEdgeId(null);
       setSelectedNodeId(nodeId);
       recordPresence(
