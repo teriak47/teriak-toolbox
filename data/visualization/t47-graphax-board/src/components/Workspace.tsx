@@ -1605,6 +1605,9 @@ export function Workspace({ projectId, onBack, onOpenProject }: WorkspaceProps) 
         return next;
       });
     }
+    // A neighbourhood or path view that leaves the node out is closed, so the node shows
+    if (focusIds && !focusIds.has(node.id)) setFocus(null);
+    if (pathView && !pathView.ids.includes(node.id)) setPathView(null);
     setSelectedEdgeId(null);
     setSelectedNodeId(node.id);
     setSearchFocused(false);
