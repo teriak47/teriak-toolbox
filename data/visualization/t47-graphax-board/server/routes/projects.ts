@@ -283,6 +283,19 @@ projectsRouter.get('/:id/export', async (c) => {
   return c.json(bundle);
 });
 
+// Duplicate a project (A8): a copy with new ids, named "<name> (copie)", in one transaction
+projectsRouter.post('/:id/duplicate', async (c) => {
+  const db = await getDb();
+  const bundle = await buildExportBundle(db, c.req.param('id'));
+  if (!bundle) return c.json({ error: 'Projet introuvable.' }, 404);
+  const project = await importProjectBundle(
+    db,
+    bundle as unknown as Record<string, unknown>,
+    `${bundle.project.name} (copie)`
+  );
+  return c.json({ project }, 201);
+});
+
 // Import full project from JSON bundle (with safe ID remapping to avoid collisions)
 projectsRouter.post('/import', async (c) => {
   const bundle = await readBody<Record<string, unknown>>(c);

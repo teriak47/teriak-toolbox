@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   BookOpen,
   Bookmark,
+  Copy,
   Download,
   FolderOpen,
   GitBranch,
@@ -170,6 +171,20 @@ export function Dashboard({ projects, loading, onRefresh, onOpenProject }: Dashb
       await downloadProjectExport(proj.id, proj.name);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erreur lors de l’export JSON.');
+    }
+  };
+
+  const handleDuplicate = async (proj: Project, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setBusy(true);
+    setError(null);
+    try {
+      await api.duplicateProject(proj.id);
+      await onRefresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Impossible de dupliquer le projet.');
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -345,6 +360,16 @@ export function Dashboard({ projects, loading, onRefresh, onOpenProject }: Dashb
                         className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors"
                       >
                         <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => void handleDuplicate(proj, e)}
+                        disabled={busy}
+                        title="Dupliquer ce projet"
+                        aria-label={`Dupliquer ${proj.name}`}
+                        className="p-1.5 rounded-lg text-zinc-400 hover:text-cyan-300 hover:bg-zinc-800 transition-colors disabled:opacity-50"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
                       </button>
                       <button
                         type="button"
