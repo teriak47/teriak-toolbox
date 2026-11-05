@@ -289,7 +289,7 @@ export function Workspace({ projectId, onBack, onOpenProject }: WorkspaceProps) 
   const [renamingLinkType, setRenamingLinkType] = useState<{ color: string; name: string } | null>(null);
   // Views (V4): the neighbourhood of a node, a shortest path, and the table or timeline view
   const [focus, setFocus] = useState<{ nodeId: string; depth: number } | null>(null);
-  const [pathView, setPathView] = useState<{ ids: string[]; edgeIds: Set<string> } | null>(null);
+  const [pathView, setPathView] = useState<{ ids: string[] } | null>(null);
   const [viewMode, setViewMode] = useState<'graph' | 'table' | 'timeline'>('graph');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchFocused, setSearchFocused] = useState(false);
@@ -483,6 +483,10 @@ export function Workspace({ projectId, onBack, onOpenProject }: WorkspaceProps) 
     [visibleEntities]
   );
 
+  // Links of the path shown, worked out from the current relations so that a link
+  // replaced under a new id (a reversed arrow) stays in the path
+  const pathEdges = useMemo(() => (pathView ? pathEdgeIds(pathView.ids, relations) : null), [pathView, relations]);
+
   // Filtered relations
   const visibleRelations = useMemo(() => {
     return relations.filter((rel) => {
@@ -492,10 +496,10 @@ export function Workspace({ projectId, onBack, onOpenProject }: WorkspaceProps) 
       if (edgeFilter === 'solid' && rel.style !== 'solid') return false;
       if (edgeFilter === 'dashed' && rel.style !== 'dashed') return false;
       if (edgeColorFilter && (rel.color ?? 'default') !== edgeColorFilter) return false;
-      if (pathView && !pathView.edgeIds.has(rel.id)) return false;
+      if (pathEdges && !pathEdges.has(rel.id)) return false;
       return true;
     });
-  }, [relations, visibleEntityIds, edgeFilter, edgeColorFilter, pathView]);
+  }, [relations, visibleEntityIds, edgeFilter, edgeColorFilter, pathEdges]);
 
   // Search matches across title, content, metadata, category. "Clé:valeur" searches the
   // value of a metadata key, and "Clé:" finds nodes that have that key.
@@ -1566,7 +1570,7 @@ export function Workspace({ projectId, onBack, onOpenProject }: WorkspaceProps) 
       setHistoryNotice('Filtres levés pour montrer tout le chemin.');
     }
     setFocus(null);
-    setPathView({ ids, edgeIds });
+    setPathView({ ids });
     setSelectedNodeIds([]);
     setTimeout(() => canvasRef.current?.fitView(true), 50);
   };
