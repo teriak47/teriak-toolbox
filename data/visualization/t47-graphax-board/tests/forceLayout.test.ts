@@ -41,15 +41,28 @@ describe('force layout: Barnes-Hut repulsion', () => {
     assert.ok(list.slice(1, 5).some((n) => n.vx !== 0 || n.vy !== 0), 'stacked nodes are pushed apart');
   });
 
-  it('makes a frame of a large graph much faster than the exact sum', () => {
+  it('needs far fewer force computations than the exact sum on a large graph', () => {
+    // Both computations call Math.sqrt once per force they work out, so counting those
+    // calls measures the work done without timing, which machine load makes unreliable
     const big = nodes(3000);
-    const t0 = performance.now();
-    applyExactRepulsion(big.map((n) => ({ ...n })), 38000);
-    const exactMs = performance.now() - t0;
-    const t1 = performance.now();
-    applyBarnesHutRepulsion(big.map((n) => ({ ...n })), 38000);
-    const bhMs = performance.now() - t1;
-    assert.ok(bhMs < exactMs / 2, `Barnes-Hut ${bhMs.toFixed(1)} ms, exact ${exactMs.toFixed(1)} ms`);
+    const forces = (apply: typeof applyExactRepulsion) => {
+      const sqrt = Math.sqrt;
+      let calls = 0;
+      Math.sqrt = (x: number) => {
+        calls++;
+        return sqrt(x);
+      };
+      try {
+        apply(big.map((n) => ({ ...n })), 38000);
+      } finally {
+        Math.sqrt = sqrt;
+      }
+      return calls;
+    };
+    const exact = forces(applyExactRepulsion);
+    const bh = forces(applyBarnesHutRepulsion);
+    assert.equal(exact, (3000 * 2999) / 2);
+    assert.ok(bh < exact / 10, `Barnes-Hut ${bh} force computations, exact ${exact}`);
     // stepForceSimulation switches to it above the threshold
     const maxSpeed = stepForceSimulation(nodes(BARNES_HUT_THRESHOLD + 1), [], null, 0.72);
     assert.ok(Number.isFinite(maxSpeed) && maxSpeed > 0);

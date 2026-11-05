@@ -6,37 +6,29 @@ import {
   useMemo,
   useRef,
   useState,
-  type ReactNode,
-  type SVGProps,
+  type MouseEvent as ReactMouseEvent,
 } from 'react';
 import {
   Check,
   Link2,
-  Maximize2,
-  MousePointer2,
-  Orbit,
-  Pause,
   Pencil,
-  Play,
-  Sparkles,
-  ZoomIn,
-  ZoomOut,
 } from 'lucide-react';
 import type { Category, CategoryShape, GraphEdge, GraphNode } from '@shared/types';
-import { describeReliability } from '@shared/types';
 import { buildGraphSvg } from '@/lib/graphImage';
-import { getCategoryIcon } from '@/lib/icons';
-import { cardEntries } from '@/lib/metadata';
+import { CanvasDock } from './canvas/CanvasDock';
+import { DeleteConfirmBar, type PendingDelete } from './canvas/DeleteConfirmBar';
+import { EdgeView } from './canvas/EdgeView';
+import { MiniMap } from './canvas/MiniMap';
+import { NodeCategoryMenu } from './canvas/NodeCategoryMenu';
+import { NodeView } from './canvas/NodeView';
 import { cn } from '@/lib/utils';
 import { useViewport } from '@/hooks/useViewport';
-import { computeEdgeGeometry, edgeLabelHalfSize } from '@/lib/edgeGeometry';
+import { computeEdgeGeometry } from '@/lib/edgeGeometry';
 import { usePhysicsSimulation } from '@/hooks/usePhysicsSimulation';
 import {
-  circleRadius,
   clampFinite,
   nodeHalf,
   shapeExtent,
-  shapePoints,
   type Viewport,
 } from '@/lib/canvasGeometry';
 
@@ -62,14 +54,6 @@ interface LinkingWireState {
   cursorY: number;
   snapTargetId: string | null;
   isClickLink?: boolean;
-}
-
-interface PendingDelete {
-  kind: 'node' | 'edge' | 'nodes';
-  id: string;
-  label: string;
-  /** For 'nodes': the multiple selection being deleted */
-  ids?: string[];
 }
 
 type Positions = Array<{ id: string; positionX: number; positionY: number }>;
@@ -112,53 +96,6 @@ interface GraphCanvasProps {
   onOrganizeConstellation: () => Promise<void>;
   /** Moves a node to another category (null: unclassified) */
   onChangeNodeCategory: (nodeId: string, categoryId: string | null) => void;
-}
-
-// Draws a node shape (or a ring around it) centred on 0,0
-function ShapeOutline({
-  shape,
-  half,
-  children,
-  ...props
-}: {
-  shape: CategoryShape | undefined;
-  half: number;
-  children?: ReactNode;
-} & SVGProps<SVGPolygonElement> & SVGProps<SVGCircleElement>) {
-  if (shape === 'circle') {
-    return (
-      <circle r={circleRadius(half)} {...(props as SVGProps<SVGCircleElement>)}>
-        {children}
-      </circle>
-    );
-  }
-  return (
-    <polygon
-      points={shapePoints(shape, half)}
-      strokeLinejoin="miter"
-      {...(props as SVGProps<SVGPolygonElement>)}
-    >
-      {children}
-    </polygon>
-  );
-}
-
-function renderNodeShape(
-  shape: CategoryShape | undefined,
-  r: number,
-  fill: string,
-  stroke: string,
-  strokeWidth: number
-) {
-  return (
-    <ShapeOutline
-      shape={shape}
-      half={nodeHalf(r)}
-      fill={fill}
-      stroke={stroke}
-      strokeWidth={strokeWidth}
-    />
-  );
 }
 
 export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
@@ -958,6 +895,137 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
       };
     }, [nodes, getNodePos, viewport]);
 
+    // ---- Pointer handlers given to the node and link components (O6) ----
+
+    const hoverEdge = useCallback((edgeId: string, hovered: boolean) => {
+      setHoveredEdgeId((curr) => (hovered ? edgeId : curr === edgeId ? null : curr));
+    }, []);
+
+    const selectEdgeOnCanvas = useCallback(
+      (edgeId: string) => {
+        onSelectNode(null);
+        onSelectEdge(edgeId);
+      },
+      [onSelectNode, onSelectEdge]
+    );
+
+    const startEdgeLabelEdit = useCallback(
+      (edgeId: string, label: string) => {
+        setEditingEdgeId(edgeId);
+        setEdgeLabelDraft(label);
+      },
+      [setEditingEdgeId]
+    );
+
+    const hoverNode = (nodeId: string, hovered: boolean) => {
+      if (hovered) {
+        setHoveredNodeId(nodeId);
+        return;
+      }
+      setHoveredNodeId((curr) => (curr === nodeId ? null : curr));
+      setHoveredHaloNodeId((curr) => (curr === nodeId ? null : curr));
+    };
+
+    const hoverHalo = (nodeId: string, hovered: boolean) =>
+      setHoveredHaloNodeId((curr) => (hovered ? nodeId : curr === nodeId ? null : curr));
+
+    const selectNodeOnCanvas = (nodeId: string) => {
+      onSelectEdge(null);
+      onSelectNode(nodeId);
+    };
+
+    const startWireFromNode = (node: GraphNode, clientX: number, clientY: number, isClick = false) => {
+      const world = screenToWorld(clientX, clientY);
+      setLinkingWire({
+        sourceId: node.id,
+        startWorldX: world.x,
+        startWorldY: world.y,
+        cursorX: world.x,
+        cursorY: world.y,
+        snapTargetId: null,
+        isClickLink: isClick,
+      });
+    };
+
+    const handleNodeDoubleClick = (e: ReactMouseEvent, node: GraphNode) => {
+      // A double click on a node never creates another node underneath it
+      e.stopPropagation();
+      dragNodeRef.current = null;
+      setLinkingWire(null);
+      onSelectEdge(null);
+      onSelectNode(node.id);
+      const pos = getNodePos(node);
+      centerOnPoint(pos.x, pos.y, Math.max(viewportRef.current.zoom, 1.25));
+    };
+
+    const handleHaloMouseDown = (e: ReactMouseEvent, node: GraphNode) => {
+      e.stopPropagation();
+      if (e.button === 0 || e.button === 2) startWireFromNode(node, e.clientX, e.clientY, false);
+    };
+
+    const handleNodeMouseDown = (e: ReactMouseEvent, node: GraphNode) => {
+      e.stopPropagation();
+
+      // Second click of a two-click link
+      const activeWire = linkingWireRef.current;
+      if (activeWire?.isClickLink && activeWire.sourceId !== node.id) {
+        const srcId = activeWire.sourceId;
+        setLinkingWire(null);
+        void onCreateEdge(srcId, node.id);
+        return;
+      }
+
+      // Shift+drag, right drag or the link tool draw a link
+      if (e.shiftKey || e.button === 2 || toolMode === 'link') {
+        startWireFromNode(node, e.clientX, e.clientY, toolMode === 'link');
+        return;
+      }
+
+      // Left button: prepare the drag of the node (and of the multiple selection it belongs to)
+      if (e.button === 0) {
+        const pos = getNodePos(node);
+        const world = screenToWorld(e.clientX, e.clientY);
+        const group = selectedNodeIds.has(node.id)
+          ? nodes
+              .filter((n) => n.id !== node.id && selectedNodeIds.has(n.id))
+              .map((n) => {
+                const p = getNodePos(n);
+                return { id: n.id, startX: p.x, startY: p.y };
+              })
+          : undefined;
+        dragNodeRef.current = {
+          nodeId: node.id,
+          offsetX: world.x - pos.x,
+          offsetY: world.y - pos.y,
+          startX: pos.x,
+          startY: pos.y,
+          moved: false,
+          group,
+        };
+      }
+    };
+
+    const handleNodeClick = (e: ReactMouseEvent, node: GraphNode) => {
+      e.stopPropagation();
+      if (toolMode === 'link') return;
+      // Ctrl+click (Cmd on Mac) adds the node to the selection, or removes it
+      if (e.ctrlKey || e.metaKey) {
+        const current =
+          selectedNodeIds.size > 0 ? [...selectedNodeIds] : selectedNodeId ? [selectedNodeId] : [];
+        onSelectNodes(
+          current.includes(node.id) ? current.filter((id) => id !== node.id) : [...current, node.id]
+        );
+        return;
+      }
+      // A plain click on a node of the group after dragging it keeps the group
+      if (selectedNodeIds.has(node.id) && dragMovedRef.current) {
+        dragMovedRef.current = false;
+        return;
+      }
+      onSelectEdge(null);
+      onSelectNode(node.id);
+    };
+
     return (
       <div
         ref={containerRef}
@@ -1042,177 +1110,29 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
 
           <g ref={contentRef} transform={`translate(${viewport.x}, ${viewport.y}) scale(${viewport.zoom})`}>
             {/* 1. EDGES LAYER */}
-            {renderedEdges.map(({ edge, pathD, mx, my, arrowPoints, midArrowPoints }) => {
+            {renderedEdges.map((geometry) => {
+              const { edge } = geometry;
               const isSelected = edge.id === selectedEdgeId;
-              const isHovered = edge.id === hoveredEdgeId;
-              const isDashed = edge.style === 'dashed';
               const isIncidentSpotlight = spotlightEdges?.has(edge.id) ?? false;
-              const labelText = String(edge.label ?? '');
-
-              // Links of the selected node: outgoing and incoming in two colours of the same
-              // family, so the direction of every relation reads at a glance
-              const relation = !selectedNodeId
-                ? null
-                : edge.sourceNodeId === selectedNodeId
-                  ? edge.directed
-                    ? 'outgoing'
-                    : 'linked'
-                  : edge.targetNodeId === selectedNodeId
-                    ? edge.directed
-                      ? 'incoming'
-                      : 'linked'
-                    : null;
-              // Moving dashes show the direction of the link being looked at
-              const showFlow = edge.directed && (isSelected || isHovered || relation !== null);
-
-              const isDimmed =
-                (spotlightEdges !== null && !isIncidentSpotlight && !isSelected) ||
-                (hasSearch &&
-                  !searchMatchIds.has(edge.sourceNodeId) &&
-                  !searchMatchIds.has(edge.targetNodeId));
-
-              // A custom colour stays visible when the link is selected or hovered; the
-              // direction colours of a selected node take over, then fall back to it
-              const customColor = edge.color ?? null;
-              const strokeColor =
-                relation === 'incoming'
-                  ? 'var(--lien-entrant)'
-                  : relation !== null
-                    ? 'var(--lien-sortant)'
-                    : customColor
-                      ? customColor
-                      : isSelected
-                        ? 'var(--accent-fort)'
-                        : isIncidentSpotlight || isHovered
-                          ? 'var(--accent)'
-                          : 'var(--filet-fort)';
-
-              const strokeWidth =
-                isSelected || isHovered
-                  ? 2.4
-                  : relation !== null
-                    ? 2.2
-                    : isIncidentSpotlight
-                      ? 2.0
-                      : 1.45;
-
               return (
-                <g
+                <EdgeView
                   key={edge.id}
-                  className="transition-opacity duration-150 cursor-pointer"
-                  style={{ opacity: isDimmed ? 0.16 : 1 }}
-                  onMouseEnter={() => setHoveredEdgeId(edge.id)}
-                  onMouseLeave={() =>
-                    setHoveredEdgeId((curr) => (curr === edge.id ? null : curr))
+                  geometry={geometry}
+                  selectedNodeId={selectedNodeId}
+                  selected={isSelected}
+                  hovered={edge.id === hoveredEdgeId}
+                  spotlighted={isIncidentSpotlight}
+                  dimmed={
+                    (spotlightEdges !== null && !isIncidentSpotlight && !isSelected) ||
+                    (hasSearch &&
+                      !searchMatchIds.has(edge.sourceNodeId) &&
+                      !searchMatchIds.has(edge.targetNodeId))
                   }
-                  onMouseDown={(e) => {
-                    e.stopPropagation();
-                  }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onSelectNode(null);
-                    onSelectEdge(edge.id);
-                  }}
-                  onDoubleClick={(e) => {
-                    e.stopPropagation();
-                    onSelectNode(null);
-                    onSelectEdge(edge.id);
-                    setEditingEdgeId(edge.id);
-                    setEdgeLabelDraft(labelText);
-                  }}
-                >
-                  {/* Wide transparent hit area so thin constellation lines are effortless to click */}
-                  <path d={pathD} fill="none" stroke="transparent" strokeWidth={18} />
-
-                  {/* Visible Graph Link */}
-                  <path
-                    d={pathD}
-                    fill="none"
-                    stroke={strokeColor}
-                    strokeWidth={strokeWidth}
-                    strokeDasharray={isDashed ? '6 5' : undefined}
-                    strokeLinecap="butt"
-                  />
-
-                  {/* Moving dashes along the direction of the link */}
-                  {showFlow && (
-                    <path
-                      d={pathD}
-                      fill="none"
-                      stroke="var(--surface-puits)"
-                      strokeWidth={Math.max(1, strokeWidth - 1)}
-                      className="graphax-edge-flow pointer-events-none"
-                    />
-                  )}
-
-                  {/* Direction: arrow along the link and arrowhead at the target */}
-                  {edge.directed && (
-                    <>
-                      {midArrowPoints && (
-                        <polygon
-                          points={midArrowPoints}
-                          fill={strokeColor}
-                          className="pointer-events-none"
-                        />
-                      )}
-                      <polygon points={arrowPoints} fill={strokeColor} />
-                    </>
-                  )}
-
-                  {/* Clean Midpoint Edge Label */}
-                  {editingEdgeId !== edge.id && (labelText || isSelected || isHovered) && (
-                    <g transform={`translate(${mx.toFixed(1)}, ${my.toFixed(1)})`}>
-                      {labelText ? (
-                        <>
-                          <rect
-                            x={-edgeLabelHalfSize(labelText).halfWidth}
-                            y={-edgeLabelHalfSize(labelText).halfHeight}
-                            width={edgeLabelHalfSize(labelText).halfWidth * 2}
-                            height={edgeLabelHalfSize(labelText).halfHeight * 2}
-                            fill="var(--surface-puits)"
-                            stroke={
-                              isSelected
-                                ? 'var(--accent-fort)'
-                                : (customColor ?? 'var(--filet)')
-                            }
-                            strokeWidth={1}
-                            strokeDasharray={isDashed ? '3 2' : undefined}
-                          />
-                          <text
-                            textAnchor="middle"
-                            dominantBaseline="central"
-                            fill="var(--texte-fort)"
-                            fontSize={12}
-                            fontWeight={500}
-                            className="pointer-events-none"
-                          >
-                            {labelText}
-                          </text>
-                        </>
-                      ) : (
-                        <g>
-                          <rect
-                            x={-edgeLabelHalfSize('').halfWidth}
-                            y={-edgeLabelHalfSize('').halfHeight}
-                            width={edgeLabelHalfSize('').halfWidth * 2}
-                            height={edgeLabelHalfSize('').halfHeight * 2}
-                            fill="var(--surface-carte)"
-                            stroke="var(--filet-fort)"
-                            strokeWidth={1}
-                          />
-                          <text
-                            textAnchor="middle"
-                            dominantBaseline="central"
-                            fill="var(--texte)"
-                            fontSize={12}
-                          >
-                            + label
-                          </text>
-                        </g>
-                      )}
-                    </g>
-                  )}
-                </g>
+                  editing={editingEdgeId === edge.id}
+                  onHover={hoverEdge}
+                  onSelect={selectEdgeOnCanvas}
+                  onEditLabel={startEdgeLabelEdit}
+                />
               );
             })}
 
@@ -1264,338 +1184,39 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
                 );
               })()}
 
-            {/* 3. CONSTELLATION NODES LAYER */}
+            {/* 3. NODES LAYER */}
             {nodes.map((node) => {
               if (!node?.id) return null;
-              const pos = getNodePos(node);
-              const r = getNodeRadius(node.id);
-              const cat = node.categoryId ? (categoryMap.get(node.categoryId) ?? null) : null;
-              const color = cat?.color ?? 'var(--texte)';
-              const Icon = getCategoryIcon(cat?.icon);
-              const nodeTitle = String(node.title ?? 'Indice');
-              const nodeContent = String(node.content ?? '');
-              const nodeMeta =
-                node.metadata && typeof node.metadata === 'object' ? node.metadata : {};
-
               const isSelected = node.id === selectedNodeId || selectedNodeIds.has(node.id);
-              const isHovered = node.id === hoveredNodeId;
-              const isHaloHovered = node.id === hoveredHaloNodeId;
-              const isSnapTarget = linkingWire?.snapTargetId === node.id;
-              const isLinkSource = linkingWire?.sourceId === node.id;
               const isSearchHit = hasSearch && searchMatchIds.has(node.id);
-
-              const isDimmed =
-                (spotlightNeighbors !== null &&
-                  !spotlightNeighbors.has(node.id) &&
-                  !isSelected &&
-                  !linkingWire) ||
-                (hasSearch && !isSearchHit);
-
-              // Empty fields (a category's default keys not filled yet) are not details
-              const metaEntries = Object.entries(nodeMeta).filter(([, v]) => String(v ?? '').trim());
-              const hasDetails = nodeContent.trim().length > 0 || metaEntries.length > 0;
-              // Values chosen in the category for the card, then the first other value on hover
-              const card = cardEntries(cat, nodeMeta);
-              const cardLine = card.map((e) => e.value).join(' · ');
-              const shownKeys = new Set(card.map((e) => e.key));
-              const firstMeta = metaEntries.find(([k]) => !shownKeys.has(k));
-
-              const startWireFromNode = (clientX: number, clientY: number, isClick = false) => {
-                const world = screenToWorld(clientX, clientY);
-                setLinkingWire({
-                  sourceId: node.id,
-                  startWorldX: world.x,
-                  startWorldY: world.y,
-                  cursorX: world.x,
-                  cursorY: world.y,
-                  snapTargetId: null,
-                  isClickLink: isClick,
-                });
-              };
-
               return (
-                <g
+                <NodeView
                   key={node.id}
-                  transform={`translate(${pos.x.toFixed(2)}, ${pos.y.toFixed(2)})`}
-                  className="transition-opacity duration-150"
-                  style={{ opacity: isDimmed ? 0.2 : 1 }}
-                  onMouseEnter={() => setHoveredNodeId(node.id)}
-                  onMouseLeave={() => {
-                    setHoveredNodeId((curr) => (curr === node.id ? null : curr));
-                    setHoveredHaloNodeId((curr) => (curr === node.id ? null : curr));
-                  }}
-                  onDoubleClick={(e) => {
-                    // Stop propagation so double-clicking a node NEVER creates another node underneath it!
-                    e.stopPropagation();
-                    dragNodeRef.current = null;
-                    setLinkingWire(null);
-                    onSelectEdge(null);
-                    onSelectNode(node.id);
-                    centerOnPoint(pos.x, pos.y, Math.max(viewportRef.current.zoom, 1.25));
-                  }}
-                >
-                  {/* 360° OUTER LINK HALO RING — Drag anywhere on this ring to link effortlessly! */}
-                  {toolMode === 'select' && (
-                    <ShapeOutline
-                      shape={cat?.shape}
-                      half={nodeHalf(r) + 8}
-                      fill="none"
-                      stroke={isHaloHovered || isLinkSource ? 'var(--accent-fort)' : color}
-                      strokeWidth={11}
-                      strokeOpacity={
-                        isHaloHovered || isLinkSource ? 0.42 : isHovered ? 0.18 : 0
-                      }
-                      className="cursor-crosshair transition-opacity"
-                      onMouseEnter={() => setHoveredHaloNodeId(node.id)}
-                      onMouseLeave={() =>
-                        setHoveredHaloNodeId((curr) => (curr === node.id ? null : curr))
-                      }
-                      onMouseDown={(e) => {
-                        e.stopPropagation();
-                        if (e.button === 0 || e.button === 2) {
-                          startWireFromNode(e.clientX, e.clientY, false);
-                        }
-                      }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onSelectEdge(null);
-                        onSelectNode(node.id);
-                      }}
-                    >
-                      <title>Glisser ce cadre vers un autre nœud pour créer un lien</title>
-                    </ShapeOutline>
-                  )}
-
-                  {/* Subtle dashed visual ring when hovered */}
-                  {(isHovered || isHaloHovered || isLinkSource) && (
-                    <ShapeOutline
-                      shape={cat?.shape}
-                      half={nodeHalf(r) + 9}
-                      fill="none"
-                      stroke={isHaloHovered || isLinkSource ? 'var(--accent-fort)' : color}
-                      strokeWidth={1.3}
-                      strokeDasharray="4 3"
-                      opacity={0.75}
-                      className="pointer-events-none"
-                    />
-                  )}
-
-                  {/* Selection / Search outer ring */}
-                  {(isSelected || isSearchHit) && (
-                    <ShapeOutline
-                      shape={cat?.shape}
-                      half={nodeHalf(r) + 4.5}
-                      fill="none"
-                      stroke={isSelected ? 'var(--accent-fort)' : 'var(--attention)'}
-                      strokeWidth={2}
-                      className="pointer-events-none"
-                    />
-                  )}
-
-                  {/* INNER NODE ORB — Drag to move (or Shift+Drag / Right-Drag / Link-Mode to link!) */}
-                  <g
-                    className={cn(
-                      toolMode === 'link' ? 'cursor-crosshair' : 'cursor-pointer'
-                    )}
-                    onMouseDown={(e) => {
-                      e.stopPropagation();
-
-                      // Complete a 2-click link if one is active!
-                      const activeWire = linkingWireRef.current;
-                      if (activeWire?.isClickLink && activeWire.sourceId !== node.id) {
-                        const srcId = activeWire.sourceId;
-                        setLinkingWire(null);
-                        void onCreateEdge(srcId, node.id);
-                        return;
-                      }
-
-                      // Shift+Drag, Right-Click Drag, or Link Tool Mode -> draw link wire!
-                      if (e.shiftKey || e.button === 2 || toolMode === 'link') {
-                        startWireFromNode(
-                          e.clientX,
-                          e.clientY,
-                          toolMode === 'link'
-                        );
-                        return;
-                      }
-
-                      // Standard Left-Click -> select & prepare smooth node drag
-                      // (the whole multiple selection when the node belongs to it)
-                      if (e.button === 0) {
-                        const world = screenToWorld(e.clientX, e.clientY);
-                        const group = selectedNodeIds.has(node.id)
-                          ? nodes
-                              .filter((n) => n.id !== node.id && selectedNodeIds.has(n.id))
-                              .map((n) => {
-                                const p = getNodePos(n);
-                                return { id: n.id, startX: p.x, startY: p.y };
-                              })
-                          : undefined;
-                        dragNodeRef.current = {
-                          nodeId: node.id,
-                          offsetX: world.x - pos.x,
-                          offsetY: world.y - pos.y,
-                          startX: pos.x,
-                          startY: pos.y,
-                          moved: false,
-                          group,
-                        };
-                      }
-                    }}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (toolMode === 'link') return;
-                      // Ctrl+click (Cmd on Mac) adds the node to the selection, or removes it
-                      if (e.ctrlKey || e.metaKey) {
-                        const current =
-                          selectedNodeIds.size > 0
-                            ? [...selectedNodeIds]
-                            : selectedNodeId
-                              ? [selectedNodeId]
-                              : [];
-                        onSelectNodes(
-                          current.includes(node.id)
-                            ? current.filter((id) => id !== node.id)
-                            : [...current, node.id]
-                        );
-                        return;
-                      }
-                      // A plain click on a node of the group after dragging it keeps the group
-                      if (selectedNodeIds.has(node.id) && dragMovedRef.current) {
-                        dragMovedRef.current = false;
-                        return;
-                      }
-                      onSelectEdge(null);
-                      onSelectNode(node.id);
-                    }}
-                  >
-                    {/* Base dark fill */}
-                    {renderNodeShape(cat?.shape, r, 'var(--surface-carte)', color, isSelected ? 2.6 : 2)}
-                    {/* Translucent category tint overlay */}
-                    {renderNodeShape(
-                      cat?.shape,
-                      r - 1,
-                      `color-mix(in oklab, ${color} 17%, transparent)`,
-                      'none',
-                      0
-                    )}
-
-                    {/* Centered Vector Category Icon */}
-                    <g
-                      transform={`translate(${-9}, ${-9})`}
-                      style={{ color: isSelected ? 'var(--texte-fort)' : color }}
-                      className="pointer-events-none"
-                    >
-                      <Icon width={18} height={18} strokeWidth={2} />
-                    </g>
-
-                    {/* Subtle detail badge dot (indicates Markdown notes or metadata) */}
-                    {hasDetails && (
-                      <rect
-                        x={nodeHalf(r) - 4}
-                        y={-nodeHalf(r) - 4}
-                        width={8}
-                        height={8}
-                        fill={color}
-                        stroke="var(--surface-puits)"
-                        strokeWidth={1.5}
-                        className="pointer-events-none"
-                      />
-                    )}
-
-                    {/* Reliability badge (Admiralty code, A3) on the top-left corner */}
-                    {node.reliability && (
-                      <g
-                        transform={`translate(${-nodeHalf(r) - 6}, ${-nodeHalf(r) - 7})`}
-                        aria-label={`Fiabilité ${node.reliability}`}
-                      >
-                        <title>{`Fiabilité ${node.reliability} : ${describeReliability(node.reliability) ?? ''}`}</title>
-                        <rect
-                          x={-11}
-                          y={-7}
-                          width={22}
-                          height={14}
-                          fill="var(--surface-puits)"
-                          stroke={color}
-                          strokeWidth={1.2}
-                        />
-                        <text
-                          textAnchor="middle"
-                          dominantBaseline="central"
-                          fontSize={9}
-                          fontFamily="var(--font-mono, ui-monospace, monospace)"
-                          fill="var(--texte-fort)"
-                        >
-                          {node.reliability}
-                        </text>
-                      </g>
-                    )}
-                  </g>
-
-                  {/* FLOATING CONSTELLATION LABEL BELOW NODE (Interactive: click/double-click selects node instead of hitting canvas bg!) */}
-                  <g
-                    transform={`translate(0, ${r + 15})`}
-                    className="cursor-pointer"
-                    onMouseDown={(e) => e.stopPropagation()}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onSelectEdge(null);
-                      onSelectNode(node.id);
-                    }}
-                  >
-                    <text
-                      textAnchor="middle"
-                      fill={isSelected || isHovered ? 'var(--texte-fort)' : 'var(--txt-1)'}
-                      fontSize={12}
-                      fontWeight={isSelected || isHovered ? 600 : 500}
-                      style={{
-                        paintOrder: 'stroke',
-                        stroke: 'var(--surface-puits)',
-                        strokeWidth: 4.5,
-                        strokeLinejoin: 'miter',
-                      }}
-                    >
-                      {nodeTitle.length > 34 ? `${nodeTitle.slice(0, 32)}…` : nodeTitle}
-                    </text>
-
-                    {/* Card values chosen in the category, always shown */}
-                    {cardLine && (
-                      <text
-                        y={15}
-                        textAnchor="middle"
-                        fill={color}
-                        fontSize={12}
-                        fontFamily="var(--font-mono)"
-                        style={{
-                          paintOrder: 'stroke',
-                          stroke: 'var(--surface-puits)',
-                          strokeWidth: 4,
-                        }}
-                      >
-                        <title>{card.map((e) => `${e.key} : ${e.value}`).join('\n')}</title>
-                        {cardLine.length > 34 ? `${cardLine.slice(0, 32)}…` : cardLine}
-                      </text>
-                    )}
-
-                    {/* Subtle tactical subtitle on hover/selection if metadata exists */}
-                    {firstMeta && (isHovered || isSelected) && (
-                      <text
-                        y={cardLine ? 30 : 15}
-                        textAnchor="middle"
-                        fill="var(--texte)"
-                        fontSize={12}
-                        fontFamily="var(--font-mono)"
-                        style={{
-                          paintOrder: 'stroke',
-                          stroke: 'var(--surface-puits)',
-                          strokeWidth: 4,
-                        }}
-                      >
-                        {String(firstMeta[0])}: {String(firstMeta[1] ?? '').slice(0, 26)}
-                      </text>
-                    )}
-                  </g>
-                </g>
+                  node={node}
+                  pos={getNodePos(node)}
+                  r={getNodeRadius(node.id)}
+                  category={node.categoryId ? (categoryMap.get(node.categoryId) ?? null) : null}
+                  toolMode={toolMode}
+                  selected={isSelected}
+                  hovered={node.id === hoveredNodeId}
+                  haloHovered={node.id === hoveredHaloNodeId}
+                  linkSource={linkingWire?.sourceId === node.id}
+                  searchHit={isSearchHit}
+                  dimmed={
+                    (spotlightNeighbors !== null &&
+                      !spotlightNeighbors.has(node.id) &&
+                      !isSelected &&
+                      !linkingWire) ||
+                    (hasSearch && !isSearchHit)
+                  }
+                  onHover={hoverNode}
+                  onHaloHover={hoverHalo}
+                  onSelect={selectNodeOnCanvas}
+                  onDoubleClick={handleNodeDoubleClick}
+                  onHaloMouseDown={handleHaloMouseDown}
+                  onBodyMouseDown={handleNodeMouseDown}
+                  onBodyClick={handleNodeClick}
+                />
               );
             })}
           </g>
@@ -1685,57 +1306,23 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
           </div>
         )}
 
-        {/* ==================== KEYBOARD DELETE CONFIRMATION (TOP CENTER) ==================== */}
-        {nodeMenu && (() => {
-          const menuNode = nodes.find((n) => n.id === nodeMenu.nodeId);
-          if (!menuNode) return null;
-          const rect = containerRef.current?.getBoundingClientRect();
-          // Keep the menu inside the canvas; a long list scrolls instead of being cut
-          const maxHeight = Math.max(120, (rect?.height ?? 0) - 16);
-          const height = Math.min(maxHeight, (categories.length + 2) * 30 + 40);
-          const left = Math.min(nodeMenu.x, (rect?.width ?? 0) - 236);
-          const top = Math.min(nodeMenu.y, (rect?.height ?? 0) - height - 8);
-          const item = (categoryId: string | null, label: string, color: string) => {
-            const current = menuNode.categoryId === categoryId;
+        {/* ==================== NODE CATEGORY MENU (RIGHT CLICK) ==================== */}
+        {nodeMenu &&
+          (() => {
+            const menuNode = nodes.find((n) => n.id === nodeMenu.nodeId);
+            if (!menuNode) return null;
+            const rect = containerRef.current?.getBoundingClientRect();
             return (
-              <button
-                key={categoryId ?? 'none'}
-                type="button"
-                role="menuitemradio"
-                aria-checked={current}
-                onClick={() => pickCategory(menuNode.id, categoryId)}
-                className={cn(
-                  'w-full flex items-center gap-2 px-2.5 py-1.5 text-left text-xs transition-colors',
-                  current ? 'bg-zinc-800 text-zinc-50' : 'text-zinc-300 hover:bg-zinc-800/70'
-                )}
-              >
-                <span className="w-2.5 h-2.5 shrink-0" style={{ background: color }} aria-hidden="true" />
-                <span className="flex-1 truncate">{label}</span>
-                {current && <Check className="w-3 h-3 text-cyan-300 shrink-0" aria-hidden="true" />}
-              </button>
+              <NodeCategoryMenu
+                node={menuNode}
+                categories={categories}
+                x={nodeMenu.x}
+                y={nodeMenu.y}
+                bounds={{ width: rect?.width ?? 0, height: rect?.height ?? 0 }}
+                onPick={pickCategory}
+              />
             );
-          };
-          return (
-            <div
-              role="menu"
-              aria-label="Changer la catégorie"
-              data-canvas-scrollable=""
-              onMouseDown={(e) => e.stopPropagation()}
-              onClick={(e) => e.stopPropagation()}
-              onDoubleClick={(e) => e.stopPropagation()}
-              onContextMenu={(e) => e.preventDefault()}
-              style={{ left: Math.max(8, left), top: Math.max(8, top), maxHeight }}
-              className="absolute z-30 w-56 py-1 overflow-y-auto rounded-xl bg-zinc-900 border border-filet-fort shadow-2xl"
-            >
-              <p className="px-2.5 pt-1 pb-1.5 text-[11px] uppercase tracking-wider text-zinc-500 truncate">
-                Catégorie de « {String(menuNode.title ?? '')} »
-              </p>
-              {categories.map((c) => item(c.id, c.name, c.color))}
-              <div className="my-1 border-t border-filet" />
-              {item(null, 'Non classé', 'var(--etat-clos)')}
-            </div>
-          );
-        })()}
+          })()}
 
         {selectionBox && (
           <div
@@ -1750,248 +1337,47 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
           />
         )}
 
+        {/* ==================== KEYBOARD DELETE CONFIRMATION (TOP CENTER) ==================== */}
         {pendingDelete && (
-          <div
-            role="alertdialog"
-            aria-labelledby="graphax-delete-confirm-title"
-            onMouseDown={(e) => e.stopPropagation()}
-            onClick={(e) => e.stopPropagation()}
-            onDoubleClick={(e) => e.stopPropagation()}
-            className="absolute top-4 left-1/2 -translate-x-1/2 flex items-center gap-3 px-4 py-2.5 rounded-2xl bg-zinc-900/95 border border-rose-500/40 shadow-2xl z-30 max-w-[calc(100%-2rem)]"
-          >
-            <p id="graphax-delete-confirm-title" className="text-xs text-zinc-200 min-w-0">
-              {pendingDelete.kind === 'nodes' ? (
-                <>
-                  Supprimer les <strong className="text-zinc-50">{pendingDelete.label} nœuds</strong>{' '}
-                  sélectionnés et tous leurs liens ?
-                </>
-              ) : pendingDelete.kind === 'node' ? (
-                <>
-                  Supprimer le nœud{' '}
-                  <strong className="text-zinc-50 break-words">« {pendingDelete.label} »</strong> et
-                  tous ses liens ?
-                </>
-              ) : pendingDelete.label ? (
-                <>
-                  Supprimer le lien{' '}
-                  <strong className="text-zinc-50 break-words">« {pendingDelete.label} »</strong> ?
-                </>
-              ) : (
-                <>Supprimer ce lien ?</>
-              )}
-              <span className="block text-[11px] text-zinc-400 mt-0.5">
-                Entrée pour confirmer, Échap pour annuler.
-              </span>
-            </p>
-            <button
-              type="button"
-              autoFocus
-              onClick={confirmPendingDelete}
-              className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium bg-rose-600 text-white hover:bg-rose-500"
-            >
-              Supprimer
-            </button>
-            <button
-              type="button"
-              onClick={() => setPendingDelete(null)}
-              className="shrink-0 text-xs text-zinc-400 hover:text-zinc-200"
-            >
-              Annuler
-            </button>
-          </div>
+          <DeleteConfirmBar
+            pending={pendingDelete}
+            onConfirm={confirmPendingDelete}
+            onCancel={() => setPendingDelete(null)}
+          />
         )}
 
-        {/* ==================== FLOATING CONSTELLATION DOCK (BOTTOM CENTER) ==================== */}
-        <div
-          onMouseDown={(e) => e.stopPropagation()}
-          onClick={(e) => e.stopPropagation()}
-          onDoubleClick={(e) => e.stopPropagation()}
-          className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-1 p-1.5 rounded-2xl bg-zinc-900/92 border border-filet shadow-2xl z-20"
-        >
-          <button
-            type="button"
-            onClick={() => {
-              setToolMode('select');
-              setLinkingWire(null);
-            }}
-            title="Mode Sélection & Déplacement (V) — Astuce : tirez l'anneau extérieur d'un nœud ou Shift+Glisser pour relier"
-            className={cn(
-              'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-colors',
-              toolMode === 'select'
-                ? 'bg-zinc-800 text-zinc-100 border border-filet-fort'
-                : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
-            )}
-          >
-            <MousePointer2 className="w-3.5 h-3.5" />
-            <span>Déplacer</span>
-          </button>
+        {/* ==================== FLOATING DOCK (BOTTOM CENTER) ==================== */}
+        <CanvasDock
+          toolMode={toolMode}
+          onSelectMode={() => {
+            setToolMode('select');
+            setLinkingWire(null);
+          }}
+          onToggleLinkMode={() => {
+            setToolMode((m) => (m === 'link' ? 'select' : 'link'));
+            setLinkingWire(null);
+          }}
+          physicsActive={physicsActive}
+          physicsSettled={physicsSettled}
+          onTogglePhysics={() => setPhysicsActive((v) => !v)}
+          onOrganize={() => void onOrganizeConstellation()}
+          zoom={viewport.zoom}
+          onZoomOut={() => setViewport((prev) => ({ ...prev, zoom: Math.max(0.16, prev.zoom / 1.25) }))}
+          onZoomIn={() => setViewport((prev) => ({ ...prev, zoom: Math.min(3.2, prev.zoom * 1.25) }))}
+          onFitView={() => fitView(true)}
+        />
 
-          <button
-            type="button"
-            onClick={() => {
-              setToolMode((m) => (m === 'link' ? 'select' : 'link'));
-              setLinkingWire(null);
-            }}
-            title="Mode Liaison rapide (L) — Cliquez Nœud A puis Nœud B"
-            className={cn(
-              'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-colors',
-              toolMode === 'link'
-                ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/50'
-                : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
-            )}
-          >
-            <Link2 className="w-3.5 h-3.5" />
-            <span>Relier</span>
-          </button>
-
-          <div className="h-4 w-px bg-zinc-800 mx-1" />
-
-          {/* Live Obsidian-style Force Simulation Toggle */}
-          <button
-            type="button"
-            onClick={() => setPhysicsActive((v) => !v)}
-            title={
-              physicsActive && physicsSettled
-                ? 'Simulation stable : en pause automatique jusqu’au prochain déplacement. Cliquer pour la désactiver.'
-                : 'Activer / figer la simulation physique élastique (style Obsidian Graph View)'
-            }
-            className={cn(
-              'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-colors',
-              physicsActive
-                ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/40'
-                : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
-            )}
-          >
-            {physicsActive ? (
-              <Pause className="w-3.5 h-3.5" />
-            ) : (
-              <Play className="w-3.5 h-3.5" />
-            )}
-            <span>Physique</span>
-          </button>
-
-          {/* 1-Click Organic Constellation Auto-Spacing */}
-          <button
-            type="button"
-            onClick={() => void onOrganizeConstellation()}
-            title="Espacer harmonieusement le graphe en constellation"
-            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium text-zinc-400 hover:text-amber-300 hover:bg-zinc-800/50 transition-colors"
-          >
-            <Orbit className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Constellation</span>
-          </button>
-
-          <div className="h-4 w-px bg-zinc-800 mx-1" />
-
-          {/* Zoom & Fit Controls */}
-          <button
-            type="button"
-            onClick={() =>
-              setViewport((prev) => ({
-                ...prev,
-                zoom: Math.max(0.16, prev.zoom / 1.25),
-              }))
-            }
-            title="Dézoomer"
-            className="p-1.5 rounded-xl text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/60"
-          >
-            <ZoomOut className="w-3.5 h-3.5" />
-          </button>
-
-          <span className="px-1.5 text-xs font-mono text-zinc-400 min-w-[42px] text-center">
-            {Math.round(viewport.zoom * 100)}%
-          </span>
-
-          <button
-            type="button"
-            onClick={() =>
-              setViewport((prev) => ({
-                ...prev,
-                zoom: Math.min(3.2, prev.zoom * 1.25),
-              }))
-            }
-            title="Zoomer"
-            className="p-1.5 rounded-xl text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/60"
-          >
-            <ZoomIn className="w-3.5 h-3.5" />
-          </button>
-
-          <button
-            type="button"
-            onClick={() => fitView(true)}
-            title="Recentrer sur tout le graphe"
-            className="p-1.5 rounded-xl text-zinc-400 hover:text-cyan-300 hover:bg-zinc-800/60"
-          >
-            <Maximize2 className="w-3.5 h-3.5" />
-          </button>
-        </div>
-
-        {/* ==================== CONSTELLATION MINI-MAP (BOTTOM RIGHT) ==================== */}
+        {/* ==================== MINI-MAP (BOTTOM RIGHT) ==================== */}
         {miniMapData && (
-          <div
-            onMouseDown={(e) => e.stopPropagation()}
-            onDoubleClick={(e) => e.stopPropagation()}
-            onClick={(e) => {
-              e.stopPropagation();
-              const rect = e.currentTarget.getBoundingClientRect();
-              const mx = e.clientX - rect.left;
-              const my = e.clientY - rect.top;
-              const wx = (mx - miniMapData.offsetX) / miniMapData.scale;
-              const wy = (my - miniMapData.offsetY) / miniMapData.scale;
-              centerOnPoint(wx, wy, viewport.zoom);
-            }}
-            title="Mini-carte de la constellation (cliquer pour déplacer la caméra)"
-            className="hidden md:block absolute bottom-4 right-4 rounded-xl bg-zinc-900/90 border border-filet shadow-2xl overflow-hidden cursor-pointer z-20"
-            style={{ width: miniMapData.MM_W, height: miniMapData.MM_H }}
-          >
-            <svg width={miniMapData.MM_W} height={miniMapData.MM_H}>
-              {edges.map((e) => {
-                if (!e?.id) return null;
-                const s = nodes.find((n) => n?.id === e.sourceNodeId);
-                const t = nodes.find((n) => n?.id === e.targetNodeId);
-                if (!s || !t) return null;
-                const ps = getNodePos(s);
-                const pt = getNodePos(t);
-                return (
-                  <line
-                    key={e.id}
-                    x1={ps.x * miniMapData.scale + miniMapData.offsetX}
-                    y1={ps.y * miniMapData.scale + miniMapData.offsetY}
-                    x2={pt.x * miniMapData.scale + miniMapData.offsetX}
-                    y2={pt.y * miniMapData.scale + miniMapData.offsetY}
-                    stroke="var(--filet-fort)"
-                    strokeWidth={0.8}
-                  />
-                );
-              })}
-
-              {nodes.map((n) => {
-                if (!n?.id) return null;
-                const p = getNodePos(n);
-                const cat = n.categoryId ? categoryMap.get(n.categoryId) : null;
-                return (
-                  <rect
-                    key={n.id}
-                    x={p.x * miniMapData.scale + miniMapData.offsetX - (n.id === selectedNodeId ? 3.5 : 2.5)}
-                    y={p.y * miniMapData.scale + miniMapData.offsetY - (n.id === selectedNodeId ? 3.5 : 2.5)}
-                    width={n.id === selectedNodeId ? 7 : 5}
-                    height={n.id === selectedNodeId ? 7 : 5}
-                    fill={cat?.color ?? 'var(--texte)'}
-                  />
-                );
-              })}
-
-              <rect
-                x={miniMapData.vpRect.x}
-                y={miniMapData.vpRect.y}
-                width={Math.max(8, miniMapData.vpRect.w)}
-                height={Math.max(6, miniMapData.vpRect.h)}
-                fill="color-mix(in oklab, var(--accent) 8%, transparent)"
-                stroke="var(--accent-fort)"
-                strokeWidth={1}
-              />
-            </svg>
-          </div>
+          <MiniMap
+            layout={miniMapData}
+            nodes={nodes}
+            edges={edges}
+            getNodePos={getNodePos}
+            categoryMap={categoryMap}
+            selectedNodeId={selectedNodeId}
+            onPick={(wx, wy) => centerOnPoint(wx, wy, viewport.zoom)}
+          />
         )}
 
         {/* Quick Halo Hint Pill (Bottom Left) */}
