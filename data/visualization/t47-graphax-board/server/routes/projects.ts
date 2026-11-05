@@ -9,7 +9,8 @@ import {
   sortCategoryRecords,
 } from '../mappers.ts';
 import { PRESET_CATEGORIES } from '../presets.ts';
-import { insertProjectGraph } from '../bulk.ts';
+import { type CategoryRecord, insertProjectGraph } from '../bulk.ts';
+import { loadUserPreset } from './presets.ts';
 import { buildExportBundle, importProjectBundle } from '../bundles.ts';
 import { type ProjectGraphPayload, type ProjectPreset } from '../../shared/types.ts';
 import { optString, readBody } from '../validation.ts';
@@ -61,6 +62,7 @@ projectsRouter.post('/', async (c) => {
     name?: string;
     description?: string;
     preset?: ProjectPreset;
+    userPresetId?: string;
   }>(c);
 
   const name = (optString(body.name) ?? '').trim();
@@ -83,7 +85,14 @@ projectsRouter.post('/', async (c) => {
     createdAt: now,
     updatedAt: now,
   };
-  const presetDefs = PRESET_CATEGORIES[preset];
+  // A preset saved by the user (V5) takes the place of a built-in one
+  let presetDefs: Array<Omit<CategoryRecord, 'id'>> = PRESET_CATEGORIES[preset];
+  const userPresetId = optString(body.userPresetId);
+  if (userPresetId) {
+    const userPreset = await loadUserPreset(db, userPresetId);
+    if (!userPreset) return c.json({ error: 'Preset introuvable.' }, 404);
+    presetDefs = userPreset.categories;
+  }
 
   await insertProjectGraph(db, {
     project: projectRecord,

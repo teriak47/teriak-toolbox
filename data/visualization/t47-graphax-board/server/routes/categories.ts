@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { getDb, generateId, toRecordId } from '../db.ts';
+import { extractId, getDb, generateId, toRecordId } from '../db.ts';
 import { mapCategory, sortCategoryRecords, touchProject } from '../mappers.ts';
 import { projectExists } from '../guards.ts';
 import {
@@ -225,6 +225,66 @@ categoriesRouter.patch('/categories/:id', async (c) => {
   await touchProject(db, category.projectId);
 
   return c.json({ category });
+});
+
+// Merge a category into another one of the same project (V5): its nodes move to the target,
+// the target gets the source's default keys it lacks, and the source is deleted, all in
+// one transaction. Returns the updated target and the ids of the moved nodes.
+categoriesRouter.post('/categories/:id/merge', async (c) => {
+  const id = c.req.param('id');
+  const body = await readBody<{ targetId?: unknown }>(c);
+  const targetId = optString(body.targetId);
+  if (!targetId) return c.json({ error: 'Catégorie cible (targetId) attendue.' }, 400);
+  if (targetId === id) return c.json({ error: 'Une catégorie ne peut pas être fusionnée avec elle-même.' }, 400);
+
+  const db = await getDb();
+  const [source, target] = await db
+    .query<[Record<string, unknown> | undefined, Record<string, unknown> | undefined]>(
+      'SELECT * FROM ONLY $sid; SELECT * FROM ONLY $tid;',
+      { sid: toRecordId('category', id), tid: toRecordId('category', targetId) }
+    )
+    .collect();
+  if (!source || !target) return c.json({ error: 'Catégorie introuvable.' }, 404);
+  if (String(source.projectId) !== String(target.projectId)) {
+    return c.json({ error: 'Les deux catégories doivent appartenir au même projet.' }, 400);
+  }
+
+  const src = mapCategory(source);
+  const dst = mapCategory(target);
+  const merged = normalizeCategoryKeys([...dst.metadataKeys, ...src.metadataKeys], dst.cardKeys);
+  const [moved] = await db
+    .query<[unknown[]]>(
+      `SELECT VALUE id FROM entity WHERE categoryId = $sourceStr AND projectId = $projectId;`,
+      { sourceStr: id, projectId: dst.projectId }
+    )
+    .collect();
+  const results = await db
+    .query<[undefined, unknown, unknown, Record<string, unknown> | undefined, unknown, undefined]>(
+      `BEGIN TRANSACTION;
+      UPDATE entity SET categoryId = $targetStr WHERE categoryId = $sourceStr AND projectId = $projectId;
+      DELETE $sid;
+      UPDATE ONLY $tid SET metadataKeys = $metadataKeys, cardKeys = $cardKeys;
+      COMMIT TRANSACTION;`,
+      {
+        targetStr: targetId,
+        sourceStr: id,
+        projectId: dst.projectId,
+        sid: toRecordId('category', id),
+        tid: toRecordId('category', targetId),
+        metadataKeys: merged.metadataKeys,
+        cardKeys: merged.cardKeys,
+      }
+    )
+    .collect();
+  const updated = results.find(
+    (r): r is Record<string, unknown> => !!r && typeof r === 'object' && !Array.isArray(r) && 'name' in r
+  );
+  await touchProject(db, dst.projectId);
+
+  return c.json({
+    category: updated ? mapCategory(updated) : { ...dst, ...merged },
+    movedNodeIds: (moved ?? []).map((v) => extractId(v)),
+  });
 });
 
 // Delete category and detach nodes using it

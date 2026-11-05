@@ -11,6 +11,7 @@ import type {
   ProjectGraphPayload,
   ProjectPreset,
   ProjectSnapshot,
+  UserPreset,
 } from '@shared/types';
 
 // What the category editor sends: style, default keys and card keys
@@ -28,7 +29,8 @@ export type RestoreSnapshot = {
   categories?: Array<Category & { index: number }>;
   nodes?: GraphNode[];
   edges?: GraphEdge[];
-  assignments?: Array<{ categoryId: string; nodeIds: string[] }>;
+  /** Nodes given back a category: those without one, or those still in `fromCategoryId` */
+  assignments?: Array<{ categoryId: string; nodeIds: string[]; fromCategoryId?: string }>;
 };
 
 async function request<T>(path: string, init?: RequestInit, retries = 3): Promise<T> {
@@ -73,7 +75,13 @@ export const api = {
   // Projects
   listProjects: () => request<{ projects: Project[] }>('/api/projects'),
 
-  createProject: (input: { name: string; description: string; preset: ProjectPreset }) =>
+  createProject: (input: {
+    name: string;
+    description: string;
+    preset: ProjectPreset;
+    /** A preset saved by the user, used instead of `preset` */
+    userPresetId?: string;
+  }) =>
     request<{ project: Project }>('/api/projects', {
       method: 'POST',
       body: JSON.stringify(input),
@@ -126,6 +134,18 @@ export const api = {
       { method: 'DELETE' }
     ),
 
+  // User presets (V5)
+  listPresets: () => request<{ presets: UserPreset[] }>('/api/presets'),
+
+  saveProjectPreset: (projectId: string, name: string) =>
+    request<{ preset: UserPreset }>(`/api/projects/${projectId}/presets`, {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    }),
+
+  deletePreset: (presetId: string) =>
+    request<{ deleted: boolean }>(`/api/presets/${presetId}`, { method: 'DELETE' }),
+
   // Categories
   createCategory: (
     projectId: string,
@@ -149,6 +169,13 @@ export const api = {
     request<{ categories: Category[] }>(`/api/projects/${projectId}/categories/order`, {
       method: 'PUT',
       body: JSON.stringify({ ids }),
+    }),
+
+  // Moves the category's nodes to the target, adds its keys there, then deletes it (V5)
+  mergeCategory: (categoryId: string, targetId: string) =>
+    request<{ category: Category; movedNodeIds: string[] }>(`/api/categories/${categoryId}/merge`, {
+      method: 'POST',
+      body: JSON.stringify({ targetId }),
     }),
 
   deleteCategory: (categoryId: string) =>

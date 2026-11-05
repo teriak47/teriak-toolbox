@@ -1,6 +1,7 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   BookOpen,
+  Bookmark,
   Download,
   FolderOpen,
   GitBranch,
@@ -16,7 +17,7 @@ import {
   Upload,
   X,
 } from 'lucide-react';
-import type { Project, ProjectPreset } from '@shared/types';
+import type { Project, ProjectPreset, UserPreset } from '@shared/types';
 import { api } from '@/api/client';
 import { cn, formatRelativeDate } from '@/lib/utils';
 import { downloadProjectExport } from '@/lib/exportProject';
@@ -80,6 +81,17 @@ export function Dashboard({ projects, loading, onRefresh, onOpenProject }: Dashb
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [preset, setPreset] = useState<ProjectPreset>('osint');
+  // Presets saved from a project (V5); one of them can be picked instead of a built-in set
+  const [userPresets, setUserPresets] = useState<UserPreset[]>([]);
+  const [userPresetId, setUserPresetId] = useState<string | null>(null);
+  const [confirmDeletePresetId, setConfirmDeletePresetId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!showCreateModal) return;
+    api
+      .listPresets()
+      .then(({ presets }) => setUserPresets(presets))
+      .catch(() => setUserPresets([]));
+  }, [showCreateModal]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -91,6 +103,8 @@ export function Dashboard({ projects, loading, onRefresh, onOpenProject }: Dashb
     setName('');
     setDescription('');
     setPreset('osint');
+    setUserPresetId(null);
+    setConfirmDeletePresetId(null);
     setError(null);
     setShowCreateModal(true);
   };
@@ -122,6 +136,7 @@ export function Dashboard({ projects, loading, onRefresh, onOpenProject }: Dashb
           name: name.trim(),
           description: description.trim(),
           preset,
+          ...(userPresetId ? { userPresetId } : {}),
         });
         await onRefresh();
         setShowCreateModal(false);
@@ -443,12 +458,15 @@ export function Dashboard({ projects, loading, onRefresh, onOpenProject }: Dashb
                   <div className="grid grid-cols-1 gap-2">
                     {PRESET_OPTIONS.map((opt) => {
                       const Icon = opt.icon;
-                      const selected = preset === opt.value;
+                      const selected = !userPresetId && preset === opt.value;
                       return (
                         <button
                           key={opt.value}
                           type="button"
-                          onClick={() => setPreset(opt.value)}
+                          onClick={() => {
+                            setPreset(opt.value);
+                            setUserPresetId(null);
+                          }}
                           className={cn(
                             'flex items-start gap-3 p-3 rounded-xl border text-left transition-all',
                             selected
@@ -472,6 +490,65 @@ export function Dashboard({ projects, loading, onRefresh, onOpenProject }: Dashb
                       );
                     })}
                   </div>
+                  {userPresets.length > 0 && (
+                    <div className="mt-3 space-y-2">
+                      <div className="text-xs font-medium text-zinc-400">Mes presets</div>
+                      {userPresets.map((up) => {
+                        const selected = userPresetId === up.id;
+                        return (
+                          <div
+                            key={up.id}
+                            className={cn(
+                              'flex items-start gap-3 p-3 rounded-xl border transition-all',
+                              selected ? 'bg-cyan-500/10 border-cyan-400' : 'bg-zinc-950 border-filet hover:border-filet-fort'
+                            )}
+                          >
+                            <button
+                              type="button"
+                              onClick={() => setUserPresetId(up.id)}
+                              className="flex items-start gap-3 flex-1 min-w-0 text-left"
+                            >
+                              <div className="w-8 h-8 rounded-lg border flex items-center justify-center shrink-0 mt-0.5 text-amber-400 border-amber-500/40 bg-amber-500/10">
+                                <Bookmark className="w-4 h-4" />
+                              </div>
+                              <div className="min-w-0">
+                                <div className="text-xs font-semibold text-zinc-100 truncate">{up.name}</div>
+                                <div className="text-xs text-zinc-400 mt-0.5 line-clamp-2">
+                                  {up.categories.map((c) => c.name).join(', ')}
+                                </div>
+                              </div>
+                            </button>
+                            <button
+                              type="button"
+                              title={confirmDeletePresetId === up.id ? 'Confirmer la suppression' : 'Supprimer ce preset'}
+                              onClick={async () => {
+                                if (confirmDeletePresetId !== up.id) {
+                                  setConfirmDeletePresetId(up.id);
+                                  return;
+                                }
+                                try {
+                                  await api.deletePreset(up.id);
+                                  setUserPresets((list) => list.filter((p) => p.id !== up.id));
+                                  if (userPresetId === up.id) setUserPresetId(null);
+                                } catch (err) {
+                                  setError(err instanceof Error ? err.message : 'Suppression impossible.');
+                                }
+                                setConfirmDeletePresetId(null);
+                              }}
+                              className={cn(
+                                'shrink-0 p-1 rounded-lg text-xs',
+                                confirmDeletePresetId === up.id
+                                  ? 'bg-rose-600 text-white'
+                                  : 'text-zinc-500 hover:text-rose-400'
+                              )}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
 

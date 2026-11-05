@@ -167,12 +167,16 @@ restoreRouter.post('/projects/:projectId/restore', async (c) => {
     ];
   });
 
-  // Nodes that lost a category when it was deleted get it back, unless they got another since
+  // Nodes that lost a category when it was deleted get it back, unless they got another since.
+  // With `fromCategoryId` (undo of a merge), the nodes still in that category get it back.
   const assignments = rawAssignments.flatMap((a) => {
     const categoryId = optString(a.categoryId);
     if (!categoryId || !knownCategories.has(categoryId) || !Array.isArray(a.nodeIds)) return [];
     const ids = a.nodeIds.filter(validId).filter((id) => knownNodes.has(id));
-    return ids.length > 0 ? [{ categoryId, nodeIds: ids.map((id) => toRecordId('entity', id)) }] : [];
+    const from = optString(a.fromCategoryId) ?? null;
+    return ids.length > 0
+      ? [{ categoryId, from, nodeIds: ids.map((id) => toRecordId('entity', id)) }]
+      : [];
   });
 
   // Restored categories go back to their former place in the list; positions are rewritten
@@ -204,7 +208,8 @@ restoreRouter.post('/projects/:projectId/restore', async (c) => {
     statements.push(
       `FOR $a IN $assignments {
         UPDATE entity SET categoryId = $a.categoryId, updatedAt = $now
-          WHERE id IN $a.nodeIds AND projectId = $projectId AND (categoryId = NONE OR categoryId = NULL);
+          WHERE id IN $a.nodeIds AND projectId = $projectId
+            AND (IF $a.from = NONE OR $a.from = NULL THEN categoryId = NONE OR categoryId = NULL ELSE categoryId = $a.from END);
       };`
     );
     params.assignments = assignments;

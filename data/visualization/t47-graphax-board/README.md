@@ -40,7 +40,7 @@ Several nodes can be selected at once: `Ctrl+click` (`Cmd` on Mac) adds or remov
 
 Undo and redo are in the toolbar, and on `Ctrl+Z` and `Ctrl+Y` outside text fields. Moves, automatic layouts, node edits (title, notes, category, attributes), link edits (label, style, orientation, colour, notes, reversal), the category order and category edits can be undone, and so can creating or deleting a node (with its links), a link or a category. A deleted category comes back in its place, with the nodes that used it (unless they got another category since).
 
-Right-click a node (without dragging) to change its category from a menu; the new category's missing default keys are added. Drag categories in the sidebar to reorder them (or use the up and down arrows on the handle). Before a category is deleted, the editor lists the nodes that will become unclassified.
+Right-click a node (without dragging) to change its category from a menu; the new category's missing default keys are added. Drag categories in the sidebar to reorder them (or use the up and down arrows on the handle). Before a category is deleted, the editor lists the nodes that will become unclassified. The same editor merges a category into another one (its nodes and default keys move there; `Ctrl+Z` undoes it). The bookmark button above the category list saves the project's categories as a preset, offered under "Mes presets" when creating a project.
 
 The version shown in the footer comes from `package.json`, which must match `tool.yaml` (checked by `pnpm test`). `/api/health` also reports it.
 
