@@ -1073,6 +1073,67 @@ describe('link types', () => {
   });
 });
 
+describe('saved views', () => {
+  it('stores views on the project, cleans them, and keeps them on export and import with the new ids', async () => {
+    const projectId = await createProject('Vues');
+    const cat = (await call('POST', `/api/projects/${projectId}/categories`, { name: 'Lieu' })).json.category;
+    const nodeId = await createNode(projectId, 'Centre');
+    const set = (savedViews: unknown) => call('PATCH', `/api/projects/${projectId}`, { savedViews });
+    let res = await set([
+      {
+        id: 'v1',
+        name: ' Lieux ',
+        viewMode: 'table',
+        hiddenCategoryIds: [cat.id, '__unclassified__', cat.id],
+        edgeFilter: 'dashed',
+        edgeColorFilter: '#D5B36A',
+        focus: { nodeId, depth: 9 },
+        viewport: { x: 10, y: -5, zoom: 1.5 },
+      },
+      { id: 'v1', name: 'doublon' },
+      { id: 'bad id!', name: 'x' },
+      { id: 'v2', name: '' },
+      { id: 'v3', name: 'Défauts', viewMode: 'x', edgeFilter: 'x', edgeColorFilter: 'rouge', viewport: { x: 1, y: 2, zoom: 0 } },
+    ]);
+    assert.equal(res.status, 200);
+    assert.deepEqual(res.json.project.savedViews, [
+      {
+        id: 'v1',
+        name: 'Lieux',
+        viewMode: 'table',
+        hiddenCategoryIds: [cat.id, '__unclassified__'],
+        edgeFilter: 'dashed',
+        edgeColorFilter: '#d5b36a',
+        focus: { nodeId, depth: 3 },
+        viewport: { x: 10, y: -5, zoom: 1.5 },
+      },
+      {
+        id: 'v3',
+        name: 'Défauts',
+        viewMode: 'graph',
+        hiddenCategoryIds: [],
+        edgeFilter: 'all',
+        edgeColorFilter: null,
+        focus: null,
+        viewport: null,
+      },
+    ]);
+    // The list is replaced, not merged
+    res = await set([{ id: 'v1', name: 'Lieux', hiddenCategoryIds: [cat.id], focus: { nodeId, depth: 2 } }]);
+    assert.equal(res.json.project.savedViews.length, 1);
+    assert.equal((await set({ v: 1 })).status, 400);
+
+    const exported = (await call('GET', `/api/projects/${projectId}/export`)).json;
+    assert.equal(exported.project.savedViews.length, 1);
+    const imported = (await call('POST', '/api/projects/import', exported)).json.project;
+    const graph = (await call('GET', `/api/projects/${imported.id}`)).json;
+    const [view] = graph.project.savedViews;
+    assert.deepEqual(view.hiddenCategoryIds, [graph.categories.find((c: { name: string }) => c.name === 'Lieu').id]);
+    assert.equal(view.focus.nodeId, graph.nodes.find((n: { title: string }) => n.title === 'Centre').id);
+    assert.notEqual(view.focus.nodeId, nodeId);
+  });
+});
+
 describe('local-only guard', () => {
   it('accepts same-origin and header-less requests', async () => {
     assert.equal((await call('GET', '/api/health')).status, 200);

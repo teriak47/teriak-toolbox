@@ -12,7 +12,7 @@ import { PRESET_CATEGORIES } from '../presets.ts';
 import { type CategoryRecord, insertProjectGraph } from '../bulk.ts';
 import { loadUserPreset } from './presets.ts';
 import { buildExportBundle, importProjectBundle } from '../bundles.ts';
-import { type ProjectGraphPayload, type ProjectPreset, normalizeLinkTypes } from '../../shared/types.ts';
+import { type ProjectGraphPayload, type ProjectPreset, normalizeLinkTypes, normalizeSavedViews } from '../../shared/types.ts';
 import { optString, readBody } from '../validation.ts';
 
 export const projectsRouter = new Hono();
@@ -350,7 +350,7 @@ projectsRouter.get('/:id', async (c) => {
 // Update project metadata
 projectsRouter.patch('/:id', async (c) => {
   const projectId = c.req.param('id');
-  const body = await readBody<{ name?: string; description?: string; linkTypes?: unknown }>(c);
+  const body = await readBody<{ name?: string; description?: string; linkTypes?: unknown; savedViews?: unknown }>(c);
   const db = await getDb();
 
   const patch: Record<string, unknown> = {
@@ -364,6 +364,14 @@ projectsRouter.patch('/:id', async (c) => {
     }
     linkTypes = normalizeLinkTypes(body.linkTypes);
   }
+  // Saved views (V4) also replace the whole list
+  let savedViews: ReturnType<typeof normalizeSavedViews> | undefined;
+  if (body.savedViews !== undefined) {
+    if (!Array.isArray(body.savedViews)) {
+      return c.json({ error: 'Vues enregistrées invalides : une liste est attendue.' }, 400);
+    }
+    savedViews = normalizeSavedViews(body.savedViews);
+  }
   if (typeof body.name === 'string' && body.name.trim()) {
     patch.name = body.name.trim();
   }
@@ -373,10 +381,12 @@ projectsRouter.patch('/:id', async (c) => {
 
   const results = await db
     .query<Array<Record<string, unknown> | undefined>>(
-      linkTypes
-        ? 'UPDATE $pid SET linkTypes = $linkTypes; UPDATE ONLY $pid MERGE $patch;'
-        : 'UPDATE ONLY $pid MERGE $patch;',
-      { pid: toRecordId('project', projectId), patch, linkTypes }
+      [
+        linkTypes ? 'UPDATE $pid SET linkTypes = $linkTypes;' : '',
+        savedViews ? 'UPDATE $pid SET savedViews = $savedViews;' : '',
+        'UPDATE ONLY $pid MERGE $patch;',
+      ].join(' '),
+      { pid: toRecordId('project', projectId), patch, linkTypes, savedViews }
     )
     .collect();
   const updated = results.at(-1);

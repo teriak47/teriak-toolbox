@@ -12,6 +12,7 @@ import {
   Sparkles,
   Trash2,
   X,
+  Focus,
 } from 'lucide-react';
 import type { Category, EdgeStyle, GraphEdge, GraphNode, NodeMetadata } from '@shared/types';
 import { RELIABILITY_CREDIBILITY, RELIABILITY_SOURCES } from '@shared/types';
@@ -33,6 +34,8 @@ interface InspectorSidebarProps {
   categories: Category[];
   /** Names given to link colours (V2) */
   linkTypes?: Record<string, string>;
+  /** Shows only this node's neighbourhood on the graph (V4) */
+  onFocusNeighbourhood?: (nodeId: string) => void;
   onClose: () => void;
   onUpdateNode: (
     nodeId: string,
@@ -106,6 +109,7 @@ export function InspectorSidebar({
   allNodes,
   categories,
   linkTypes = {},
+  onFocusNeighbourhood,
   onClose,
   onUpdateNode,
   onDeleteNode,
@@ -396,6 +400,17 @@ export function InspectorSidebar({
             <span className="text-xs font-mono text-zinc-500">
               X:{Math.round(selectedNode.positionX)} Y:{Math.round(selectedNode.positionY)}
             </span>
+            {onFocusNeighbourhood && (
+              <button
+                type="button"
+                onClick={() => onFocusNeighbourhood(selectedNode.id)}
+                className="p-1 rounded-lg text-zinc-400 hover:text-cyan-300 hover:bg-zinc-800 transition-colors"
+                title="Afficher seulement son voisinage"
+                aria-label="Afficher seulement son voisinage"
+              >
+                <Focus className="w-4 h-4" />
+              </button>
+            )}
             <button
               type="button"
               onClick={onClose}
