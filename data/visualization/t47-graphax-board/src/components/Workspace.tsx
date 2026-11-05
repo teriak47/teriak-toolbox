@@ -300,14 +300,17 @@ export function Workspace({ projectId, onBack, onOpenProject }: WorkspaceProps) 
     if ((next[color] ?? '') === trimmed) return;
     if (trimmed) next[color] = trimmed;
     else delete next[color];
-    void linkTypesSave.submit({
-      value: next,
-      stored,
-      save: async (value) => (await api.updateProject(projectId, { linkTypes: value })).project.linkTypes ?? {},
-      apply: (value) => setProject((curr) => (curr ? { ...curr, linkTypes: value } : curr)),
-      onError: (err) =>
-        setHistoryNotice(err instanceof Error ? err.message : 'Enregistrement du type de lien impossible.'),
-    });
+    // Tracked by the save queue from the start, so an export or a snapshot waits for it too
+    void runSave(() =>
+      linkTypesSave.submit({
+        value: next,
+        stored,
+        save: async (value) => (await api.updateProject(projectId, { linkTypes: value })).project.linkTypes ?? {},
+        apply: (value) => setProject((curr) => (curr ? { ...curr, linkTypes: value } : curr)),
+        onError: (err) =>
+          setHistoryNotice(err instanceof Error ? err.message : 'Enregistrement du type de lien impossible.'),
+      })
+    );
   };
   // Saving the categories as a preset (V5): the name being typed, null when closed
   const [presetName, setPresetName] = useState<string | null>(null);
@@ -1562,7 +1565,8 @@ export function Workspace({ projectId, onBack, onOpenProject }: WorkspaceProps) 
     await runSave(
       async () => {
         const { project: updated } = await api.updateProject(project.id, { name: trimmed });
-        setProject(updated);
+        // Only the name comes from this response: link types saved meanwhile are kept
+        setProject((curr) => (curr ? { ...curr, name: updated.name, updatedAt: updated.updatedAt } : updated));
       },
       { retryKey: `project-name:${project.id}` }
     );
