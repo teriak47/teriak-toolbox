@@ -1054,6 +1054,25 @@ describe('project duplication', () => {
   });
 });
 
+describe('link types', () => {
+  it('names link colours on the project, replaces the whole map and keeps it through export', async () => {
+    const projectId = await createProject('Types de liens');
+    const set = (linkTypes: unknown) => call('PATCH', `/api/projects/${projectId}`, { linkTypes });
+    let res = await set({ '#D5B36A': ' Financier ', '#6cc4ea': 'Communication', default: 'Lien', bad: 'x', '#000000': '' });
+    assert.equal(res.status, 200);
+    assert.deepEqual(res.json.project.linkTypes, { '#d5b36a': 'Financier', '#6cc4ea': 'Communication', default: 'Lien' });
+    // A removed name disappears (the map is replaced, not merged)
+    res = await set({ '#d5b36a': 'Finance' });
+    assert.deepEqual(res.json.project.linkTypes, { '#d5b36a': 'Finance' });
+    assert.equal((await set(['x'])).status, 400);
+    assert.equal((await set('x')).status, 400);
+    const exported = (await call('GET', `/api/projects/${projectId}/export`)).json;
+    assert.deepEqual(exported.project.linkTypes, { '#d5b36a': 'Finance' });
+    const imported = (await call('POST', '/api/projects/import', exported)).json.project;
+    assert.deepEqual((await call('GET', `/api/projects/${imported.id}`)).json.project.linkTypes, { '#d5b36a': 'Finance' });
+  });
+});
+
 describe('local-only guard', () => {
   it('accepts same-origin and header-less requests', async () => {
     assert.equal((await call('GET', '/api/health')).status, 200);

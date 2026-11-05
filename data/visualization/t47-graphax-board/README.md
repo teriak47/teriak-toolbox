@@ -40,6 +40,8 @@ Each node can carry a reliability grade, the Admiralty code: a source reliabilit
 
 The "Exporter" menu saves the project as JSON (re-importable), a Markdown report, or a picture of the whole graph (SVG or PNG).
 
+Link colours can be named as link types in the "Types de liens" sidebar section (for example "Financier" for sand); a click on a type shows only its links.
+
 Several nodes can be selected at once: `Ctrl+click` (`Cmd` on Mac) adds or removes a node, and `Shift`+drag on the background selects the nodes inside a box. Dragging one of them moves the whole group; `Delete` (after confirmation) or the side panel deletes them with their links. `Escape` clears the selection.
 
 Undo and redo are in the toolbar, and on `Ctrl+Z` and `Ctrl+Y` outside text fields. Moves, automatic layouts, node edits (title, notes, category, attributes), link edits (label, style, orientation, colour, notes, reversal), the category order and category edits can be undone, and so can creating or deleting a node (with its links), a link or a category. A deleted category comes back in its place, with the nodes that used it (unless they got another category since).

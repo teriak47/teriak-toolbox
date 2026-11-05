@@ -16,6 +16,7 @@ import {
   type Project,
   type ProjectExportBundle,
   normalizeCategoryKeys,
+  normalizeLinkTypes,
   normalizeReliability,
 } from '../shared/types.ts';
 import {
@@ -88,6 +89,7 @@ export async function importProjectBundle(
     name: name ?? ((optString(source.name) ?? '').trim() || 'Projet importé'),
     description: (optString(source.description) ?? '').trim(),
     createdAt: optString(source.createdAt) || now,
+    linkTypes: normalizeLinkTypes(source.linkTypes),
     updatedAt: now,
   };
 

@@ -95,7 +95,10 @@ export const api = {
   getProjectGraph: (projectId: string) =>
     request<ProjectGraphPayload>(`/api/projects/${projectId}`),
 
-  updateProject: (projectId: string, input: { name?: string; description?: string }) =>
+  updateProject: (
+    projectId: string,
+    input: { name?: string; description?: string; linkTypes?: Record<string, string> }
+  ) =>
     request<{ project: Project }>(`/api/projects/${projectId}`, {
       method: 'PATCH',
       body: JSON.stringify(input),

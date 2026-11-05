@@ -31,6 +31,8 @@ interface InspectorSidebarProps {
   selectedEdge: GraphEdge | null;
   allNodes: GraphNode[];
   categories: Category[];
+  /** Names given to link colours (V2) */
+  linkTypes?: Record<string, string>;
   onClose: () => void;
   onUpdateNode: (
     nodeId: string,
@@ -103,6 +105,7 @@ export function InspectorSidebar({
   selectedEdge,
   allNodes,
   categories,
+  linkTypes = {},
   onClose,
   onUpdateNode,
   onDeleteNode,
@@ -926,8 +929,8 @@ export function InspectorSidebar({
                     type="button"
                     role="radio"
                     aria-checked={active}
-                    aria-label={c.label}
-                    title={c.label}
+                    aria-label={linkTypes[c.value] ?? c.label}
+                    title={linkTypes[c.value] ? `${linkTypes[c.value]} (${c.label})` : c.label}
                     onClick={() => void onUpdateEdge(selectedEdge.id, { color: c.value })}
                     className={cn(
                       'w-7 h-7 border-2 transition-transform',
@@ -938,6 +941,11 @@ export function InspectorSidebar({
                 );
               })}
             </div>
+            {selectedEdge.color && linkTypes[selectedEdge.color] && (
+              <p className="text-xs text-zinc-400">
+                Type : <span className="text-zinc-200">{linkTypes[selectedEdge.color]}</span>
+              </p>
+            )}
           </div>
 
           {/* Directed vs Undirected */}

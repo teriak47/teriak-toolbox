@@ -10,6 +10,7 @@ import {
   type NodeMetadata,
   type Project,
   normalizeCategoryKeys,
+  normalizeLinkTypes,
   normalizeReliability,
 } from '../shared/types.ts';
 import { extractId, toRecordId } from './db.ts';
@@ -20,6 +21,7 @@ export function mapProject(raw: Record<string, unknown>): Project {
     id: extractId(raw.id),
     name: String(raw.name ?? 'Projet sans titre'),
     description: String(raw.description ?? ''),
+    linkTypes: normalizeLinkTypes(raw.linkTypes),
     createdAt: String(raw.createdAt ?? new Date().toISOString()),
     updatedAt: String(raw.updatedAt ?? new Date().toISOString()),
   };

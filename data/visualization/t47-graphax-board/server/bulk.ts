@@ -7,6 +7,7 @@ export interface ProjectRecord {
   description: string;
   createdAt: string;
   updatedAt: string;
+  linkTypes?: Record<string, string>;
 }
 
 export interface CategoryRecord {
@@ -67,6 +68,7 @@ export async function insertProjectGraph(db: Surreal, graph: ProjectGraphRecords
       description: graph.project.description,
       createdAt: graph.project.createdAt,
       updatedAt: graph.project.updatedAt,
+      linkTypes: graph.project.linkTypes ?? {},
     },
   };
 

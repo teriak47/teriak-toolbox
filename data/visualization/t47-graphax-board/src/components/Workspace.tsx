@@ -55,7 +55,7 @@ import {
 import { CategoryModal } from '@/components/CategoryModal';
 import { MultiSelectionPanel } from '@/components/MultiSelectionPanel';
 import { SnapshotsModal } from '@/components/SnapshotsModal';
-import { getCategoryIcon } from '@/lib/icons';
+import { LINK_COLORS, getCategoryIcon } from '@/lib/icons';
 import { computeConstellationLayout } from '@/lib/forceLayout';
 import { cn, exportFileName, moveItem } from '@/lib/utils';
 import { UndoHistory, type HistoryEntry } from '@/lib/history';
@@ -274,6 +274,10 @@ export function Workspace({ projectId, onBack, onOpenProject }: WorkspaceProps) 
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(true);
   const [hiddenCategoryIds, setHiddenCategoryIds] = useState<Set<string>>(new Set());
   const [edgeFilter, setEdgeFilter] = useState<EdgeFilterMode>('all');
+  // Link type filter (V2): only the links of one colour ('default' for the uncoloured ones)
+  const [edgeColorFilter, setEdgeColorFilter] = useState<string | null>(null);
+  // Link type being renamed in the sidebar: its colour and the name typed
+  const [renamingLinkType, setRenamingLinkType] = useState<{ color: string; name: string } | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchFocused, setSearchFocused] = useState(false);
 
@@ -281,6 +285,24 @@ export function Workspace({ projectId, onBack, onOpenProject }: WorkspaceProps) 
   const [categoryModalOpen, setCategoryModalOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [snapshotsOpen, setSnapshotsOpen] = useState(false);
+  const linkTypes = project?.linkTypes ?? {};
+  // Names a link colour (an empty name removes it); saved on the project
+  const saveLinkTypeName = async (color: string, name: string) => {
+    setRenamingLinkType(null);
+    if (!project) return;
+    const next = { ...(project.linkTypes ?? {}) };
+    const trimmed = name.trim();
+    if ((next[color] ?? '') === trimmed) return;
+    if (trimmed) next[color] = trimmed;
+    else delete next[color];
+    setProject({ ...project, linkTypes: next });
+    try {
+      const { project: saved } = await api.updateProject(project.id, { linkTypes: next });
+      setProject((curr) => (curr ? { ...curr, linkTypes: saved.linkTypes } : curr));
+    } catch (err) {
+      setHistoryNotice(err instanceof Error ? err.message : 'Enregistrement du type de lien impossible.');
+    }
+  };
   // Saving the categories as a preset (V5): the name being typed, null when closed
   const [presetName, setPresetName] = useState<string | null>(null);
   const savePreset = async () => {
@@ -383,9 +405,10 @@ export function Workspace({ projectId, onBack, onOpenProject }: WorkspaceProps) 
       }
       if (edgeFilter === 'solid' && rel.style !== 'solid') return false;
       if (edgeFilter === 'dashed' && rel.style !== 'dashed') return false;
+      if (edgeColorFilter && (rel.color ?? 'default') !== edgeColorFilter) return false;
       return true;
     });
-  }, [relations, visibleEntityIds, edgeFilter]);
+  }, [relations, visibleEntityIds, edgeFilter, edgeColorFilter]);
 
   // Search matches across title, content, metadata, category. "Clé:valeur" searches the
   // value of a metadata key, and "Clé:" finds nodes that have that key.
@@ -574,6 +597,8 @@ export function Workspace({ projectId, onBack, onOpenProject }: WorkspaceProps) 
           label: '',
           style: defaultStyle,
           directed: true,
+          // While the links are filtered on a type, a new link gets that type's colour
+          ...(edgeColorFilter && edgeColorFilter !== 'default' ? { color: edgeColorFilter } : {}),
         })
       );
       if (!created) return;
@@ -590,7 +615,7 @@ export function Workspace({ projectId, onBack, onOpenProject }: WorkspaceProps) 
         () => actionsRef.current?.deleteEdge(edgeId)
       );
     },
-    [projectId, edgeFilter, runSave, recordPresence, edgeSnapshot]
+    [projectId, edgeFilter, edgeColorFilter, runSave, recordPresence, edgeSnapshot]
   );
 
   // Dragging a link wire into empty space -> spawns a new node already linked!
@@ -2103,6 +2128,92 @@ export function Workspace({ projectId, onBack, onOpenProject }: WorkspaceProps) 
                 </div>
               </div>
 
+              {/* Link types (V2): names given to link colours, and a filter on one of them */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wider text-zinc-400">
+                  <span>Types de liens</span>
+                  {edgeColorFilter && (
+                    <button
+                      type="button"
+                      onClick={() => setEdgeColorFilter(null)}
+                      className="normal-case tracking-normal font-medium text-cyan-400 hover:text-cyan-300"
+                    >
+                      Tout afficher
+                    </button>
+                  )}
+                </div>
+                <div className="grid grid-cols-1 gap-0.5">
+                  {[{ value: 'default', label: 'Gris (par défaut)' }, ...LINK_COLORS].map((c) => {
+                    const count = relations.filter((r) => (r.color ?? 'default') === c.value).length;
+                    const name = linkTypes[c.value];
+                    const active = edgeColorFilter === c.value;
+                    if (renamingLinkType?.color === c.value) {
+                      return (
+                        <form
+                          key={c.value}
+                          onSubmit={(e) => {
+                            e.preventDefault();
+                            void saveLinkTypeName(c.value, renamingLinkType.name);
+                          }}
+                          className="flex items-center gap-1.5 px-1.5 py-1"
+                        >
+                          <span className="w-3 h-3 shrink-0" style={{ background: c.value === 'default' ? 'var(--etat-clos)' : c.value }} />
+                          <input
+                            autoFocus
+                            value={renamingLinkType.name}
+                            maxLength={40}
+                            aria-label={`Nom du type de lien ${c.label}`}
+                            placeholder={c.label}
+                            onChange={(e) => setRenamingLinkType({ color: c.value, name: e.target.value })}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Escape') setRenamingLinkType(null);
+                            }}
+                            onBlur={() => void saveLinkTypeName(c.value, renamingLinkType.name)}
+                            className="flex-1 min-w-0 px-1.5 py-0.5 text-xs rounded bg-zinc-950 border border-filet text-zinc-100 focus:border-cyan-500 focus:outline-none"
+                          />
+                        </form>
+                      );
+                    }
+                    return (
+                      <div
+                        key={c.value}
+                        className={cn(
+                          'group flex items-center gap-1.5 px-1.5 py-1 rounded-lg border',
+                          active ? 'bg-zinc-800 border-filet-fort' : 'border-transparent hover:bg-zinc-800/50',
+                          count === 0 && !name && 'opacity-50'
+                        )}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => setEdgeColorFilter(active ? null : c.value)}
+                          aria-pressed={active}
+                          title={active ? 'Afficher tous les liens' : 'N’afficher que ces liens'}
+                          className="flex items-center gap-2 flex-1 min-w-0 text-left"
+                        >
+                          <span
+                            className="w-3 h-3 shrink-0"
+                            style={{ background: c.value === 'default' ? 'var(--etat-clos)' : c.value }}
+                          />
+                          <span className={cn('text-xs truncate', name ? 'text-zinc-200' : 'text-zinc-500')}>
+                            {name ?? c.label}
+                          </span>
+                        </button>
+                        <span className="text-xs font-mono text-zinc-500">{count}</span>
+                        <button
+                          type="button"
+                          onClick={() => setRenamingLinkType({ color: c.value, name: name ?? '' })}
+                          title="Nommer ce type de lien"
+                          aria-label={`Nommer le type de lien ${c.label}`}
+                          className="p-0.5 text-zinc-500 hover:text-zinc-200 opacity-0 group-hover:opacity-100 focus:opacity-100"
+                        >
+                          <Pencil className="w-3 h-3" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
               {/* Categories List & Toggles */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
@@ -2381,6 +2492,7 @@ export function Workspace({ projectId, onBack, onOpenProject }: WorkspaceProps) 
           selectedEdge={selectedEdge}
           allNodes={entities}
           categories={categories}
+          linkTypes={linkTypes}
           takePendingEditRef={takePendingEditRef}
           takePendingEdgeEditRef={takePendingEdgeEditRef}
           onClose={() => {
