@@ -1037,6 +1037,23 @@ describe('user presets', () => {
   });
 });
 
+describe('project duplication', () => {
+  it('copies a project with new ids and leaves the original as it is', async () => {
+    const demo = (await call('POST', '/api/projects/demo')).json.projectId;
+    const original = (await call('GET', `/api/projects/${demo}`)).json;
+    const res = await call('POST', `/api/projects/${demo}/duplicate`);
+    assert.equal(res.status, 201);
+    assert.equal(res.json.project.name, `${original.project.name} (copie)`);
+    const copy = (await call('GET', `/api/projects/${res.json.project.id}`)).json;
+    assert.equal(copy.nodes.length, original.nodes.length);
+    assert.equal(copy.edges.length, original.edges.length);
+    assert.deepEqual(copy.categories.map((c: { name: string }) => c.name), original.categories.map((c: { name: string }) => c.name));
+    const originalIds = new Set(original.nodes.map((n: { id: string }) => n.id));
+    assert.ok(copy.nodes.every((n: { id: string }) => !originalIds.has(n.id)));
+    assert.equal((await call('POST', '/api/projects/nope/duplicate')).status, 404);
+  });
+});
+
 describe('local-only guard', () => {
   it('accepts same-origin and header-less requests', async () => {
     assert.equal((await call('GET', '/api/health')).status, 200);

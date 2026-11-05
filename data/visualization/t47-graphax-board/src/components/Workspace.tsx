@@ -45,6 +45,7 @@ import { downloadProjectExport } from '@/lib/exportProject';
 import { useSaveQueue } from '@/hooks/useSaveQueue';
 import {
   collectMetadataKeys,
+  foldText,
   matchesMetadataQuery,
   parseMetadataQuery,
   withCategoryKeys,
@@ -101,6 +102,27 @@ interface HistoryActions {
   updateCategory: (categoryId: string, input: CategoryInput) => Promise<boolean>;
   mergeCategory: (categoryId: string, targetId: string) => Promise<boolean>;
   restore: (snapshot: RestoreSnapshot) => Promise<boolean>;
+}
+
+// Copy and paste of nodes (A8)
+const CLIPBOARD_KEY = 'graphax-clipboard';
+type ClipboardContent = {
+  format: 'graphax-clipboard';
+  /** When it was copied: the newest of the stored and the in-memory copy is pasted */
+  copiedAt: number;
+  projectId: string;
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+  categories: Array<{ id: string; name: string }>;
+};
+// Used when the browser refuses localStorage (private window, blocked storage)
+let clipboardMemory: ClipboardContent | null = null;
+
+// A new record id in the server's format (16 hex digits)
+function newRecordId(): string {
+  const bytes = new Uint8Array(8);
+  crypto.getRandomValues(bytes);
+  return [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
 function categoryInput(category: Category): CategoryInput {
@@ -1184,6 +1206,9 @@ export function Workspace({ projectId, onBack, onOpenProject }: WorkspaceProps) 
   // Ctrl+Z / Ctrl+Y (or Ctrl+Shift+Z); inside a text field the browser's own undo applies
   const undoRedoRef = useRef({ undo, redo });
   undoRedoRef.current = { undo, redo };
+  // Copy and paste of nodes (A8), filled further down once the selection is known
+  const clipboardActionsRef = useRef<{ copy: () => boolean; paste: () => boolean } | null>(null);
+  const pasteCountRef = useRef(0);
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
@@ -1198,6 +1223,12 @@ export function Workspace({ projectId, onBack, onOpenProject }: WorkspaceProps) 
       } else if (key === 'y' || (key === 'z' && e.shiftKey)) {
         e.preventDefault();
         undoRedoRef.current.redo();
+      } else if (key === 'c' && !e.shiftKey) {
+        // Only when nodes are selected and no text is: copying selected text keeps working
+        if (window.getSelection()?.toString()) return;
+        if (clipboardActionsRef.current?.copy()) e.preventDefault();
+      } else if (key === 'v' && !e.shiftKey) {
+        if (clipboardActionsRef.current?.paste()) e.preventDefault();
       }
     };
     window.addEventListener('keydown', onKeyDown);
@@ -1491,6 +1522,94 @@ export function Workspace({ projectId, onBack, onOpenProject }: WorkspaceProps) 
     () => new Set(multiSelectedNodes.length >= 2 ? multiSelectedNodes.map((n) => n.id) : []),
     [multiSelectedNodes]
   );
+
+  // ---- Copy and paste of nodes (A8) ----
+  // The copied nodes, the links between them and their categories are kept in this browser
+  // (localStorage), so they can also be pasted into another project; categories are then
+  // matched by name. Pasting creates copies with new ids, a little to the side, in one request.
+  const copySelection = (): boolean => {
+    const ids = multiSelectedIds.size >= 2 ? [...multiSelectedIds] : selectedNodeId ? [selectedNodeId] : [];
+    if (ids.length === 0) return false;
+    const idSet = new Set(ids);
+    const nodes = entities.filter((n) => idSet.has(n.id));
+    const edges = relations.filter((e) => idSet.has(e.sourceNodeId) && idSet.has(e.targetNodeId));
+    const usedCats = new Set(nodes.map((n) => n.categoryId));
+    const clip: ClipboardContent = {
+      format: 'graphax-clipboard',
+      copiedAt: Date.now(),
+      projectId,
+      nodes,
+      edges,
+      categories: categories.filter((c) => usedCats.has(c.id)).map((c) => ({ id: c.id, name: c.name })),
+    };
+    // Kept in memory too: if the storage refuses it (full, blocked), an older stored copy
+    // must not be pasted instead
+    clipboardMemory = clip;
+    try {
+      localStorage.setItem(CLIPBOARD_KEY, JSON.stringify(clip));
+    } catch {
+      // the in-memory copy is the newest one
+    }
+    pasteCountRef.current = 0;
+    setHistoryNotice(`${nodes.length} nœud${nodes.length > 1 ? 's copiés' : ' copié'} (Ctrl+V pour coller)`);
+    return true;
+  };
+
+  const pasteClipboard = (): boolean => {
+    // The newest copy wins: the stored one may come from another tab, the in-memory one from
+    // a copy the storage refused
+    let clip: ClipboardContent | null = clipboardMemory;
+    try {
+      const raw = localStorage.getItem(CLIPBOARD_KEY);
+      const stored = raw ? (JSON.parse(raw) as ClipboardContent) : null;
+      if (stored && (!clip || (stored.copiedAt ?? 0) > (clip.copiedAt ?? 0))) clip = stored;
+    } catch {
+      // keep the in-memory copy
+    }
+    if (!clip || clip.format !== 'graphax-clipboard' || !Array.isArray(clip.nodes) || clip.nodes.length === 0) {
+      return false;
+    }
+    const source = clip;
+    pasteCountRef.current += 1;
+    const offset = 40 * pasteCountRef.current;
+    // Category: the same one in the same project, else one with the same name, else none
+    const catIdFor = (categoryId: string | null): string | null => {
+      if (!categoryId) return null;
+      if (source.projectId === projectId && categories.some((c) => c.id === categoryId)) return categoryId;
+      const name = source.categories?.find((c) => c.id === categoryId)?.name;
+      const match = name ? categories.find((c) => foldText(c.name) === foldText(name)) : undefined;
+      return match?.id ?? null;
+    };
+    const newIds = new Map(source.nodes.map((n) => [n.id, newRecordId()]));
+    const nodes: GraphNode[] = source.nodes.map((n) => ({
+      ...n,
+      id: newIds.get(n.id)!,
+      projectId,
+      categoryId: catIdFor(n.categoryId),
+      positionX: n.positionX + offset,
+      positionY: n.positionY + offset,
+    }));
+    const edges: GraphEdge[] = (source.edges ?? []).flatMap((e) => {
+      const s = newIds.get(e.sourceNodeId);
+      const t = newIds.get(e.targetNodeId);
+      return s && t ? [{ ...e, id: newRecordId(), projectId, sourceNodeId: s, targetNodeId: t }] : [];
+    });
+    const ids = nodes.map((n) => n.id);
+    void (async () => {
+      const ok = await restoreSnapshot({ nodes, edges });
+      if (!ok) return;
+      selectNodes(ids);
+      recordPresence(
+        nodes.length > 1 ? `Collage de ${nodes.length} nœuds` : 'Collage du nœud',
+        'created',
+        { nodes, edges },
+        () => nodesSnapshot(ids),
+        () => actionsRef.current?.deleteNodes(ids)
+      );
+    })();
+    return true;
+  };
+  clipboardActionsRef.current = { copy: copySelection, paste: pasteClipboard };
 
   const categoryCounts = useMemo(() => {
     const counts = new Map<string, number>();
@@ -2130,6 +2249,9 @@ export function Workspace({ projectId, onBack, onOpenProject }: WorkspaceProps) 
               </div>
               <div>
                 <strong className="text-zinc-300">Ctrl+clic / Maj+glisser fond :</strong> sélection multiple
+              </div>
+              <div>
+                <strong className="text-zinc-300">Ctrl+C / Ctrl+V :</strong> copier-coller des nœuds
               </div>
             </div>
           </aside>

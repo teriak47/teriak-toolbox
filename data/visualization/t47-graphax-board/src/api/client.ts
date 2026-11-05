@@ -109,6 +109,9 @@ export const api = {
   exportProject: (projectId: string) =>
     request<ProjectExportBundle>(`/api/projects/${projectId}/export`),
 
+  duplicateProject: (projectId: string) =>
+    request<{ project: Project }>(`/api/projects/${projectId}/duplicate`, { method: 'POST' }),
+
   importProject: (bundle: unknown) =>
     request<{ project: Project }>('/api/projects/import', {
       method: 'POST',

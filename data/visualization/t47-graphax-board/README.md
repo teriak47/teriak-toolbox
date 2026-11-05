@@ -36,6 +36,8 @@ A new project can start from five category sets: OSINT investigation (people, or
 
 Each node can carry a reliability grade, the Admiralty code: a source reliability from A (totally reliable) to F (cannot be judged) and an information credibility from 1 (confirmed) to 6 (cannot be judged), chosen in the inspector. It shows as a badge on the node and can be searched with `Fiabilité:B2`.
 
+`Ctrl+C` copies the selected nodes (with the links between them) and `Ctrl+V` pastes copies a little to the side, in the same project or another one. A project can be duplicated from its card on the project list.
+
 Several nodes can be selected at once: `Ctrl+click` (`Cmd` on Mac) adds or removes a node, and `Shift`+drag on the background selects the nodes inside a box. Dragging one of them moves the whole group; `Delete` (after confirmation) or the side panel deletes them with their links. `Escape` clears the selection.
 
 Undo and redo are in the toolbar, and on `Ctrl+Z` and `Ctrl+Y` outside text fields. Moves, automatic layouts, node edits (title, notes, category, attributes), link edits (label, style, orientation, colour, notes, reversal), the category order and category edits can be undone, and so can creating or deleting a node (with its links), a link or a category. A deleted category comes back in its place, with the nodes that used it (unless they got another category since).
