@@ -12,7 +12,7 @@ import { PRESET_CATEGORIES } from '../presets.ts';
 import { type CategoryRecord, insertProjectGraph } from '../bulk.ts';
 import { loadUserPreset } from './presets.ts';
 import { buildExportBundle, importProjectBundle } from '../bundles.ts';
-import { type ProjectGraphPayload, type ProjectPreset } from '../../shared/types.ts';
+import { type ProjectGraphPayload, type ProjectPreset, normalizeLinkTypes } from '../../shared/types.ts';
 import { optString, readBody } from '../validation.ts';
 
 export const projectsRouter = new Hono();
@@ -350,12 +350,20 @@ projectsRouter.get('/:id', async (c) => {
 // Update project metadata
 projectsRouter.patch('/:id', async (c) => {
   const projectId = c.req.param('id');
-  const body = await readBody<{ name?: string; description?: string }>(c);
+  const body = await readBody<{ name?: string; description?: string; linkTypes?: unknown }>(c);
   const db = await getDb();
 
   const patch: Record<string, unknown> = {
     updatedAt: new Date().toISOString(),
   };
+  // Link types (V2) replace the whole map (MERGE would keep removed names); an object is expected
+  let linkTypes: Record<string, string> | undefined;
+  if (body.linkTypes !== undefined) {
+    if (!body.linkTypes || typeof body.linkTypes !== 'object' || Array.isArray(body.linkTypes)) {
+      return c.json({ error: 'Types de liens invalides : un objet couleur → nom est attendu.' }, 400);
+    }
+    linkTypes = normalizeLinkTypes(body.linkTypes);
+  }
   if (typeof body.name === 'string' && body.name.trim()) {
     patch.name = body.name.trim();
   }
@@ -363,12 +371,15 @@ projectsRouter.patch('/:id', async (c) => {
     patch.description = body.description.trim();
   }
 
-  const [updated] = await db
-    .query<[Record<string, unknown> | undefined]>('UPDATE ONLY $pid MERGE $patch;', {
-      pid: toRecordId('project', projectId),
-      patch,
-    })
+  const results = await db
+    .query<Array<Record<string, unknown> | undefined>>(
+      linkTypes
+        ? 'UPDATE $pid SET linkTypes = $linkTypes; UPDATE ONLY $pid MERGE $patch;'
+        : 'UPDATE ONLY $pid MERGE $patch;',
+      { pid: toRecordId('project', projectId), patch, linkTypes }
+    )
     .collect();
+  const updated = results.at(-1);
 
   if (!updated) {
     return c.json({ error: 'Projet introuvable.' }, 404);

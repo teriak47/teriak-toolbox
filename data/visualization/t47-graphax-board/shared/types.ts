@@ -92,6 +92,8 @@ export interface Project {
   description: string;
   createdAt: string;
   updatedAt: string;
+  /** Link types (V2): a name given to a link colour, e.g. { "#d5b36a": "Financier" } */
+  linkTypes?: Record<string, string>;
   nodeCount?: number;
   edgeCount?: number;
   categoryCount?: number;
@@ -228,3 +230,24 @@ export interface UserPreset {
 }
 
 export const MAX_PRESET_NAME_LENGTH = 80;
+
+// ---- Link types (V2): names given to link colours ----
+
+export const MAX_LINK_TYPE_NAME_LENGTH = 40;
+export const MAX_LINK_TYPES = 32;
+
+// Keeps colour keys written #rrggbb (lower case) or "default", and non-empty names; anything
+// else is dropped
+export function normalizeLinkTypes(value: unknown): Record<string, string> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const out: Record<string, string> = {};
+  for (const [key, name] of Object.entries(value as Record<string, unknown>)) {
+    const color = key.trim().toLowerCase();
+    // "default" names the uncoloured (grey) links
+    if ((color !== 'default' && !/^#[0-9a-f]{6}$/.test(color)) || typeof name !== 'string') continue;
+    const label = name.trim().slice(0, MAX_LINK_TYPE_NAME_LENGTH);
+    if (label) out[color] = label;
+    if (Object.keys(out).length >= MAX_LINK_TYPES) break;
+  }
+  return out;
+}
