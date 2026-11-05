@@ -231,9 +231,11 @@ categoriesRouter.patch('/categories/:id', async (c) => {
 // the target gets the source's default keys it lacks, and the source is deleted, all in
 // one transaction. Returns the updated target and the ids of the moved nodes.
 categoriesRouter.post('/categories/:id/merge', async (c) => {
-  const id = c.req.param('id');
+  // Canonical ids ("category:abc" -> "abc"): nodes store the bare id of their category
+  const id = extractId(c.req.param('id'));
   const body = await readBody<{ targetId?: unknown }>(c);
-  const targetId = optString(body.targetId);
+  const rawTarget = optString(body.targetId);
+  const targetId = rawTarget ? extractId(rawTarget) : '';
   if (!targetId) return c.json({ error: 'Catégorie cible (targetId) attendue.' }, 400);
   if (targetId === id) return c.json({ error: 'Une catégorie ne peut pas être fusionnée avec elle-même.' }, 400);
 

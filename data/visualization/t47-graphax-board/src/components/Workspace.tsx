@@ -1313,16 +1313,17 @@ export function Workspace({ projectId, onBack, onOpenProject }: WorkspaceProps) 
         const nodeIds = [...moved];
         recordHistory({
           label: 'Fusion de catégories',
-          // Both start now, while the replay runs, so neither is recorded as a new action
+          // The target's keys first: that change starts while the replay runs, so it is not
+          // recorded as a new action. The restore comes after it (a restore never records), so
+          // the category list it returns already holds the restored keys.
           undo: async () => {
-            const results = await Promise.all([
-              actionsRef.current?.restore({
-                categories: source ? [source] : [],
-                assignments: nodeIds.length > 0 ? [{ categoryId, nodeIds, fromCategoryId: targetId }] : [],
-              }),
-              actionsRef.current?.updateCategory(targetId, targetBefore),
-            ]);
-            return results.every((r) => r !== false);
+            const keysRestored = await actionsRef.current?.updateCategory(targetId, targetBefore);
+            if (keysRestored === false) return false;
+            const restored = await actionsRef.current?.restore({
+              categories: source ? [source] : [],
+              assignments: nodeIds.length > 0 ? [{ categoryId, nodeIds, fromCategoryId: targetId }] : [],
+            });
+            return restored !== false;
           },
           redo: () => actionsRef.current?.mergeCategory(categoryId, targetId),
         });

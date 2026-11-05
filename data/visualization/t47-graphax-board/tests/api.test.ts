@@ -985,6 +985,19 @@ describe('category merge', () => {
     assert.equal(g.nodes.find((n: { id: string }) => n.id === n2).categoryId, other.id);
   });
 
+  it('stores the bare target id on the moved nodes, even when given with its table prefix', async () => {
+    const projectId = await createProject('Fusion préfixe');
+    const mk = async (name: string) =>
+      (await call('POST', `/api/projects/${projectId}/categories`, { name, color: '#60ccc5', icon: 'user', shape: 'circle' })).json.category;
+    const a = await mk('A');
+    const b = await mk('B');
+    const n = await createNode(projectId, 'N');
+    await call('PATCH', `/api/nodes/${n}`, { categoryId: b.id });
+    assert.equal((await call('POST', `/api/categories/${b.id}/merge`, { targetId: `category:${a.id}` })).status, 200);
+    const g = (await call('GET', `/api/projects/${projectId}`)).json;
+    assert.equal(g.nodes[0].categoryId, a.id);
+  });
+
   it('refuses to merge categories of two projects', async () => {
     const p1 = await createProject('P1');
     const p2 = await createProject('P2');
