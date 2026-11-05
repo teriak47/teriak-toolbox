@@ -467,7 +467,15 @@ export function Workspace({ projectId, onBack, onOpenProject }: WorkspaceProps) 
   // A neighbourhood whose root was deleted, or a path with a deleted node, no longer applies
   const entityIds = useMemo(() => new Set(entities.map((n) => n.id)), [entities]);
   const activeFocus = focus && entityIds.has(focus.nodeId) ? focus : null;
-  const activePath = pathView && pathView.ids.every((id) => entityIds.has(id)) ? pathView : null;
+  // A path also stops applying when a link between two of its steps is gone
+  const activePath = useMemo(() => {
+    if (!pathView || !pathView.ids.every((id) => entityIds.has(id))) return null;
+    const linked = new Set(relations.flatMap((r) => [`${r.sourceNodeId}|${r.targetNodeId}`, `${r.targetNodeId}|${r.sourceNodeId}`]));
+    for (let i = 1; i < pathView.ids.length; i++) {
+      if (!linked.has(`${pathView.ids[i - 1]}|${pathView.ids[i]}`)) return null;
+    }
+    return pathView;
+  }, [pathView, entityIds, relations]);
   useEffect(() => {
     if (focus && !activeFocus) setFocus(null);
     if (pathView && !activePath) setPathView(null);
@@ -757,6 +765,10 @@ export function Workspace({ projectId, onBack, onOpenProject }: WorkspaceProps) 
       const nodeId = created.node.id;
       setEntities((prev) => [...prev, created.node]);
       setRelations((prev) => [...prev, created.edge]);
+      // The new node is not on the path shown, and lies outside a neighbourhood when
+      // its source is at the edge of it: close the view that would hide it
+      setPathView(null);
+      if (focus && !neighbourhood(focus.nodeId, relations, focus.depth - 1).has(sourceNodeId)) setFocus(null);
       setSelectedEdgeId(null);
       setSelectedNodeId(nodeId);
       // Undone in one step: deleting the node also deletes its link
@@ -768,7 +780,7 @@ export function Workspace({ projectId, onBack, onOpenProject }: WorkspaceProps) 
         () => actionsRef.current?.deleteNode(nodeId)
       );
     },
-    [projectId, categories, hiddenCategoryIds, edgeFilter, edgeColorFilter, runSave, recordPresence, nodeSnapshot]
+    [projectId, categories, hiddenCategoryIds, edgeFilter, edgeColorFilter, focus, relations, runSave, recordPresence, nodeSnapshot]
   );
 
   // Persists the latest unsaved positions. Single drags and batches write into the same map,
