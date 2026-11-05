@@ -44,6 +44,7 @@ import {
 import { downloadProjectExport } from '@/lib/exportProject';
 import { buildMarkdownReport } from '@/lib/report';
 import { downloadBlob, svgToPng } from '@/lib/graphImage';
+import { useSerialSave } from '@/hooks/useSerialSave';
 import { useSaveQueue } from '@/hooks/useSaveQueue';
 import {
   collectMetadataKeys,
@@ -286,25 +287,27 @@ export function Workspace({ projectId, onBack, onOpenProject }: WorkspaceProps) 
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [snapshotsOpen, setSnapshotsOpen] = useState(false);
   const linkTypes = project?.linkTypes ?? {};
-  // Names a link colour (an empty name removes it); saved on the project
-  const saveLinkTypeName = async (color: string, name: string) => {
+  // Names a link colour (an empty name removes it); saved on the project. The whole map is
+  // replaced on each save, so saves go one after the other (useSerialSave)
+  const linkTypesSave = useSerialSave<Record<string, string>>();
+  const saveLinkTypeName = (color: string, name: string) => {
     setRenamingLinkType(null);
     if (!project) return;
-    const previous = project.linkTypes ?? {};
-    const next = { ...previous };
+    const projectId = project.id;
+    const stored = project.linkTypes ?? {};
+    const next = { ...linkTypesSave.latest(stored) };
     const trimmed = name.trim();
     if ((next[color] ?? '') === trimmed) return;
     if (trimmed) next[color] = trimmed;
     else delete next[color];
-    setProject({ ...project, linkTypes: next });
-    try {
-      const { project: saved } = await api.updateProject(project.id, { linkTypes: next });
-      setProject((curr) => (curr ? { ...curr, linkTypes: saved.linkTypes } : curr));
-    } catch (err) {
-      // The name shown goes back to the stored one, so the same name can be tried again
-      setProject((curr) => (curr && curr.linkTypes === next ? { ...curr, linkTypes: previous } : curr));
-      setHistoryNotice(err instanceof Error ? err.message : 'Enregistrement du type de lien impossible.');
-    }
+    void linkTypesSave.submit({
+      value: next,
+      stored,
+      save: async (value) => (await api.updateProject(projectId, { linkTypes: value })).project.linkTypes ?? {},
+      apply: (value) => setProject((curr) => (curr ? { ...curr, linkTypes: value } : curr)),
+      onError: (err) =>
+        setHistoryNotice(err instanceof Error ? err.message : 'Enregistrement du type de lien impossible.'),
+    });
   };
   // Saving the categories as a preset (V5): the name being typed, null when closed
   const [presetName, setPresetName] = useState<string | null>(null);
