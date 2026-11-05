@@ -28,6 +28,10 @@ pnpm dev
 # Tests automatisés de l'API (base temporaire, données fictives)
 pnpm test
 
+# Tests de l'interface dans un vrai navigateur (après pnpm build ; Chromium de Playwright requis :
+# pnpm exec playwright install chromium)
+pnpm test:e2e
+
 # Build de production + lancement serveur unifié (http://127.0.0.1:3456)
 pnpm build
 pnpm start
