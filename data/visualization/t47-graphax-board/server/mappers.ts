@@ -10,6 +10,7 @@ import {
   type NodeMetadata,
   type Project,
   normalizeCategoryKeys,
+  normalizeReliability,
 } from '../shared/types.ts';
 import { extractId, toRecordId } from './db.ts';
 import { isCategoryIcon, isCategoryShape, normalizeColor } from './validation.ts';
@@ -71,6 +72,7 @@ export function mapNode(raw: Record<string, unknown>): GraphNode {
     positionX: Number.isFinite(posX) ? posX : 0,
     positionY: Number.isFinite(posY) ? posY : 0,
     metadata: sanitizeMetadata(raw.metadata),
+    reliability: normalizeReliability(raw.reliability),
     createdAt: String(raw.createdAt ?? new Date().toISOString()),
     updatedAt: String(raw.updatedAt ?? new Date().toISOString()),
   };

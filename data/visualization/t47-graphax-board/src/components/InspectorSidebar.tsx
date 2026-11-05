@@ -14,6 +14,7 @@ import {
   X,
 } from 'lucide-react';
 import type { Category, EdgeStyle, GraphEdge, GraphNode, NodeMetadata } from '@shared/types';
+import { RELIABILITY_CREDIBILITY, RELIABILITY_SOURCES } from '@shared/types';
 import { cn } from '@/lib/utils';
 import { LINK_COLORS } from '@/lib/icons';
 import {
@@ -38,6 +39,7 @@ interface InspectorSidebarProps {
       categoryId: string | null;
       content: string;
       metadata: NodeMetadata;
+      reliability: string | null;
     }>
   ) => Promise<void>;
   onDeleteNode: (nodeId: string) => Promise<unknown>;
@@ -72,7 +74,6 @@ const MarkdownPreview = lazy(() => import('@/components/MarkdownPreview'));
 export const INSPECTOR_SAVE_DELAY_MS = 350;
 
 const METADATA_PRESETS: Array<{ key: string; defaultVal: string }> = [
-  { key: 'Fiabilité', defaultVal: 'Confirmé' },
   { key: 'Statut', defaultVal: 'Actif' },
   { key: 'Date', defaultVal: new Date().toISOString().slice(0, 10) },
   { key: 'Source', defaultVal: '' },
@@ -448,6 +449,49 @@ export function InspectorSidebar({
                 </option>
               ))}
             </select>
+          </div>
+
+          {/* Reliability: Admiralty code (A3) */}
+          <div>
+            <label className="block text-xs font-medium uppercase tracking-wider text-zinc-400 mb-1.5">
+              Fiabilité (code de l’Amirauté)
+            </label>
+            <div className="flex gap-2">
+              <select
+                aria-label="Fiabilité de la source"
+                value={selectedNode.reliability?.[0] ?? ''}
+                onChange={(e) => {
+                  const source = e.target.value;
+                  const info = selectedNode.reliability?.[1] ?? '6';
+                  void onUpdateNode(selectedNode.id, { reliability: source ? `${source}${info}` : null });
+                }}
+                className="flex-1 min-w-0 px-2 py-2 text-xs rounded-lg bg-zinc-950 border border-filet text-zinc-100 focus:border-cyan-500 focus:outline-none"
+              >
+                <option value="">Source : non évaluée</option>
+                {RELIABILITY_SOURCES.map((s) => (
+                  <option key={s.code} value={s.code}>
+                    {s.code} — {s.label}
+                  </option>
+                ))}
+              </select>
+              <select
+                aria-label="Crédibilité de l’information"
+                value={selectedNode.reliability?.[1] ?? ''}
+                onChange={(e) => {
+                  const info = e.target.value;
+                  const source = selectedNode.reliability?.[0] ?? 'F';
+                  void onUpdateNode(selectedNode.id, { reliability: info ? `${source}${info}` : null });
+                }}
+                className="flex-1 min-w-0 px-2 py-2 text-xs rounded-lg bg-zinc-950 border border-filet text-zinc-100 focus:border-cyan-500 focus:outline-none"
+              >
+                <option value="">Information : non évaluée</option>
+                {RELIABILITY_CREDIBILITY.map((s) => (
+                  <option key={s.code} value={s.code}>
+                    {s.code} — {s.label}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
           {/* Metadata Free Attributes */}
