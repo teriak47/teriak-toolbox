@@ -108,6 +108,8 @@ interface HistoryActions {
 const CLIPBOARD_KEY = 'graphax-clipboard';
 type ClipboardContent = {
   format: 'graphax-clipboard';
+  /** When it was copied: the newest of the stored and the in-memory copy is pasted */
+  copiedAt: number;
   projectId: string;
   nodes: GraphNode[];
   edges: GraphEdge[];
@@ -1534,15 +1536,19 @@ export function Workspace({ projectId, onBack, onOpenProject }: WorkspaceProps) 
     const usedCats = new Set(nodes.map((n) => n.categoryId));
     const clip: ClipboardContent = {
       format: 'graphax-clipboard',
+      copiedAt: Date.now(),
       projectId,
       nodes,
       edges,
       categories: categories.filter((c) => usedCats.has(c.id)).map((c) => ({ id: c.id, name: c.name })),
     };
+    // Kept in memory too: if the storage refuses it (full, blocked), an older stored copy
+    // must not be pasted instead
+    clipboardMemory = clip;
     try {
       localStorage.setItem(CLIPBOARD_KEY, JSON.stringify(clip));
     } catch {
-      clipboardMemory = clip;
+      // the in-memory copy is the newest one
     }
     pasteCountRef.current = 0;
     setHistoryNotice(`${nodes.length} nœud${nodes.length > 1 ? 's copiés' : ' copié'} (Ctrl+V pour coller)`);
@@ -1550,10 +1556,13 @@ export function Workspace({ projectId, onBack, onOpenProject }: WorkspaceProps) 
   };
 
   const pasteClipboard = (): boolean => {
+    // The newest copy wins: the stored one may come from another tab, the in-memory one from
+    // a copy the storage refused
     let clip: ClipboardContent | null = clipboardMemory;
     try {
       const raw = localStorage.getItem(CLIPBOARD_KEY);
-      if (raw) clip = JSON.parse(raw) as ClipboardContent;
+      const stored = raw ? (JSON.parse(raw) as ClipboardContent) : null;
+      if (stored && (!clip || (stored.copiedAt ?? 0) > (clip.copiedAt ?? 0))) clip = stored;
     } catch {
       // keep the in-memory copy
     }
