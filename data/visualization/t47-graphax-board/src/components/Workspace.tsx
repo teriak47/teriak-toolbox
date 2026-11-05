@@ -42,6 +42,8 @@ import {
   type TakePendingNodeEdit,
 } from '@/components/InspectorSidebar';
 import { downloadProjectExport } from '@/lib/exportProject';
+import { buildMarkdownReport } from '@/lib/report';
+import { downloadBlob, svgToPng } from '@/lib/graphImage';
 import { useSaveQueue } from '@/hooks/useSaveQueue';
 import {
   collectMetadataKeys,
@@ -55,7 +57,7 @@ import { MultiSelectionPanel } from '@/components/MultiSelectionPanel';
 import { SnapshotsModal } from '@/components/SnapshotsModal';
 import { getCategoryIcon } from '@/lib/icons';
 import { computeConstellationLayout } from '@/lib/forceLayout';
-import { cn, moveItem } from '@/lib/utils';
+import { cn, exportFileName, moveItem } from '@/lib/utils';
 import { UndoHistory, type HistoryEntry } from '@/lib/history';
 import { AppFooter } from '@/components/AppFooter';
 import logoWhite from '@/ds/assets/logo-white.svg';
@@ -296,6 +298,7 @@ export function Workspace({ projectId, onBack, onOpenProject }: WorkspaceProps) 
   const [editingProjectName, setEditingProjectName] = useState(false);
   const [projectNameDraft, setProjectNameDraft] = useState('');
   const [exporting, setExporting] = useState(false);
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [exportNotice, setExportNotice] = useState<{
     kind: 'error' | 'warning';
     message: string;
@@ -1476,6 +1479,46 @@ export function Workspace({ projectId, onBack, onOpenProject }: WorkspaceProps) 
     }
   };
 
+  // Report and pictures (A6), built in the browser from what the workspace shows
+  const handleExportOther = async (kind: 'md' | 'svg' | 'png') => {
+    if (!project || exporting) return;
+    setExporting(true);
+    setExportNotice(null);
+    try {
+      // Edits still waiting in the inspector go into the export too: they are applied, then
+      // the export reads the state once it has rendered
+      flushPendingEdits();
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      if (kind === 'md') {
+        const md = buildMarkdownReport({
+          project,
+          categories: categoriesRef.current,
+          nodes: entitiesRef.current,
+          edges: relationsRef.current,
+        });
+        downloadBlob(new Blob([md], { type: 'text/markdown;charset=utf-8' }), exportFileName(project.name, new Date(), 'md'));
+        return;
+      }
+      // The picture shows the graph without the current selection
+      setSelectedNodeId(null);
+      setSelectedEdgeId(null);
+      setSelectedNodeIds([]);
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      const svg = canvasRef.current?.exportSvg();
+      if (!svg) throw new Error('le graphe est vide.');
+      const name = exportFileName(project.name, new Date(), kind);
+      if (kind === 'svg') downloadBlob(new Blob([svg], { type: 'image/svg+xml' }), name);
+      else downloadBlob(await svgToPng(svg), name);
+    } catch (err) {
+      setExportNotice({
+        kind: 'error',
+        message: `Export impossible : ${err instanceof Error ? err.message : 'erreur inconnue.'}`,
+      });
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const commitProjectTitle = async () => {
     setEditingProjectName(false);
     if (!project) return;
@@ -1940,21 +1983,52 @@ export function Workspace({ projectId, onBack, onOpenProject }: WorkspaceProps) 
             <History className="w-3.5 h-3.5 text-zinc-400" />
             <span className="hidden md:inline">Instantanés</span>
           </button>
-          <button
-            type="button"
-            onClick={() => void handleExportProject()}
-            disabled={exporting}
-            aria-busy={exporting}
-            title="Exporter ce projet en .json"
-            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium bg-zinc-950 hover:bg-zinc-800 border border-filet text-zinc-300 transition-colors disabled:opacity-60 disabled:cursor-wait"
-          >
-            {exporting ? (
-              <Loader2 className="w-3.5 h-3.5 text-zinc-400 animate-spin" />
-            ) : (
-              <Download className="w-3.5 h-3.5 text-zinc-400" />
+          {/* Export menu: the project as JSON, a Markdown report, or a picture of the graph (A6) */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setExportMenuOpen((v) => !v)}
+              disabled={exporting}
+              aria-busy={exporting}
+              aria-haspopup="menu"
+              aria-expanded={exportMenuOpen}
+              title="Exporter le projet, un rapport ou une image du graphe"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium bg-zinc-950 hover:bg-zinc-800 border border-filet text-zinc-300 transition-colors disabled:opacity-60 disabled:cursor-wait"
+            >
+              {exporting ? (
+                <Loader2 className="w-3.5 h-3.5 text-zinc-400 animate-spin" />
+              ) : (
+                <Download className="w-3.5 h-3.5 text-zinc-400" />
+              )}
+              <span className="hidden md:inline">{exporting ? 'Export…' : 'Exporter'}</span>
+            </button>
+            {exportMenuOpen && (
+              <div role="menu" className="absolute right-0 mt-1.5 w-60 rounded-xl bg-zinc-900 border border-filet shadow-2xl py-1 z-50">
+                {(
+                  [
+                    ['json', 'Projet complet (.json)', 'Sauvegarde réimportable'],
+                    ['md', 'Rapport (.md)', 'Nœuds par catégorie, attributs, notes et liens'],
+                    ['svg', 'Image vectorielle (.svg)', 'Tout le graphe'],
+                    ['png', 'Image (.png)', 'Tout le graphe, en haute définition'],
+                  ] as const
+                ).map(([kind, label, hint]) => (
+                  <button
+                    key={kind}
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setExportMenuOpen(false);
+                      void (kind === 'json' ? handleExportProject() : handleExportOther(kind));
+                    }}
+                    className="w-full px-3 py-2 text-left hover:bg-zinc-800"
+                  >
+                    <span className="block text-xs text-zinc-200">{label}</span>
+                    <span className="block text-[11px] text-zinc-500">{hint}</span>
+                  </button>
+                ))}
+              </div>
             )}
-            <span className="hidden md:inline">{exporting ? 'Export…' : 'Export .json'}</span>
-          </button>
+          </div>
         </div>
       </header>
 
@@ -2262,6 +2336,7 @@ export function Workspace({ projectId, onBack, onOpenProject }: WorkspaceProps) 
           className="flex-1 h-full relative"
           onClick={() => {
             if (layoutMenuOpen) setLayoutMenuOpen(false);
+            if (exportMenuOpen) setExportMenuOpen(false);
           }}
         >
           <GraphCanvas

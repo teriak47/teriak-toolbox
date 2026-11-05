@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import type { Category, CategoryShape, GraphEdge, GraphNode } from '@shared/types';
 import { describeReliability } from '@shared/types';
+import { buildGraphSvg } from '@/lib/graphImage';
 import { getCategoryIcon } from '@/lib/icons';
 import { cardEntries } from '@/lib/metadata';
 import { cn } from '@/lib/utils';
@@ -45,6 +46,8 @@ export interface GraphCanvasHandle {
   getViewportCenter: () => { x: number; y: number };
   /** Moves nodes on screen at once (undo/redo), even while the live physics runs */
   setNodePositions: (positions: Array<{ id: string; positionX: number; positionY: number }>) => void;
+  /** The whole graph as a standalone SVG (A6), or null when it is empty */
+  exportSvg: () => string | null;
 }
 
 interface LinkingWireState {
@@ -185,6 +188,8 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
   ) {
     const containerRef = useRef<HTMLDivElement>(null);
     const svgRef = useRef<SVGSVGElement>(null);
+    // The group moved by the camera: it holds the whole graph (picture export)
+    const contentRef = useRef<SVGGElement>(null);
 
     const {
       viewport,
@@ -477,6 +482,11 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
           });
           setSimulationPositionsRef.current?.(positions);
           wakePhysicsRef.current?.();
+        },
+        exportSvg: () => {
+          if (!svgRef.current || !contentRef.current || !containerRef.current) return null;
+          const background = getComputedStyle(containerRef.current).backgroundColor || '#0b0b0d';
+          return buildGraphSvg(svgRef.current, contentRef.current, background);
         },
       }),
       [fitView, centerOnPoint, getViewportCenter]
@@ -1018,7 +1028,7 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
             fill="transparent"
           />
 
-          <g transform={`translate(${viewport.x}, ${viewport.y}) scale(${viewport.zoom})`}>
+          <g ref={contentRef} transform={`translate(${viewport.x}, ${viewport.y}) scale(${viewport.zoom})`}>
             {/* 1. EDGES LAYER */}
             {renderedEdges.map(({ edge, pathD, mx, my, arrowPoints, midArrowPoints }) => {
               const isSelected = edge.id === selectedEdgeId;

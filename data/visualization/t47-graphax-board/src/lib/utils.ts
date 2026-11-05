@@ -41,8 +41,8 @@ export function slugify(name: string): string {
     .replace(/^-|-$/g, '');
 }
 
-export function exportFileName(projectName: string, date = new Date()): string {
-  return `graphax-${slugify(projectName) || 'projet'}-${date.toISOString().slice(0, 10)}.json`;
+export function exportFileName(projectName: string, date = new Date(), extension = 'json'): string {
+  return `graphax-${slugify(projectName) || 'projet'}-${date.toISOString().slice(0, 10)}.${extension}`;
 }
 
 // Copy of a list with the item at `from` moved to index `to` (indexes are clamped)
