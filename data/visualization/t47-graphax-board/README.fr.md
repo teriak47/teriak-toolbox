@@ -11,7 +11,7 @@ Application locale d'investigation, d'OSINT/Cyber, d'analyse de lore et de reche
 ## Architecture Technique
 
 - **Frontend :** React 19 + TypeScript + Vite 8 + Tailwind CSS v4
-- **Moteur de Graphe :** canevas SVG développé pour Graphax (`src/components/GraphCanvas.tsx`) — cartes d'indices personnalisées, liens tirés depuis le cadre d'un nœud, édition directe des labels sur les flèches, mini-map, simulation de forces optionnelle et mise en page hiérarchique (`@dagrejs/dagre`)
+- **Moteur de Graphe :** canevas SVG développé pour Graphax. `src/components/GraphCanvas.tsx` porte son état, sa caméra et sa physique, et `src/components/canvas/` ses éléments (nœuds, liens, dock, mini-map, confirmation de suppression, menu de catégorie) — cartes d'indices personnalisées, liens tirés depuis le cadre d'un nœud, édition directe des labels sur les flèches, mini-map, simulation de forces optionnelle et mise en page hiérarchique (`@dagrejs/dagre`). Au-delà de 1 000 nœuds, la simulation de forces passe à une approximation de Barnes-Hut pour que les grands graphes restent fluides.
 - **Backend Local :** Node.js + Hono (`http://127.0.0.1:3456`)
 - **Base de Données 100% Locale :** **SurrealDB Embedded** (`@surrealdb/node` et son moteur natif `@surrealdb/node-native`, stockage persistant sur disque `surrealkv://` dans `./data/graphax.db`, relations graphe natives `RELATE`)
 

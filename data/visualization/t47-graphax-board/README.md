@@ -11,7 +11,7 @@ Reversing a link now keeps pending edits, and a failed save is reported with a r
 ## Architecture
 
 - **Front end:** React 19, TypeScript, Vite 8 and Tailwind CSS v4.
-- **Graph canvas:** an SVG canvas written for Graphax (`src/components/GraphCanvas.tsx`), with custom node cards, links drawn from a node's frame, inline link labels, a mini-map, an optional force simulation and a hierarchical layout (`@dagrejs/dagre`).
+- **Graph canvas:** an SVG canvas written for Graphax. `src/components/GraphCanvas.tsx` holds its state, camera and physics, and `src/components/canvas/` its parts (nodes, links, dock, mini-map, delete confirmation, category menu). It has custom node cards, links drawn from a node's frame, inline link labels, a mini-map, an optional force simulation and a hierarchical layout (`@dagrejs/dagre`). Above 1,000 nodes the force simulation uses a Barnes-Hut approximation, so large graphs stay fluid.
 - **Local back end:** Node.js and Hono on `http://127.0.0.1:3456`.
 - **Local database:** embedded SurrealDB (`@surrealdb/node` with its native engine `@surrealdb/node-native`), stored on disk with `surrealkv://` in `data/graphax.db`, using native graph relations (`RELATE`).
 
@@ -38,9 +38,9 @@ Each node can carry a reliability grade, the Admiralty code: a source reliabilit
 
 `Ctrl+C` copies the selected nodes (with the links between them) and `Ctrl+V` pastes copies a little to the side, in the same project or another one. A project can be duplicated from its card on the project list.
 
-The "Exporter" menu saves the project as JSON (re-importable), a Markdown report, or a picture of the whole graph (SVG or PNG).
+The "Exporter" menu saves the project as JSON (re-importable), a Markdown report (nodes by category with their reliability, attributes and notes, then the links), or a picture of the whole graph (SVG or PNG).
 
-Link colours can be named as link types in the "Types de liens" sidebar section (for example "Financier" for sand); a click on a type shows only its links.
+Link colours can be named as link types in the "Types de liens" sidebar section (for example "Financier" for sand); a click on a type shows only its links, and a link created while it is shown takes its colour.
 
 The Graphe / Tableau / Chronologie switch shows the graph, a sortable table of the shown nodes and links, or a timeline of their dated attributes. The focus button in the inspector shows only a node's neighbourhood (1 to 3 links away), and the multiple selection panel finds the shortest path between two nodes; "Revenir à tout le graphe" leaves both. The layout menu can group the nodes in one column per category. The "Vues enregistrées" section saves the current filters, neighbourhood, view mode and framing under a name, to come back to them in one click.
 
