@@ -407,8 +407,8 @@ export function Dashboard({ projects, loading, onRefresh, onOpenProject }: Dashb
       {/* Create / Edit Project Modal */}
       {showCreateModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4">
-          <div className="w-full max-w-lg rounded-2xl bg-zinc-900 border border-filet shadow-2xl overflow-hidden">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-filet">
+          <div className="w-full max-w-lg max-h-[calc(100vh-2rem)] flex flex-col rounded-2xl bg-zinc-900 border border-filet shadow-2xl overflow-hidden">
+            <div className="shrink-0 flex items-center justify-between px-5 py-4 border-b border-filet">
               <h3 className="text-sm font-semibold text-zinc-100">
                 {editingProject ? 'Modifier le dossier' : 'Nouveau dossier d’analyse'}
               </h3>
@@ -421,7 +421,8 @@ export function Dashboard({ projects, loading, onRefresh, onOpenProject }: Dashb
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="p-5 space-y-4">
+            {/* The body scrolls when the presets do not fit; the buttons stay at the bottom */}
+            <form onSubmit={handleSubmit} className="p-5 pb-0 space-y-4 min-h-0 overflow-y-auto">
               <div>
                 <label className="block text-xs font-medium text-zinc-300 mb-1.5">
                   Nom du projet
@@ -552,7 +553,7 @@ export function Dashboard({ projects, loading, onRefresh, onOpenProject }: Dashb
                 </div>
               )}
 
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-filet">
+              <div className="sticky bottom-0 -mx-5 px-5 py-3 flex items-center justify-end gap-2 border-t border-filet bg-zinc-900">
                 <button
                   type="button"
                   onClick={() => setShowCreateModal(false)}
