@@ -19,6 +19,7 @@ import {
   Search,
   X,
   GripVertical,
+  Bookmark,
   History,
   Redo2,
   Undo2,
@@ -98,6 +99,7 @@ interface HistoryActions {
   deleteEdge: (edgeId: string) => Promise<boolean>;
   deleteCategory: (categoryId: string) => Promise<boolean>;
   updateCategory: (categoryId: string, input: CategoryInput) => Promise<boolean>;
+  mergeCategory: (categoryId: string, targetId: string) => Promise<boolean>;
   restore: (snapshot: RestoreSnapshot) => Promise<boolean>;
 }
 
@@ -255,6 +257,19 @@ export function Workspace({ projectId, onBack, onOpenProject }: WorkspaceProps) 
   const [categoryModalOpen, setCategoryModalOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [snapshotsOpen, setSnapshotsOpen] = useState(false);
+  // Saving the categories as a preset (V5): the name being typed, null when closed
+  const [presetName, setPresetName] = useState<string | null>(null);
+  const savePreset = async () => {
+    const name = (presetName ?? '').trim();
+    if (!name) return;
+    try {
+      await api.saveProjectPreset(projectId, name);
+      setPresetName(null);
+      setHistoryNotice(`Preset « ${name} » enregistré : proposé à la création d’un projet.`);
+    } catch (err) {
+      setHistoryNotice(err instanceof Error ? err.message : 'Enregistrement du preset impossible.');
+    }
+  };
   const [layoutMenuOpen, setLayoutMenuOpen] = useState(false);
   const [editingProjectName, setEditingProjectName] = useState(false);
   const [projectNameDraft, setProjectNameDraft] = useState('');
@@ -1117,6 +1132,11 @@ export function Workspace({ projectId, onBack, onOpenProject }: WorkspaceProps) 
         () => false
       );
     },
+    mergeCategory: async (categoryId, targetId) => {
+      const ids = new Set(categoriesRef.current.map((c) => c.id));
+      if (!ids.has(categoryId) || !ids.has(targetId)) return true;
+      return mergeCategory(categoryId, targetId);
+    },
     updateCategory: async (categoryId, input) => {
       if (!categoriesRef.current.some((c) => c.id === categoryId)) return true;
       return updateCategory(categoryId, input, { rethrow: true }).then(
@@ -1265,6 +1285,52 @@ export function Workspace({ projectId, onBack, onOpenProject }: WorkspaceProps) 
       );
     },
     [projectId, runSave, recordPresence, categorySnapshot]
+  );
+
+  // Merges a category into another one (V5). Undo puts the source back in its place, gives it
+  // back the nodes still in the target, and restores the target's default keys.
+  const mergeCategory = useCallback(
+    async (categoryId: string, targetId: string): Promise<boolean> => {
+      const replaying = historyRef.current.isApplying;
+      const snapshot = categorySnapshot(categoryId);
+      const target = categoriesRef.current.find((c) => c.id === targetId);
+      if (!snapshot || !target) return false;
+      const res = await runSave(() => enqueueEdgeOp(() => api.mergeCategory(categoryId, targetId)));
+      if (!res) return false;
+      const moved = new Set(res.movedNodeIds);
+      setCategories((prev) =>
+        prev.filter((c) => c.id !== categoryId).map((c) => (c.id === targetId ? res.category : c))
+      );
+      setEntities((prev) => prev.map((n) => (moved.has(n.id) ? { ...n, categoryId: targetId } : n)));
+      setHiddenCategoryIds((prev) => {
+        const next = new Set(prev);
+        next.delete(categoryId);
+        return next;
+      });
+      if (!replaying) {
+        const targetBefore = categoryInput(target);
+        const source = snapshot.categories?.[0];
+        const nodeIds = [...moved];
+        recordHistory({
+          label: 'Fusion de catégories',
+          // The target's keys first: that change starts while the replay runs, so it is not
+          // recorded as a new action. The restore comes after it (a restore never records), so
+          // the category list it returns already holds the restored keys.
+          undo: async () => {
+            const keysRestored = await actionsRef.current?.updateCategory(targetId, targetBefore);
+            if (keysRestored === false) return false;
+            const restored = await actionsRef.current?.restore({
+              categories: source ? [source] : [],
+              assignments: nodeIds.length > 0 ? [{ categoryId, nodeIds, fromCategoryId: targetId }] : [],
+            });
+            return restored !== false;
+          },
+          redo: () => actionsRef.current?.mergeCategory(categoryId, targetId),
+        });
+      }
+      return true;
+    },
+    [runSave, enqueueEdgeOp, categorySnapshot, recordHistory]
   );
 
   // Its nodes lose the category; undo gives it back to those that have not got another since
@@ -1850,18 +1916,59 @@ export function Workspace({ projectId, onBack, onOpenProject }: WorkspaceProps) 
                   <span className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
                     Catégories ({categories.length})
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditingCategory(null);
-                      setCategoryModalOpen(true);
-                    }}
-                    className="inline-flex items-center gap-0.5 text-xs font-medium text-cyan-400 hover:text-cyan-300"
-                  >
-                    <Plus className="w-3 h-3" />
-                    <span>Ajouter</span>
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setPresetName((v) => (v === null ? project?.name ?? '' : null))}
+                      title="Enregistrer ces catégories comme preset, pour créer d’autres projets avec"
+                      aria-label="Enregistrer comme preset"
+                      className="p-0.5 text-zinc-400 hover:text-cyan-300"
+                    >
+                      <Bookmark className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingCategory(null);
+                        setCategoryModalOpen(true);
+                      }}
+                      className="inline-flex items-center gap-0.5 text-xs font-medium text-cyan-400 hover:text-cyan-300"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>Ajouter</span>
+                    </button>
+                  </div>
                 </div>
+
+                {presetName !== null && (
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      void savePreset();
+                    }}
+                    className="flex items-center gap-1.5"
+                  >
+                    <input
+                      autoFocus
+                      value={presetName}
+                      onChange={(e) => setPresetName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Escape') setPresetName(null);
+                      }}
+                      placeholder="Nom du preset"
+                      aria-label="Nom du preset"
+                      maxLength={80}
+                      className="flex-1 min-w-0 px-2 py-1 text-xs rounded-md bg-zinc-950 border border-filet text-zinc-100 focus:border-cyan-500 focus:outline-none"
+                    />
+                    <button
+                      type="submit"
+                      disabled={!presetName.trim()}
+                      className="px-2 py-1 rounded-md text-xs font-semibold bg-cyan-500 text-zinc-950 disabled:opacity-50"
+                    >
+                      Enregistrer
+                    </button>
+                  </form>
+                )}
 
                 {hiddenCategoryIds.size > 0 && (
                   <button
@@ -2123,6 +2230,8 @@ export function Workspace({ projectId, onBack, onOpenProject }: WorkspaceProps) 
             ? entities.filter((n) => n.categoryId === editingCategory.id).map((n) => n.title)
             : []
         }
+        mergeTargets={editingCategory ? categories.filter((c) => c.id !== editingCategory.id) : []}
+        onMerge={mergeCategory}
       />
     </div>
   );

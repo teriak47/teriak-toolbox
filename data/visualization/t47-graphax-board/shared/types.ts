@@ -215,3 +215,16 @@ export function describeReliability(code: string | null | undefined): string | n
   const info = RELIABILITY_CREDIBILITY.find((s) => s.code === c[1])?.label;
   return `${source} · ${info}`;
 }
+
+// ---- User presets (V5): a project's categories saved to start new projects with ----
+
+export type PresetCategory = Pick<Category, 'name' | 'color' | 'icon' | 'shape' | 'metadataKeys' | 'cardKeys'>;
+
+export interface UserPreset {
+  id: string;
+  name: string;
+  categories: PresetCategory[];
+  createdAt: string;
+}
+
+export const MAX_PRESET_NAME_LENGTH = 80;

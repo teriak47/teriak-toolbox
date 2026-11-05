@@ -12,6 +12,7 @@ import { categoriesRouter } from './routes/categories.ts';
 import { nodesRouter } from './routes/nodes.ts';
 import { edgesRouter } from './routes/edges.ts';
 import { restoreRouter } from './routes/restore.ts';
+import { presetsRouter } from './routes/presets.ts';
 import { snapshotsRouter } from './routes/snapshots.ts';
 
 export const app = new Hono();
@@ -43,6 +44,7 @@ app.route('/api', categoriesRouter);
 app.route('/api', nodesRouter);
 app.route('/api', edgesRouter);
 app.route('/api', restoreRouter);
+app.route('/api', presetsRouter);
 app.route('/api', snapshotsRouter);
 
 const distDir = path.resolve(import.meta.dirname, '..', 'dist');

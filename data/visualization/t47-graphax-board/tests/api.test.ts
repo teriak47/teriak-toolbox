@@ -947,6 +947,96 @@ describe('project snapshots', () => {
   });
 });
 
+describe('category merge', () => {
+  it('moves the nodes, adds the missing keys, deletes the source, and can be restored', async () => {
+    const projectId = await createProject('Fusion');
+    const mk = async (name: string, metadataKeys: string[]) =>
+      (await call('POST', `/api/projects/${projectId}/categories`, {
+        name, color: '#60ccc5', icon: 'user', shape: 'circle', metadataKeys, cardKeys: [],
+      })).json.category;
+    const a = await mk('Personne', ['Nom', 'Pays']);
+    const b = await mk('Individu', ['Pays', 'Alias']);
+    const other = await mk('Lieu', []);
+    const n1 = await createNode(projectId, 'N1');
+    const n2 = await createNode(projectId, 'N2', 100);
+    await call('PATCH', `/api/nodes/${n1}`, { categoryId: b.id });
+    await call('PATCH', `/api/nodes/${n2}`, { categoryId: a.id });
+
+    assert.equal((await call('POST', `/api/categories/${b.id}/merge`, { targetId: b.id })).status, 400);
+    assert.equal((await call('POST', `/api/categories/${b.id}/merge`, { targetId: 'nope' })).status, 404);
+    const res = await call('POST', `/api/categories/${b.id}/merge`, { targetId: a.id });
+    assert.equal(res.status, 200);
+    assert.deepEqual(res.json.category.metadataKeys, ['Nom', 'Pays', 'Alias']);
+    assert.deepEqual(res.json.movedNodeIds, [n1]);
+    let g = (await call('GET', `/api/projects/${projectId}`)).json;
+    assert.deepEqual(g.categories.map((c: { name: string }) => c.name), ['Personne', 'Lieu']);
+    assert.ok(g.nodes.every((n: { categoryId: string }) => n.categoryId === a.id));
+
+    // Undo: the source comes back in its place and gets back the nodes still in the target
+    await call('PATCH', `/api/nodes/${n2}`, { categoryId: other.id });
+    const back = await call('POST', `/api/projects/${projectId}/restore`, {
+      categories: [{ ...b, index: 1 }],
+      assignments: [{ categoryId: b.id, fromCategoryId: a.id, nodeIds: [n1, n2] }],
+    });
+    assert.equal(back.status, 200);
+    g = (await call('GET', `/api/projects/${projectId}`)).json;
+    assert.deepEqual(g.categories.map((c: { name: string }) => c.name), ['Personne', 'Individu', 'Lieu']);
+    assert.equal(g.nodes.find((n: { id: string }) => n.id === n1).categoryId, b.id);
+    assert.equal(g.nodes.find((n: { id: string }) => n.id === n2).categoryId, other.id);
+  });
+
+  it('stores the bare target id on the moved nodes, even when given with its table prefix', async () => {
+    const projectId = await createProject('Fusion préfixe');
+    const mk = async (name: string) =>
+      (await call('POST', `/api/projects/${projectId}/categories`, { name, color: '#60ccc5', icon: 'user', shape: 'circle' })).json.category;
+    const a = await mk('A');
+    const b = await mk('B');
+    const n = await createNode(projectId, 'N');
+    await call('PATCH', `/api/nodes/${n}`, { categoryId: b.id });
+    assert.equal((await call('POST', `/api/categories/${b.id}/merge`, { targetId: `category:${a.id}` })).status, 200);
+    const g = (await call('GET', `/api/projects/${projectId}`)).json;
+    assert.equal(g.nodes[0].categoryId, a.id);
+  });
+
+  it('refuses to merge categories of two projects', async () => {
+    const p1 = await createProject('P1');
+    const p2 = await createProject('P2');
+    const c1 = (await call('POST', `/api/projects/${p1}/categories`, { name: 'X', color: '#60ccc5', icon: 'user', shape: 'circle' })).json.category;
+    const c2 = (await call('POST', `/api/projects/${p2}/categories`, { name: 'Y', color: '#60ccc5', icon: 'user', shape: 'circle' })).json.category;
+    assert.equal((await call('POST', `/api/categories/${c1.id}/merge`, { targetId: c2.id })).status, 400);
+  });
+});
+
+describe('user presets', () => {
+  it('saves a project\'s categories as a preset and creates a project from it', async () => {
+    const source = await createProject('Modèle');
+    for (const [name, keys] of [['Témoin', ['Nom', 'Rôle']], ['Indice', []]] as const) {
+      await call('POST', `/api/projects/${source}/categories`, {
+        name, color: '#e89dc0', icon: 'user', shape: 'circle', metadataKeys: keys, cardKeys: keys.slice(0, 1),
+      });
+    }
+    assert.equal((await call('POST', `/api/projects/${source}/presets`, { name: '  ' })).status, 400);
+    const saved = await call('POST', `/api/projects/${source}/presets`, { name: 'Mon enquête' });
+    assert.equal(saved.status, 201);
+    assert.deepEqual(saved.json.preset.categories.map((c: { name: string }) => c.name), ['Témoin', 'Indice']);
+
+    const list = (await call('GET', '/api/presets')).json.presets;
+    assert.ok(list.some((p: { id: string }) => p.id === saved.json.preset.id));
+
+    const created = await call('POST', '/api/projects', { name: 'Nouveau', userPresetId: saved.json.preset.id });
+    assert.equal(created.status, 201);
+    const cats = (await call('GET', `/api/projects/${created.json.project.id}`)).json.categories;
+    assert.deepEqual(cats.map((c: { name: string }) => c.name), ['Témoin', 'Indice']);
+    assert.deepEqual(cats[0].metadataKeys, ['Nom', 'Rôle']);
+    assert.deepEqual(cats[0].cardKeys, ['Nom']);
+
+    assert.equal((await call('POST', '/api/projects', { name: 'X', userPresetId: 'nope' })).status, 404);
+    assert.equal((await call('POST', '/api/projects/nope/presets', { name: 'X' })).status, 404);
+    assert.equal((await call('DELETE', `/api/presets/${saved.json.preset.id}`)).status, 200);
+    assert.equal((await call('DELETE', `/api/presets/${saved.json.preset.id}`)).status, 404);
+  });
+});
+
 describe('local-only guard', () => {
   it('accepts same-origin and header-less requests', async () => {
     assert.equal((await call('GET', '/api/health')).status, 200);

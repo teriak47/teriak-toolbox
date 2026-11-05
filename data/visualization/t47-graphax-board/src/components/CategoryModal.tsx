@@ -32,6 +32,9 @@ interface CategoryModalProps {
   knownKeys?: string[];
   /** Titles of the nodes in this category, shown before deleting it */
   usedBy?: string[];
+  /** Other categories of the project, offered as merge targets (V5) */
+  mergeTargets?: Category[];
+  onMerge?: (categoryId: string, targetId: string) => Promise<unknown>;
 }
 
 // Number of node titles listed before deleting a category
@@ -50,7 +53,11 @@ export function CategoryModal({
   onDelete,
   knownKeys = [],
   usedBy = [],
+  mergeTargets = [],
+  onMerge,
 }: CategoryModalProps) {
+  const [mergeTarget, setMergeTarget] = useState('');
+  const [confirmMerge, setConfirmMerge] = useState(false);
   const [name, setName] = useState('');
   const [color, setColor] = useState(DEFAULT_CATEGORY_COLOR);
   const [icon, setIcon] = useState<CategoryIconName>(DEFAULT_CATEGORY_ICON);
@@ -74,6 +81,8 @@ export function CategoryModal({
       const card = new Set(initialCategory?.cardKeys ?? []);
       setKeyRows((initialCategory?.metadataKeys ?? []).map((k) => newKeyRow(k, card.has(k))));
       setConfirmDelete(false);
+      setMergeTarget('');
+      setConfirmMerge(false);
     }
   }, [isOpen, initialCategory]);
 
@@ -374,6 +383,65 @@ export function CategoryModal({
                 </>
               )}
               <p className="mt-1.5 text-zinc-400">Les nœuds et leurs liens ne sont pas supprimés.</p>
+            </div>
+          )}
+
+          {/* Merge into another category (V5) */}
+          {initialCategory && onMerge && mergeTargets.length > 0 && (
+            <div className="space-y-1.5 pt-3 border-t border-filet">
+              <label htmlFor="graphax-merge-target" className="block text-xs font-medium uppercase tracking-wider text-zinc-400">
+                Fusionner dans une autre catégorie
+              </label>
+              <div className="flex gap-2">
+                <select
+                  id="graphax-merge-target"
+                  value={mergeTarget}
+                  onChange={(e) => {
+                    setMergeTarget(e.target.value);
+                    setConfirmMerge(false);
+                  }}
+                  className="flex-1 min-w-0 px-2 py-1.5 text-xs rounded-lg bg-zinc-950 border border-filet text-zinc-100 focus:border-cyan-500 focus:outline-none"
+                >
+                  <option value="">Choisir la catégorie cible…</option>
+                  {mergeTargets.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  disabled={!mergeTarget || saving}
+                  onClick={async () => {
+                    if (!confirmMerge) {
+                      setConfirmMerge(true);
+                      return;
+                    }
+                    setSaving(true);
+                    try {
+                      await onMerge(initialCategory.id, mergeTarget);
+                      onClose();
+                    } finally {
+                      setSaving(false);
+                    }
+                  }}
+                  className={cn(
+                    'shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:opacity-50',
+                    confirmMerge
+                      ? 'bg-amber-500 text-zinc-950 hover:bg-amber-400'
+                      : 'border border-filet text-zinc-300 hover:bg-zinc-800'
+                  )}
+                >
+                  {confirmMerge ? 'Confirmer la fusion' : 'Fusionner'}
+                </button>
+              </div>
+              {mergeTarget && (
+                <p className="text-[11px] text-zinc-500">
+                  {usedBy.length} nœud{usedBy.length > 1 ? 's passeront' : ' passera'} dans «{' '}
+                  {mergeTargets.find((c) => c.id === mergeTarget)?.name} », qui recevra aussi les champs par défaut
+                  qui lui manquent ; « {initialCategory.name} » sera supprimée. Ctrl+Z annule la fusion.
+                </p>
+              )}
             </div>
           )}
 
