@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Trash2, X } from 'lucide-react';
+import { Route, Trash2, X } from 'lucide-react';
 import type { Category, GraphNode } from '@shared/types';
 import { cn } from '@/lib/utils';
 
@@ -10,10 +10,18 @@ interface MultiSelectionPanelProps {
   categories: Category[];
   onClear: () => void;
   onDelete: (nodeIds: string[]) => void;
+  /** Shows the shortest chain of links between the two selected nodes (V4) */
+  onShortestPath?: (fromId: string, toId: string) => void;
 }
 
 // Right panel shown instead of the inspector when several nodes are selected (A2)
-export function MultiSelectionPanel({ nodes, categories, onClear, onDelete }: MultiSelectionPanelProps) {
+export function MultiSelectionPanel({
+  nodes,
+  categories,
+  onClear,
+  onDelete,
+  onShortestPath,
+}: MultiSelectionPanelProps) {
   const [confirm, setConfirm] = useState(false);
   const ids = nodes.map((n) => n.id).join(',');
   // A confirmation only applies to the selection it was asked for
@@ -63,6 +71,17 @@ export function MultiSelectionPanel({ nodes, categories, onClear, onDelete }: Mu
           ))}
           {nodes.length > PREVIEW && <li className="text-zinc-500">… et {nodes.length - PREVIEW} autres</li>}
         </ul>
+
+        {nodes.length === 2 && onShortestPath && (
+          <button
+            type="button"
+            onClick={() => onShortestPath(nodes[0].id, nodes[1].id)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-filet text-zinc-200 hover:bg-zinc-800"
+          >
+            <Route className="w-3.5 h-3.5 text-cyan-400" />
+            Plus court chemin entre les deux
+          </button>
+        )}
 
         <div className="text-xs text-zinc-500 space-y-1 border-t border-filet pt-3">
           <p>Glisser un nœud de la sélection déplace tout le groupe.</p>

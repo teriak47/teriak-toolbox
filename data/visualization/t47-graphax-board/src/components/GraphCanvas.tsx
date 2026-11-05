@@ -44,6 +44,10 @@ export interface GraphCanvasHandle {
   fitView: (animated?: boolean) => void;
   centerOnPoint: (worldX: number, worldY: number, targetZoom?: number) => void;
   getViewportCenter: () => { x: number; y: number };
+  /** Current framing (pan and zoom), for saved views (V4) */
+  getViewport: () => { x: number; y: number; zoom: number };
+  /** Moves the framing to a saved one, animated */
+  showViewport: (target: { x: number; y: number; zoom: number }) => void;
   /** Moves nodes on screen at once (undo/redo), even while the live physics runs */
   setNodePositions: (positions: Array<{ id: string; positionX: number; positionY: number }>) => void;
   /** The whole graph as a standalone SVG (A6), or null when it is empty */
@@ -472,6 +476,9 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
         fitView,
         centerOnPoint,
         getViewportCenter,
+        getViewport: () => ({ ...viewportRef.current }),
+        showViewport: (target) =>
+          animateViewportTo({ x: target.x, y: target.y, zoom: clampFinite(target.zoom, 1, 0.16, 3.2) }),
         setNodePositions: (positions) => {
           setLivePositions((prev) => {
             const next = new Map(prev);
@@ -489,7 +496,7 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
           return buildGraphSvg(svgRef.current, contentRef.current, background);
         },
       }),
-      [fitView, centerOnPoint, getViewportCenter]
+      [fitView, centerOnPoint, getViewportCenter, animateViewportTo, viewportRef]
     );
 
     // Keyboard deletion is never immediate: Delete/Backspace asks first, then

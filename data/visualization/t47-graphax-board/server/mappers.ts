@@ -11,6 +11,7 @@ import {
   type Project,
   normalizeCategoryKeys,
   normalizeLinkTypes,
+  normalizeSavedViews,
   normalizeReliability,
 } from '../shared/types.ts';
 import { extractId, toRecordId } from './db.ts';
@@ -22,6 +23,7 @@ export function mapProject(raw: Record<string, unknown>): Project {
     name: String(raw.name ?? 'Projet sans titre'),
     description: String(raw.description ?? ''),
     linkTypes: normalizeLinkTypes(raw.linkTypes),
+    savedViews: normalizeSavedViews(raw.savedViews),
     createdAt: String(raw.createdAt ?? new Date().toISOString()),
     updatedAt: String(raw.updatedAt ?? new Date().toISOString()),
   };

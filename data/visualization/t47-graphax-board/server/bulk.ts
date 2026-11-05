@@ -1,5 +1,6 @@
 import type { Surreal } from 'surrealdb';
 import { toRecordId } from './db.ts';
+import type { SavedView } from '../shared/types.ts';
 
 export interface ProjectRecord {
   id: string;
@@ -8,6 +9,7 @@ export interface ProjectRecord {
   createdAt: string;
   updatedAt: string;
   linkTypes?: Record<string, string>;
+  savedViews?: SavedView[];
 }
 
 export interface CategoryRecord {
@@ -69,6 +71,7 @@ export async function insertProjectGraph(db: Surreal, graph: ProjectGraphRecords
       createdAt: graph.project.createdAt,
       updatedAt: graph.project.updatedAt,
       linkTypes: graph.project.linkTypes ?? {},
+      savedViews: graph.project.savedViews ?? [],
     },
   };
 

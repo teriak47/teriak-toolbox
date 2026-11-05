@@ -94,6 +94,8 @@ export interface Project {
   updatedAt: string;
   /** Link types (V2): a name given to a link colour, e.g. { "#d5b36a": "Financier" } */
   linkTypes?: Record<string, string>;
+  /** Saved views (V4): named filters, focus and framing of the workspace */
+  savedViews?: SavedView[];
   nodeCount?: number;
   edgeCount?: number;
   categoryCount?: number;
@@ -248,6 +250,72 @@ export function normalizeLinkTypes(value: unknown): Record<string, string> {
     const label = name.trim().slice(0, MAX_LINK_TYPE_NAME_LENGTH);
     if (label) out[color] = label;
     if (Object.keys(out).length >= MAX_LINK_TYPES) break;
+  }
+  return out;
+}
+
+// ---- Saved views (V4): what the workspace shows, under a name ----
+
+export const MAX_SAVED_VIEWS = 30;
+/** Stands for the unclassified nodes in `hiddenCategoryIds` */
+export const UNCLASSIFIED_VIEW_ID = '__unclassified__';
+export const MAX_SAVED_VIEW_NAME_LENGTH = 60;
+
+export type SavedViewMode = 'graph' | 'table' | 'timeline';
+export type SavedEdgeFilter = 'all' | 'solid' | 'dashed';
+
+export interface SavedView {
+  id: string;
+  name: string;
+  viewMode: SavedViewMode;
+  /** Categories hidden in the sidebar ("__unclassified__" for the unclassified nodes) */
+  hiddenCategoryIds: string[];
+  edgeFilter: SavedEdgeFilter;
+  /** Link type shown alone (V2): a #rrggbb colour or "default" */
+  edgeColorFilter: string | null;
+  /** Neighbourhood of a node, 1 to 3 links away */
+  focus: { nodeId: string; depth: number } | null;
+  /** Framing of the graph view */
+  viewport: { x: number; y: number; zoom: number } | null;
+}
+
+const VIEW_ID = /^[A-Za-z0-9_-]{1,64}$/;
+const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+
+// Keeps the well-formed views, with their invalid fields reset; anything else is dropped
+export function normalizeSavedViews(value: unknown): SavedView[] {
+  if (!Array.isArray(value)) return [];
+  const out: SavedView[] = [];
+  const seen = new Set<string>();
+  for (const raw of value) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) continue;
+    const v = raw as Record<string, unknown>;
+    const id = typeof v.id === 'string' && VIEW_ID.test(v.id) ? v.id : null;
+    const name = typeof v.name === 'string' ? v.name.trim().slice(0, MAX_SAVED_VIEW_NAME_LENGTH) : '';
+    if (!id || !name || seen.has(id)) continue;
+    seen.add(id);
+    const color = typeof v.edgeColorFilter === 'string' ? v.edgeColorFilter.trim().toLowerCase() : '';
+    const focus = v.focus as Record<string, unknown> | null | undefined;
+    const vp = v.viewport as Record<string, unknown> | null | undefined;
+    out.push({
+      id,
+      name,
+      viewMode: v.viewMode === 'table' || v.viewMode === 'timeline' ? v.viewMode : 'graph',
+      hiddenCategoryIds: Array.isArray(v.hiddenCategoryIds)
+        ? [...new Set(v.hiddenCategoryIds.filter((c): c is string => typeof c === 'string' && c.length <= 64))]
+        : [],
+      edgeFilter: v.edgeFilter === 'solid' || v.edgeFilter === 'dashed' ? v.edgeFilter : 'all',
+      edgeColorFilter: color === 'default' || /^#[0-9a-f]{6}$/.test(color) ? color : null,
+      focus:
+        focus && typeof focus.nodeId === 'string' && focus.nodeId
+          ? { nodeId: focus.nodeId, depth: Math.min(3, Math.max(1, Math.round(Number(focus.depth) || 1))) }
+          : null,
+      viewport:
+        vp && finite(vp.x) && finite(vp.y) && finite(vp.zoom) && vp.zoom > 0
+          ? { x: vp.x, y: vp.y, zoom: vp.zoom }
+          : null,
+    });
+    if (out.length >= MAX_SAVED_VIEWS) break;
   }
   return out;
 }

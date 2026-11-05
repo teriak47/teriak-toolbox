@@ -19,6 +19,10 @@ import {
   Search,
   X,
   GripVertical,
+  CalendarDays,
+  Columns3,
+  Network,
+  Table2,
   Bookmark,
   History,
   Redo2,
@@ -31,8 +35,9 @@ import type {
   GraphNode,
   NodeMetadata,
   Project,
+  SavedView,
 } from '@shared/types';
-import { MAX_RESTORE_RECORDS } from '@shared/types';
+import { MAX_RESTORE_RECORDS, MAX_SAVED_VIEWS, MAX_SAVED_VIEW_NAME_LENGTH, UNCLASSIFIED_VIEW_ID } from '@shared/types';
 import { api, type CategoryInput, type RestoreSnapshot } from '@/api/client';
 import { GraphCanvas, type GraphCanvasHandle } from '@/components/GraphCanvas';
 import {
@@ -55,6 +60,9 @@ import {
 } from '@/lib/metadata';
 import { CategoryModal } from '@/components/CategoryModal';
 import { MultiSelectionPanel } from '@/components/MultiSelectionPanel';
+import { GraphTableView } from '@/components/GraphTableView';
+import { TimelineView } from '@/components/TimelineView';
+import { groupedLayout, neighbourhood, pathEdgeIds, shortestPath } from '@/lib/graphViews';
 import { SnapshotsModal } from '@/components/SnapshotsModal';
 import { LINK_COLORS, getCategoryIcon } from '@/lib/icons';
 import { computeConstellationLayout } from '@/lib/forceLayout';
@@ -63,7 +71,7 @@ import { UndoHistory, type HistoryEntry } from '@/lib/history';
 import { AppFooter } from '@/components/AppFooter';
 import logoWhite from '@/ds/assets/logo-white.svg';
 
-const UNCLASSIFIED_FILTER_ID = '__unclassified__';
+const UNCLASSIFIED_FILTER_ID = UNCLASSIFIED_VIEW_ID;
 
 type EdgeFilterMode = 'all' | 'solid' | 'dashed';
 
@@ -279,6 +287,10 @@ export function Workspace({ projectId, onBack, onOpenProject }: WorkspaceProps) 
   const [edgeColorFilter, setEdgeColorFilter] = useState<string | null>(null);
   // Link type being renamed in the sidebar: its colour and the name typed
   const [renamingLinkType, setRenamingLinkType] = useState<{ color: string; name: string } | null>(null);
+  // Views (V4): the neighbourhood of a node, a shortest path, and the table or timeline view
+  const [focus, setFocus] = useState<{ nodeId: string; depth: number } | null>(null);
+  const [pathView, setPathView] = useState<{ ids: string[]; edgeIds: Set<string> } | null>(null);
+  const [viewMode, setViewMode] = useState<'graph' | 'table' | 'timeline'>('graph');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchFocused, setSearchFocused] = useState(false);
 
@@ -312,6 +324,64 @@ export function Workspace({ projectId, onBack, onOpenProject }: WorkspaceProps) 
       })
     );
   };
+  // Saved views (V4): filters, focus, view mode and framing under a name, stored on the project
+  const savedViews = project?.savedViews ?? [];
+  const [viewName, setViewName] = useState<string | null>(null);
+  // The list is replaced as a whole on each save, so saves go one after the other
+  const savedViewsSave = useSerialSave<SavedView[]>();
+  const latestViews = () => savedViewsSave.latest(project?.savedViews ?? []);
+  const persistViews = (next: SavedView[]) => {
+    if (!project) return Promise.resolve(false);
+    const projectId = project.id;
+    // Tracked by the save queue from the start, so an export or a snapshot waits for it too
+    return runSave(() =>
+      savedViewsSave.submit({
+        value: next,
+        stored: project.savedViews ?? [],
+        save: async (value) => (await api.updateProject(projectId, { savedViews: value })).project.savedViews ?? [],
+        apply: (value) => setProject((curr) => (curr ? { ...curr, savedViews: value } : curr)),
+        onError: (err) =>
+          setHistoryNotice(err instanceof Error ? err.message : 'Enregistrement de la vue impossible.'),
+      })
+    ).then((ok) => ok === true);
+  };
+  const saveCurrentView = async () => {
+    const name = (viewName ?? '').trim();
+    if (!name) return;
+    const current = latestViews();
+    if (current.length >= MAX_SAVED_VIEWS) {
+      setHistoryNotice(`${MAX_SAVED_VIEWS} vues au plus : supprimez-en une d’abord.`);
+      return;
+    }
+    const view: SavedView = {
+      id: `v${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`,
+      name: name.slice(0, MAX_SAVED_VIEW_NAME_LENGTH),
+      viewMode,
+      hiddenCategoryIds: [...hiddenCategoryIds],
+      edgeFilter,
+      edgeColorFilter,
+      focus,
+      viewport: viewMode === 'graph' ? canvasRef.current?.getViewport() ?? null : null,
+    };
+    setViewName(null);
+    if (await persistViews([...current, view])) setHistoryNotice(`Vue « ${view.name} » enregistrée.`);
+  };
+  const applyView = (view: SavedView) => {
+    const known = new Set([...categories.map((c) => c.id), UNCLASSIFIED_FILTER_ID]);
+    setHiddenCategoryIds(new Set(view.hiddenCategoryIds.filter((id) => known.has(id))));
+    setEdgeFilter(view.edgeFilter);
+    setEdgeColorFilter(view.edgeColorFilter);
+    setPathView(null);
+    // A focus on a node deleted since is dropped
+    setFocus(view.focus && entities.some((n) => n.id === view.focus?.nodeId) ? view.focus : null);
+    setViewMode(view.viewMode);
+    if (view.viewMode === 'graph' && view.viewport) {
+      const target = view.viewport;
+      requestAnimationFrame(() => canvasRef.current?.showViewport(target));
+    }
+  };
+  const deleteView = (id: string) => void persistViews(latestViews().filter((v) => v.id !== id));
+
   // Saving the categories as a preset (V5): the name being typed, null when closed
   const [presetName, setPresetName] = useState<string | null>(null);
   const savePreset = async () => {
@@ -394,12 +464,19 @@ export function Workspace({ projectId, onBack, onOpenProject }: WorkspaceProps) 
   }, [categories]);
 
   // Visible entities after category filter
+  const focusIds = useMemo(
+    () => (focus ? neighbourhood(focus.nodeId, relations, focus.depth) : null),
+    [focus, relations]
+  );
   const visibleEntities = useMemo(() => {
     return entities.filter((n) => {
       const key = n.categoryId ?? UNCLASSIFIED_FILTER_ID;
-      return !hiddenCategoryIds.has(key);
+      if (hiddenCategoryIds.has(key)) return false;
+      if (focusIds && !focusIds.has(n.id)) return false;
+      if (pathView && !pathView.ids.includes(n.id)) return false;
+      return true;
     });
-  }, [entities, hiddenCategoryIds]);
+  }, [entities, hiddenCategoryIds, focusIds, pathView]);
 
   const visibleEntityIds = useMemo(
     () => new Set(visibleEntities.map((n) => n.id)),
@@ -415,9 +492,10 @@ export function Workspace({ projectId, onBack, onOpenProject }: WorkspaceProps) 
       if (edgeFilter === 'solid' && rel.style !== 'solid') return false;
       if (edgeFilter === 'dashed' && rel.style !== 'dashed') return false;
       if (edgeColorFilter && (rel.color ?? 'default') !== edgeColorFilter) return false;
+      if (pathView && !pathView.edgeIds.has(rel.id)) return false;
       return true;
     });
-  }, [relations, visibleEntityIds, edgeFilter, edgeColorFilter]);
+  }, [relations, visibleEntityIds, edgeFilter, edgeColorFilter, pathView]);
 
   // Search matches across title, content, metadata, category. "Clé:valeur" searches the
   // value of a metadata key, and "Clé:" finds nodes that have that key.
@@ -1455,6 +1533,31 @@ export function Workspace({ projectId, onBack, onOpenProject }: WorkspaceProps) 
     }, 30);
   }, [visibleEntities, relations, handleUpdateBatchPositions]);
 
+  // Views (V4)
+  const startFocus = (nodeId: string) => {
+    setPathView(null);
+    setFocus({ nodeId, depth: focus?.nodeId === nodeId ? focus.depth : 1 });
+    setTimeout(() => canvasRef.current?.fitView(true), 50);
+  };
+  const showShortestPath = (fromId: string, toId: string) => {
+    const ids = shortestPath(fromId, toId, relations);
+    if (!ids) {
+      setHistoryNotice('Aucun chemin ne relie ces deux nœuds.');
+      return;
+    }
+    setFocus(null);
+    setPathView({ ids, edgeIds: pathEdgeIds(ids, relations) });
+    setSelectedNodeIds([]);
+    setTimeout(() => canvasRef.current?.fitView(true), 50);
+  };
+  const handleGroupByCategory = async () => {
+    setLayoutMenuOpen(false);
+    if (visibleEntities.length === 0) return;
+    const newPositions = groupedLayout(visibleEntities, categories.map((c) => c.id));
+    await handleUpdateBatchPositions(newPositions, 'Regroupement par catégorie');
+    setTimeout(() => canvasRef.current?.fitView(true), 30);
+  };
+
   const handleAutoAlign = async (direction: 'LR' | 'TB') => {
     setLayoutMenuOpen(false);
     if (visibleEntities.length === 0) return;
@@ -1965,6 +2068,32 @@ export function Workspace({ projectId, onBack, onOpenProject }: WorkspaceProps) 
             <span>Nœud</span>
           </button>
 
+          {/* View switcher (V4): the graph, a table of nodes and links, or a timeline */}
+          <div className="inline-flex rounded-xl border border-filet overflow-hidden" role="group" aria-label="Vue">
+            {(
+              [
+                ['graph', 'Graphe', Network],
+                ['table', 'Tableau', Table2],
+                ['timeline', 'Chronologie', CalendarDays],
+              ] as const
+            ).map(([mode, label, Icon]) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => setViewMode(mode)}
+                aria-pressed={viewMode === mode}
+                title={`Vue ${label.toLowerCase()}`}
+                className={cn(
+                  'inline-flex items-center gap-1 px-2 py-1.5 text-xs transition-colors',
+                  viewMode === mode ? 'bg-zinc-800 text-zinc-100' : 'bg-zinc-950 text-zinc-400 hover:text-zinc-200'
+                )}
+              >
+                <Icon className="w-3.5 h-3.5" />
+                <span className="hidden lg:inline">{label}</span>
+              </button>
+            ))}
+          </div>
+
           {/* Layout Dropdown */}
           <div className="relative">
             <button
@@ -2005,6 +2134,14 @@ export function Workspace({ projectId, onBack, onOpenProject }: WorkspaceProps) 
                 >
                   <AlignVerticalJustifyCenter className="w-3.5 h-3.5 text-cyan-400" />
                   <span>Hiérarchie Verticale (H → B)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleGroupByCategory()}
+                  className="w-full px-3 py-2 text-left text-xs text-zinc-200 hover:bg-zinc-800 flex items-center gap-2"
+                >
+                  <Columns3 className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Regrouper par catégorie (colonnes)</span>
                 </button>
               </div>
             )}
@@ -2137,6 +2274,81 @@ export function Workspace({ projectId, onBack, onOpenProject }: WorkspaceProps) 
                     </button>
                   ))}
                 </div>
+              </div>
+
+              {/* Saved views (V4) */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wider text-zinc-400">
+                  <span>Vues enregistrées</span>
+                  <button
+                    type="button"
+                    onClick={() => setViewName((v) => (v === null ? '' : null))}
+                    title="Enregistrer les filtres, le voisinage, le mode et le cadrage actuels"
+                    aria-label="Enregistrer la vue actuelle"
+                    className="p-0.5 text-zinc-400 hover:text-cyan-300"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                {viewName !== null && (
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      void saveCurrentView();
+                    }}
+                    className="flex items-center gap-1.5"
+                  >
+                    <input
+                      autoFocus
+                      value={viewName}
+                      maxLength={MAX_SAVED_VIEW_NAME_LENGTH}
+                      aria-label="Nom de la vue"
+                      placeholder="Nom de la vue"
+                      onChange={(e) => setViewName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Escape') setViewName(null);
+                      }}
+                      className="flex-1 min-w-0 px-2 py-1 text-xs rounded-md bg-zinc-950 border border-filet text-zinc-100 focus:border-cyan-500 focus:outline-none"
+                    />
+                    <button
+                      type="submit"
+                      disabled={!viewName.trim()}
+                      className="px-2 py-1 text-xs rounded-md bg-cyan-600 text-white hover:bg-cyan-500 disabled:opacity-40"
+                    >
+                      Enregistrer
+                    </button>
+                  </form>
+                )}
+                {savedViews.length === 0 && viewName === null ? (
+                  <p className="text-xs text-zinc-500">
+                    Le bouton + garde les filtres, le voisinage, le mode d’affichage et le cadrage actuels.
+                  </p>
+                ) : (
+                  <div className="grid grid-cols-1 gap-0.5">
+                    {savedViews.map((v) => (
+                      <div key={v.id} className="group flex items-center gap-1.5 px-1.5 py-1 rounded-lg hover:bg-zinc-800/50">
+                        <button
+                          type="button"
+                          onClick={() => applyView(v)}
+                          title="Afficher cette vue"
+                          className="flex items-center gap-2 flex-1 min-w-0 text-left text-xs text-zinc-200"
+                        >
+                          <Eye className="w-3 h-3 shrink-0 text-zinc-500" />
+                          <span className="truncate">{v.name}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => deleteView(v.id)}
+                          title="Supprimer cette vue"
+                          aria-label={`Supprimer la vue ${v.name}`}
+                          className="p-0.5 text-zinc-500 hover:text-rose-400 opacity-0 group-hover:opacity-100 focus:opacity-100"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Link types (V2): names given to link colours, and a filter on one of them */}
@@ -2487,6 +2699,83 @@ export function Workspace({ projectId, onBack, onOpenProject }: WorkspaceProps) 
             onOrganizeConstellation={handleOrganizeConstellation}
             onChangeNodeCategory={handleChangeNodeCategory}
           />
+
+          {/* Neighbourhood or path view: what is shown, and the way back to the whole graph */}
+          {viewMode === 'graph' && (focus || pathView) && (
+            <div
+              role="status"
+              className="absolute top-3 left-3 z-20 flex items-center gap-2 px-3 py-1.5 rounded-xl bg-zinc-900/95 border border-filet text-xs text-zinc-300 shadow-xl"
+            >
+              {focus ? (
+                <>
+                  <span>
+                    Voisinage de « {entities.find((n) => n.id === focus.nodeId)?.title ?? '?'} »
+                  </span>
+                  {[1, 2, 3].map((d) => (
+                    <button
+                      key={d}
+                      type="button"
+                      onClick={() => setFocus({ ...focus, depth: d })}
+                      aria-pressed={focus.depth === d}
+                      className={cn(
+                        'px-1.5 py-0.5 border',
+                        focus.depth === d ? 'border-cyan-400 text-zinc-100' : 'border-filet text-zinc-400 hover:text-zinc-200'
+                      )}
+                    >
+                      {d} niveau{d > 1 ? 'x' : ''}
+                    </button>
+                  ))}
+                </>
+              ) : (
+                pathView && (
+                  <span>
+                    Chemin : {pathView.ids.map((id) => entities.find((n) => n.id === id)?.title ?? '?').join(' → ')} (
+                    {pathView.ids.length - 1} lien{pathView.ids.length > 2 ? 's' : ''})
+                  </span>
+                )
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setFocus(null);
+                  setPathView(null);
+                  setTimeout(() => canvasRef.current?.fitView(true), 50);
+                }}
+                className="ml-1 text-cyan-400 hover:text-cyan-300"
+              >
+                Revenir à tout le graphe
+              </button>
+            </div>
+          )}
+
+          {viewMode === 'table' && (
+            <GraphTableView
+              nodes={visibleEntities}
+              edges={visibleRelations}
+              categories={categories}
+              linkTypes={linkTypes}
+              selectedNodeId={selectedNodeId}
+              onSelectNode={(id) => {
+                setSelectedEdgeId(null);
+                setSelectedNodeId(id);
+              }}
+              onSelectEdge={(id) => {
+                setSelectedNodeId(null);
+                setSelectedEdgeId(id);
+              }}
+            />
+          )}
+          {viewMode === 'timeline' && (
+            <TimelineView
+              nodes={visibleEntities}
+              categories={categories}
+              selectedNodeId={selectedNodeId}
+              onSelectNode={(id) => {
+                setSelectedEdgeId(null);
+                setSelectedNodeId(id);
+              }}
+            />
+          )}
         </div>
 
         {/* RIGHT SIDEBAR: Node / Edge Inspector, or the multiple selection */}
@@ -2496,6 +2785,7 @@ export function Workspace({ projectId, onBack, onOpenProject }: WorkspaceProps) 
             categories={categories}
             onClear={() => setSelectedNodeIds([])}
             onDelete={(ids) => void handleDeleteNodes(ids)}
+            onShortestPath={showShortestPath}
           />
         )}
         <InspectorSidebar
@@ -2504,6 +2794,7 @@ export function Workspace({ projectId, onBack, onOpenProject }: WorkspaceProps) 
           allNodes={entities}
           categories={categories}
           linkTypes={linkTypes}
+          onFocusNeighbourhood={startFocus}
           takePendingEditRef={takePendingEditRef}
           takePendingEdgeEditRef={takePendingEdgeEditRef}
           onClose={() => {

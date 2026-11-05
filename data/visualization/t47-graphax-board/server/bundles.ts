@@ -17,6 +17,8 @@ import {
   type ProjectExportBundle,
   normalizeCategoryKeys,
   normalizeLinkTypes,
+  normalizeSavedViews,
+  UNCLASSIFIED_VIEW_ID,
   normalizeReliability,
 } from '../shared/types.ts';
 import {
@@ -90,6 +92,7 @@ export async function importProjectBundle(
     description: (optString(source.description) ?? '').trim(),
     createdAt: optString(source.createdAt) || now,
     linkTypes: normalizeLinkTypes(source.linkTypes),
+    savedViews: [] as ReturnType<typeof normalizeSavedViews>,
     updatedAt: now,
   };
 
@@ -148,6 +151,19 @@ export async function importProjectBundle(
       },
     ];
   });
+
+  // Saved views (V4) point at categories and nodes: they follow the new ids, and what is not
+  // in the bundle is dropped from them
+  project.savedViews = normalizeSavedViews(source.savedViews).map((view) => ({
+    ...view,
+    hiddenCategoryIds: view.hiddenCategoryIds.flatMap((id) =>
+      id === UNCLASSIFIED_VIEW_ID ? [id] : categoryIdMap.has(id) ? [categoryIdMap.get(id) as string] : []
+    ),
+    focus:
+      view.focus && nodeIdMap.has(view.focus.nodeId)
+        ? { ...view.focus, nodeId: nodeIdMap.get(view.focus.nodeId) as string }
+        : null,
+  }));
 
   // One transaction: a failed import leaves no partial project behind
   await insertProjectGraph(db, { project, categories, nodes, edges });

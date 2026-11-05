@@ -11,6 +11,7 @@ import type {
   ProjectGraphPayload,
   ProjectPreset,
   ProjectSnapshot,
+  SavedView,
   UserPreset,
 } from '@shared/types';
 
@@ -97,7 +98,12 @@ export const api = {
 
   updateProject: (
     projectId: string,
-    input: { name?: string; description?: string; linkTypes?: Record<string, string> }
+    input: {
+      name?: string;
+      description?: string;
+      linkTypes?: Record<string, string>;
+      savedViews?: SavedView[];
+    }
   ) =>
     request<{ project: Project }>(`/api/projects/${projectId}`, {
       method: 'PATCH',
