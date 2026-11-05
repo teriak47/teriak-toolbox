@@ -2693,32 +2693,36 @@ export function Workspace({ projectId, onBack, onOpenProject }: WorkspaceProps) 
             if (exportMenuOpen) setExportMenuOpen(false);
           }}
         >
-          <GraphCanvas
-            ref={canvasRef}
-            nodes={visibleEntities}
-            edges={visibleRelations}
-            categories={categories}
-            selectedNodeId={selectedNodeId}
-            selectedNodeIds={multiSelectedIds}
-            selectedEdgeId={selectedEdgeId}
-            autoEditEdgeId={autoEditEdgeId}
-            searchQuery={searchQuery}
-            searchMatchIds={searchMatchIds}
-            onSelectNode={setSelectedNodeId}
-            onSelectEdge={setSelectedEdgeId}
-            onSelectNodes={selectNodes}
-            onCreateNodeAt={createNodeAt}
-            onCreateEdge={handleCreateEdge}
-            onCreateLinkedNodeAt={handleCreateLinkedNodeAt}
-            onUpdateNodePosition={handleUpdateNodePosition}
-            onUpdateBatchPositions={handleUpdateBatchPositions}
-            onCommitEdgeLabel={handleCommitEdgeLabel}
-            onDeleteNode={handleDeleteNode}
-            onDeleteNodes={handleDeleteNodes}
-            onDeleteEdge={handleDeleteEdge}
-            onOrganizeConstellation={handleOrganizeConstellation}
-            onChangeNodeCategory={handleChangeNodeCategory}
-          />
+          {/* The canvas stays mounted under the table and the timeline (its camera and physics
+              are kept), but hidden: its controls and keyboard shortcuts are off meanwhile */}
+          <div className={cn('absolute inset-0', viewMode !== 'graph' && 'hidden')}>
+            <GraphCanvas
+              ref={canvasRef}
+              nodes={visibleEntities}
+              edges={visibleRelations}
+              categories={categories}
+              selectedNodeId={selectedNodeId}
+              selectedNodeIds={multiSelectedIds}
+              selectedEdgeId={selectedEdgeId}
+              autoEditEdgeId={autoEditEdgeId}
+              searchQuery={searchQuery}
+              searchMatchIds={searchMatchIds}
+              onSelectNode={setSelectedNodeId}
+              onSelectEdge={setSelectedEdgeId}
+              onSelectNodes={selectNodes}
+              onCreateNodeAt={createNodeAt}
+              onCreateEdge={handleCreateEdge}
+              onCreateLinkedNodeAt={handleCreateLinkedNodeAt}
+              onUpdateNodePosition={handleUpdateNodePosition}
+              onUpdateBatchPositions={handleUpdateBatchPositions}
+              onCommitEdgeLabel={handleCommitEdgeLabel}
+              onDeleteNode={handleDeleteNode}
+              onDeleteNodes={handleDeleteNodes}
+              onDeleteEdge={handleDeleteEdge}
+              onOrganizeConstellation={handleOrganizeConstellation}
+              onChangeNodeCategory={handleChangeNodeCategory}
+            />
+          </div>
 
           {/* Neighbourhood or path view: what is shown, and the way back to the whole graph */}
           {viewMode === 'graph' && (focus || pathView) && (

@@ -561,6 +561,8 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
     // Delete/Backspace (ask to remove the selection)
     useEffect(() => {
       const onKeyDown = (e: KeyboardEvent) => {
+        // No shortcuts while the canvas is hidden (table or timeline view)
+        if (!containerRef.current?.offsetParent) return;
         const target = e.target as HTMLElement | null;
         const tag = target?.tagName;
         if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target?.isContentEditable) {

@@ -48,6 +48,15 @@ describe('graph views', () => {
     assert.equal(tl[1].sortKey, '2026-10-22 08:14');
   });
 
+  it('keeps the seconds of a timestamp in the timeline order', () => {
+    const tl = buildTimeline([
+      node('a', { title: 'A plus tard', metadata: { Vu: '2026-10-22 08:14:59 UTC' } }),
+      node('z', { title: 'Z plus tôt', metadata: { Vu: '2026-10-22 08:14:01 UTC' } }),
+    ]);
+    assert.deepEqual(tl.map((e) => e.node.title), ['Z plus tôt', 'A plus tard']);
+    assert.equal(tl[0].sortKey, '2026-10-22 08:14:01');
+  });
+
   it('lays nodes out in one column per category, unclassified last', () => {
     const pos = groupedLayout(
       [node('b', { categoryId: 'c2' }), node('a', { categoryId: 'c2' }), node('z', { categoryId: 'c1' }), node('u')],

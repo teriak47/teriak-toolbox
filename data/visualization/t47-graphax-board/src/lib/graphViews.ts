@@ -94,8 +94,11 @@ export interface TimelineEntry {
 // Turns a date written as YYYY-MM-DD[ HH:MM] or DD/MM/YYYY into a sortable string
 function sortableDate(value: string): string | null {
   const v = value.trim();
-  const iso = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}))?/.exec(v);
-  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}${iso[4] ? ` ${iso[4]}:${iso[5]}` : ''}`;
+  const iso = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?/.exec(v);
+  if (iso) {
+    const time = iso[4] ? ` ${iso[4]}:${iso[5]}${iso[6] ? `:${iso[6]}` : ''}` : '';
+    return `${iso[1]}-${iso[2]}-${iso[3]}${time}`;
+  }
   const fr = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(v);
   if (fr) return `${fr[3]}-${fr[2].padStart(2, '0')}-${fr[1].padStart(2, '0')}`;
   return null;
