@@ -496,10 +496,13 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
     // Enter (or Delete/Backspace again) confirms and Escape cancels
     const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
 
-    // A confirmation only applies to the item that was selected when it was asked
+    // A confirmation only applies to the item that was selected when it was asked. The
+    // multiple selection is compared by content: the set is rebuilt whenever the nodes change
+    // (a saved position, for instance), which must not dismiss the confirmation.
+    const selectionKey = [...selectedNodeIds].sort().join(',');
     useEffect(() => {
       setPendingDelete(null);
-    }, [selectedNodeId, selectedEdgeId, selectedNodeIds]);
+    }, [selectedNodeId, selectedEdgeId, selectionKey]);
 
     const requestDeleteSelection = useCallback(() => {
       if (selectedNodeIds.size >= 2) {

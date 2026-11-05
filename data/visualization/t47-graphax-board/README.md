@@ -24,7 +24,7 @@ pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-Run the automated API tests with `pnpm test`; they use a temporary database and fictional data.
+Run the automated API tests with `pnpm test`; they use a temporary database and fictional data. Browser tests of the workspace run with `pnpm build` then `pnpm test:e2e` (Playwright's Chromium is needed once: `pnpm exec playwright install chromium`); CI runs both.
 
 ## Design and version
 
