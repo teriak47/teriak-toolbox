@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
@@ -14,7 +15,38 @@ const { closeDb, getDb, recoverLegacyDatabase, surrealKvUrl, toRecordId } = awai
 const { insertProjectGraph } = await import('../server/bulk.ts');
 const { runAutoSnapshots, AUTO_SNAPSHOTS_KEPT } = await import('../server/snapshots.ts');
 
-const HOST = '127.0.0.1:3456';
+// GRAPHAX_API_URL runs the HTTP cases against a running server instead (the Rust API of the
+// desktop app, see tests/rust-api.ts); without it, requests go to the Node app in process
+const API_URL = process.env.GRAPHAX_API_URL?.replace(/\/$/, '');
+const HOST = API_URL ? new URL(API_URL).host : '127.0.0.1:3456';
+
+function request(url: string, init: RequestInit): Promise<Response> | Response {
+  return API_URL ? httpRequest(API_URL + url, init) : app.request(url, init);
+}
+
+// node:http rather than fetch, which replaces the Host header the guard tests set
+function httpRequest(url: string, init: RequestInit): Promise<Response> {
+  return new Promise((resolve, reject) => {
+    const req = http.request(
+      url,
+      { method: init.method ?? 'GET', headers: init.headers as Record<string, string> },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (chunk: Buffer) => chunks.push(chunk));
+        res.on('end', () => {
+          const headers = new Headers();
+          for (const [name, value] of Object.entries(res.headers)) {
+            if (typeof value === 'string') headers.set(name, value);
+          }
+          const status = res.statusCode ?? 500;
+          resolve(new Response(status === 204 ? null : Buffer.concat(chunks), { status, headers }));
+        });
+      }
+    );
+    req.on('error', reject);
+    req.end(init.body === undefined || init.body === null ? undefined : String(init.body));
+  });
+}
 
 async function call(
   method: string,
@@ -22,7 +54,7 @@ async function call(
   body?: unknown,
   headers: Record<string, string> = {}
 ): Promise<{ status: number; json: any }> {
-  const res = await app.request(url, {
+  const res = await request(url, {
     method,
     headers: { host: HOST, 'content-type': 'application/json', ...headers },
     body: body === undefined ? undefined : JSON.stringify(body),
@@ -436,7 +468,7 @@ describe('reference checks', () => {
 
 describe('input validation', () => {
   async function raw(method: string, url: string, body: string) {
-    const res = await app.request(url, {
+    const res = await request(url, {
       method,
       headers: { host: HOST, 'content-type': 'application/json' },
       body,
@@ -1170,7 +1202,7 @@ describe('local-only guard', () => {
   });
 
   it('sends no CORS headers', async () => {
-    const res = await app.request('/api/health', { headers: { host: HOST } });
+    const res = await request('/api/health', { headers: { host: HOST } });
     assert.equal(res.headers.get('access-control-allow-origin'), null);
   });
 });

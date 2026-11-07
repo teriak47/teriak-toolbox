@@ -1,0 +1,39 @@
+[package]
+name = "graphax"
+version = "0.3.0"
+description = "Graphax desktop application"
+authors = ["Teriak47"]
+edition = "2021"
+publish = false
+default-run = "graphax"
+
+[lib]
+name = "graphax_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+axum = "0.8"
+tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
+fs2 = "0.4"
+# Pinned to the engine used by the Node server (@surrealdb/node-native 3.3.5),
+# so both read and write the same on-disk format
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+getrandom = "0.3"
+unicode-normalization = "0.1"
+surrealdb = { version = "=3.3.5", default-features = false, features = ["kv-surrealkv"] }
+
+[dev-dependencies]
+tempfile = "3"
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
+
+# Dependencies (SurrealDB above all) without debug info: debug builds stay a few GB
+# instead of tens, and compile faster; the app's own code keeps it
+[profile.dev.package."*"]
+debug = false
