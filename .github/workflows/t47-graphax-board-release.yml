@@ -4,14 +4,24 @@ name: Graphax release
 # package.json and tool.yaml) builds the desktop installers for Windows, macOS and Linux
 # and attaches them to a draft GitHub release, which a human then publishes.
 # The installers are not signed: Windows and macOS warn on first launch (see the README).
+# "Run workflow" builds them again for an existing tag, for example after a failed run.
 
 on:
   push:
     tags:
       - 't47-graphax-board/v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to build, such as t47-graphax-board/v0.4.0
+        required: true
+        type: string
 
 permissions:
   contents: write
+
+env:
+  RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
 
 jobs:
   installers:
@@ -36,13 +46,14 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
+          ref: ${{ env.RELEASE_TAG }}
           persist-credentials: false
       - name: Check that the tag matches the tool version
         shell: bash
         run: |
           version=$(node -p "require('./package.json').version")
-          if [ "${GITHUB_REF_NAME}" != "t47-graphax-board/v${version}" ]; then
-            echo "Tag ${GITHUB_REF_NAME} does not match package.json version ${version}" >&2
+          if [ "${RELEASE_TAG}" != "t47-graphax-board/v${version}" ]; then
+            echo "Tag ${RELEASE_TAG} does not match package.json version ${version}" >&2
             exit 1
           fi
       - name: System libraries (Linux)
@@ -62,11 +73,14 @@ jobs:
       - run: npm install --global pnpm@12.6.0
       - run: pnpm install --frozen-lockfile
       - uses: tauri-apps/tauri-action@v0
+        env:
+          # Lets the action create the release or attach the installers to it
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           projectPath: data/visualization/t47-graphax-board
           tauriScript: pnpm tauri
           args: ${{ matrix.args }}
-          tagName: ${{ github.ref_name }}
+          tagName: ${{ env.RELEASE_TAG }}
           releaseName: Graphax v__VERSION__
           releaseBody: |
             Graphax desktop app (Windows, macOS, Linux). Installers are not signed: see "Desktop app" in the Graphax README for the first-launch warning.
