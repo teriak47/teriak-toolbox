@@ -80,6 +80,15 @@ async fn not_ported() -> impl IntoResponse {
     )
 }
 
+/// Folder of the database and snapshots: GRAPHAX_DATA_DIR when set (as for the Node
+/// server), otherwise `default`, the app data folder of the desktop app
+pub fn resolve_data_dir(default: PathBuf) -> PathBuf {
+    match std::env::var("GRAPHAX_DATA_DIR") {
+        Ok(dir) if !dir.trim().is_empty() => PathBuf::from(dir.trim()),
+        _ => default,
+    }
+}
+
 /// Opens the database in `data_dir` and serves the API on 127.0.0.1 only
 pub async fn serve(
     data_dir: &Path,

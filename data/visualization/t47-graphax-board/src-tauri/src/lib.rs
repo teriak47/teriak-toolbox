@@ -6,9 +6,11 @@ use tauri::Manager;
 pub fn run() {
     tauri::Builder::default()
         .setup(|app| {
-            // The Rust API runs next to the Node one during the migration, with its own
-            // database in the app data folder so the two never open the same file
-            let data_dir = app.path().app_data_dir()?;
+            // The database and snapshots live in the app data folder (Windows: %APPDATA%,
+            // macOS: ~/Library/Application Support, Linux: ~/.local/share, each under
+            // com.teriak47.graphax); GRAPHAX_DATA_DIR overrides it. Projects of the browser
+            // version come over with their JSON export and "Importer".
+            let data_dir = server::resolve_data_dir(app.path().app_data_dir()?);
             tauri::async_runtime::spawn(async move {
                 if let Err(err) = server::serve(&data_dir, server::DEFAULT_PORT).await {
                     eprintln!("[Graphax API Rust] Démarrage impossible : {err}");

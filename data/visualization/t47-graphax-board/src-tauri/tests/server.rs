@@ -428,3 +428,47 @@ async fn snapshots_changed_projects_automatically_and_keeps_only_the_latest_ones
         "newest first"
     );
 }
+
+// Counterpart of "stores the database inside the data directory" in tests/api.test.ts
+#[tokio::test]
+async fn stores_the_database_and_snapshots_inside_the_data_directory() {
+    let (app, dir) = app().await;
+    assert!(dir.path().join("graphax.db").exists());
+    let (_, created) = send(
+        &app,
+        "POST",
+        "/api/projects",
+        serde_json::json!({ "name": "Instantané" }),
+    )
+    .await;
+    let pid = created["project"]["id"].as_str().unwrap().to_string();
+    let (status, json) = send(
+        &app,
+        "POST",
+        &format!("/api/projects/{pid}/snapshots"),
+        Value::Null,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let name = json["snapshot"]["name"].as_str().unwrap();
+    assert!(dir.path().join("snapshots").join(&pid).join(name).exists());
+}
+
+#[test]
+fn graphax_data_dir_overrides_the_app_data_folder() {
+    use graphax_lib::server::resolve_data_dir;
+    use std::path::PathBuf;
+
+    let default = PathBuf::from("/app/data");
+    // Only this test touches the variable
+    std::env::remove_var("GRAPHAX_DATA_DIR");
+    assert_eq!(resolve_data_dir(default.clone()), default);
+    std::env::set_var("GRAPHAX_DATA_DIR", "  ");
+    assert_eq!(resolve_data_dir(default.clone()), default);
+    std::env::set_var("GRAPHAX_DATA_DIR", " /elsewhere ");
+    assert_eq!(
+        resolve_data_dir(default.clone()),
+        PathBuf::from("/elsewhere")
+    );
+    std::env::remove_var("GRAPHAX_DATA_DIR");
+}
