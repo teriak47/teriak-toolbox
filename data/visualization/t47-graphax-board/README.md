@@ -12,19 +12,39 @@ Reversing a link now keeps pending edits, and a failed save is reported with a r
 
 - **Front end:** React 19, TypeScript, Vite 8 and Tailwind CSS v4.
 - **Graph canvas:** an SVG canvas written for Graphax. `src/components/GraphCanvas.tsx` holds its state, camera and physics, and `src/components/canvas/` its parts (nodes, links, dock, mini-map, delete confirmation, category menu). It has custom node cards, links drawn from a node's frame, inline link labels, a mini-map, an optional force simulation and a hierarchical layout (`@dagrejs/dagre`). Above 1,000 nodes the force simulation uses a Barnes-Hut approximation, so large graphs stay fluid.
-- **Local back end:** Node.js and Hono on `http://127.0.0.1:3456`.
-- **Local database:** embedded SurrealDB (`@surrealdb/node` with its native engine `@surrealdb/node-native`), stored on disk with `surrealkv://` in `data/graphax.db`, using native graph relations (`RELATE`).
+- **Local API:** Rust and axum (`api/`), listening on `127.0.0.1` only. It also serves the interface.
+- **Local database:** embedded SurrealDB 3.3 (Rust crate, SurrealKV storage on disk), using native graph relations (`RELATE`). Databases written by earlier versions of Graphax open as they are.
+- **Desktop app:** Tauri 2 (`src-tauri/`), which embeds the interface and the API in one program.
 
-## Run locally
+## Desktop app
 
-Requires Node.js 22.18 or later and pnpm. The transfer was built with Node.js 22 and pnpm 12. From this directory:
+Download the installer for your system from the repository's [GitHub Releases](https://github.com/teriak47/teriak-toolbox/releases) (`Graphax_<version>_x64-setup.exe` or `.msi` on Windows, `.dmg` on macOS, `.deb`, `.rpm` or `.AppImage` on Linux), install it, and open Graphax from your applications. Nothing else is needed.
+
+The installers are not signed, so the first launch shows a warning:
+
+- **Windows:** "Windows protected your PC" → *More info* → *Run anyway*.
+- **macOS:** right-click Graphax in Applications → *Open* → *Open* (or *System Settings* → *Privacy & Security* → *Open Anyway*).
+- **Linux:** no warning; on Linux the app needs WebKitGTK (`libwebkit2gtk-4.1`), which the `.deb` and `.rpm` packages install.
+
+The app keeps its data in its own folder: `%APPDATA%\com.teriak47.graphax` on Windows, `~/Library/Application Support/com.teriak47.graphax` on macOS, `~/.local/share/com.teriak47.graphax` on Linux (`GRAPHAX_DATA_DIR` sets another one). To bring projects over from browser mode, export each one as JSON ("Exporter") and open it with "Importer .json" in the app. Opening Graphax again while it is open brings its window to the front. Closing the window waits for the database to be closed cleanly.
+
+## Browser mode and development
+
+Graphax can also run in a browser, from a clone of the repository. It needs a Rust toolchain ([rustup](https://rustup.rs)) for the local API, and Node.js 22.18 or later with pnpm 12 for the interface. From this directory:
 
 ```sh
 pnpm install --frozen-lockfile
-pnpm dev
+pnpm build
+pnpm start      # API and interface on http://127.0.0.1:3456
 ```
 
-Run the automated API tests with `pnpm test`; they use a temporary database and fictional data. Browser tests of the workspace run with `pnpm build` then `pnpm test:e2e` (Playwright's Chromium is needed once: `pnpm exec playwright install chromium`); CI runs both.
+Browser mode keeps its data in `data/` in this directory, as earlier versions did, so their projects open as they are. `pnpm dev` starts the API and the Vite development server (http://localhost:5173).
+
+The desktop app is built from the same sources: `pnpm dev:desktop` runs it in development and `pnpm build:desktop` builds installers for the current system. On Linux this needs the WebKitGTK development libraries (see the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/)).
+
+Tests: `pnpm test` runs the API tests over HTTP against the local API (temporary database, fictional data) and the front-end unit tests; `cargo test -p graphax-api` runs the API's own tests; `pnpm build` then `pnpm test:e2e` runs browser tests of the workspace (Playwright's Chromium is needed once: `pnpm exec playwright install chromium`). CI runs them all and checks that the desktop app builds.
+
+Releases: pushing a tag `t47-graphax-board/v<version>` (on a `main` commit holding that version) builds the installers for Windows, macOS and Linux and attaches them to a draft GitHub release, published by hand.
 
 ## Design and version
 
@@ -50,26 +70,19 @@ Undo and redo are in the toolbar, and on `Ctrl+Z` and `Ctrl+Y` outside text fiel
 
 Right-click a node (without dragging) to change its category from a menu; the new category's missing default keys are added. Drag categories in the sidebar to reorder them (or use the up and down arrows on the handle). Before a category is deleted, the editor lists the nodes that will become unclassified. The same editor merges a category into another one (its nodes and default keys move there; `Ctrl+Z` undoes it). The bookmark button above the category list saves the project's categories as a preset, offered under "Mes presets" when creating a project.
 
-The version shown in the footer comes from `package.json`, which must match `tool.yaml` (checked by `pnpm test`). `/api/health` also reports it.
+The version shown in the footer comes from `package.json`, which must match `tool.yaml` (checked by `pnpm test`) and the Rust crates in `Cargo.toml` (checked by `cargo test`). `/api/health` also reports it.
 
-Open the local Vite address shown in the terminal. The application starts a local API backed by SurrealDB. It cannot run by opening `index.html` directly. To build and start the unified server:
+Graphax cannot run by opening `index.html` directly: it needs its local API. In browser mode the data folder is `data/` in the tool directory, whichever folder the API is started from (`GRAPHAX_DATA_DIR` sets another one); it is ignored by Git and must not be published.
 
-```sh
-pnpm build
-pnpm start
-```
-
-The project uses local disk storage under `data/` in the tool directory, whichever folder the server is started from; set `GRAPHAX_DATA_DIR` to use another location. This directory is ignored by Git and must not be published.
-
-Snapshots: every 30 minutes, the server saves each project that changed to `data/snapshots/<project id>/` and keeps the 10 latest (`GRAPHAX_AUTO_SNAPSHOT_MINUTES` sets the interval, `0` turns it off). The "Instantanés" button in a project takes one on demand, restores one as a new project (the current project is left as it is) or deletes one. Snapshot files use the export format, so one can also be imported from the project list, even after its project was deleted. They live in the same `data/` directory: keep a copy elsewhere for important projects.
+Snapshots: every 30 minutes, Graphax saves each project that changed to `snapshots/<project id>/` in its data folder and keeps the 10 latest (`GRAPHAX_AUTO_SNAPSHOT_MINUTES` sets the interval, `0` turns it off). The "Instantanés" button in a project takes one on demand, restores one as a new project (the current project is left as it is) or deletes one. Snapshot files use the export format, so one can also be imported from the project list, even after its project was deleted. They live in the same data folder: keep a copy elsewhere for important projects.
 
 Planned fixes, optimisations and features are listed in the [roadmap](docs/ROADMAP.md).
 
-Older versions on Windows created the database in a nested folder such as `<working directory>/D/…/data/graphax.db`. If no database exists at the expected place, Graphax copies one found there and logs it; the original is left untouched.
+In browser mode: older versions on Windows created the database in a nested folder such as `<working directory>/D/…/data/graphax.db`. If no database exists at the expected place, Graphax copies one found there and logs it; the original is left untouched.
 
 ## Local API protection
 
-The API listens on `127.0.0.1` only, sends no CORS headers, and refuses requests whose `Host` or `Origin` header is not the application itself or the Vite dev server (`localhost:5173`). Other websites therefore cannot read or modify local data, including through DNS rebinding. Additional origins can be allowed with `GRAPHAX_ALLOWED_ORIGINS` (comma-separated). There is no user authentication: anyone with access to your local machine session can use the API. The bundled demo uses fictional example addresses.
+The API listens on `127.0.0.1` only, sends no CORS headers, and refuses requests whose `Host` or `Origin` header is not the application itself (port 3456 in browser mode, 3457 in the desktop app) or the Vite dev server (`localhost:5173`). Other websites therefore cannot read or modify local data, including through DNS rebinding. Additional origins can be allowed with `GRAPHAX_ALLOWED_ORIGINS` (comma-separated). There is no user authentication: anyone with access to your local machine session can use the API. The bundled demo uses fictional example addresses.
 
 ## Licence
 

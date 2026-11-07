@@ -2279,7 +2279,7 @@ dependencies = [
 
 [[package]]
 name = "graphax"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "graphax-api",
  "tauri",
@@ -2290,7 +2290,7 @@ dependencies = [
 
 [[package]]
 name = "graphax-api"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "axum",
  "chrono",
