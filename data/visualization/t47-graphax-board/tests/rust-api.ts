@@ -51,6 +51,14 @@ const PORTED_CASES = [
   'keeps the colour through a reversal and an export/import',
   'draws links without a colour in the default grey',
   'deletes several nodes with their links and leaves the rest',
+  // presets, snapshots and restore
+  'brings back a deleted node with its links, ids and category',
+  'puts a deleted category back in its place and gives its nodes back to it',
+  'skips links to nodes that are gone and refuses foreign or invalid records',
+  'takes, lists, restores as a new project and deletes snapshots',
+  'refuses unknown projects and snapshot names that are not snapshot files',
+  'moves the nodes, adds the missing keys, deletes the source, and can be restored',
+  'saves a project\'s categories as a preset and creates a project from it',
   // local-only guard and health
   'accepts same-origin and header-less requests',
   'accepts the Vite dev server origin',

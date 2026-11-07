@@ -10,10 +10,11 @@ mod model;
 mod presets;
 mod routes;
 mod security;
+pub mod snapshots;
 mod util;
 
 use std::net::SocketAddr;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use axum::extract::{DefaultBodyLimit, State};
 use axum::http::StatusCode;
@@ -35,6 +36,8 @@ pub const DEFAULT_PORT: u16 = 3457;
 #[derive(Clone)]
 pub struct AppState {
     pub db: Surreal<Db>,
+    /// Holds the database and the project snapshots
+    pub data_dir: PathBuf,
 }
 
 pub fn router(state: AppState, port: u16) -> Router {
@@ -44,6 +47,9 @@ pub fn router(state: AppState, port: u16) -> Router {
         .merge(routes::categories::router())
         .merge(routes::nodes::router())
         .merge(routes::edges::router())
+        .merge(routes::presets::router())
+        .merge(routes::restore::router())
+        .merge(routes::snapshots::router())
         .fallback(not_ported)
         .with_state(state)
         // Bodies are read and limited by `request_size_limit`, which answers in JSON
@@ -83,6 +89,10 @@ pub async fn serve(
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
     let listener = tokio::net::TcpListener::bind(addr).await?;
     println!("[Graphax API Rust] Serveur local prêt sur http://{addr}");
-    axum::serve(listener, router(AppState { db }, port)).await?;
+    let state = AppState {
+        db,
+        data_dir: data_dir.to_path_buf(),
+    };
+    axum::serve(listener, router(state, port)).await?;
     Ok(())
 }

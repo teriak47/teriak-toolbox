@@ -14,7 +14,16 @@ const HOST: &str = "127.0.0.1:3457";
 async fn app() -> (axum::Router, tempfile::TempDir) {
     let dir = tempfile::tempdir().unwrap();
     let db = open_db(dir.path()).await.unwrap();
-    (router(AppState { db }, PORT), dir)
+    (
+        router(
+            AppState {
+                db,
+                data_dir: dir.path().to_path_buf(),
+            },
+            PORT,
+        ),
+        dir,
+    )
 }
 
 async fn call(app: &axum::Router, headers: &[(&str, &str)]) -> (StatusCode, Value) {
@@ -139,7 +148,13 @@ async fn send(app: &axum::Router, method: &str, uri: &str, body: Value) -> (Stat
 async fn legacy_categories_without_position_stay_sorted_by_name() {
     let dir = tempfile::tempdir().unwrap();
     let db = open_db(dir.path()).await.unwrap();
-    let app = router(AppState { db: db.clone() }, PORT);
+    let app = router(
+        AppState {
+            db: db.clone(),
+            data_dir: dir.path().to_path_buf(),
+        },
+        PORT,
+    );
 
     let (_, created) = send(
         &app,
@@ -208,7 +223,13 @@ async fn create_node(app: &axum::Router, pid: &str, title: &str) -> String {
 async fn deletes_a_project_with_all_its_records() {
     let dir = tempfile::tempdir().unwrap();
     let db = open_db(dir.path()).await.unwrap();
-    let app = router(AppState { db: db.clone() }, PORT);
+    let app = router(
+        AppState {
+            db: db.clone(),
+            data_dir: dir.path().to_path_buf(),
+        },
+        PORT,
+    );
     let (_, created) = send(
         &app,
         "POST",
@@ -243,7 +264,13 @@ async fn refuses_a_deletion_too_large_to_be_undone() {
     const MAX: usize = 5000;
     let dir = tempfile::tempdir().unwrap();
     let db = open_db(dir.path()).await.unwrap();
-    let app = router(AppState { db: db.clone() }, PORT);
+    let app = router(
+        AppState {
+            db: db.clone(),
+            data_dir: dir.path().to_path_buf(),
+        },
+        PORT,
+    );
     let (_, created) = send(
         &app,
         "POST",
@@ -292,4 +319,112 @@ async fn refuses_a_deletion_too_large_to_be_undone() {
     )
     .await;
     assert_eq!(json["deleted"], 9);
+}
+
+// Same case as "reads old or invalid category records with the shared defaults", which
+// writes its records to the Node database
+#[tokio::test]
+async fn reads_old_or_invalid_category_records_with_the_shared_defaults() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = open_db(dir.path()).await.unwrap();
+    let app = router(
+        AppState {
+            db: db.clone(),
+            data_dir: dir.path().to_path_buf(),
+        },
+        PORT,
+    );
+    let (_, created) = send(
+        &app,
+        "POST",
+        "/api/projects",
+        serde_json::json!({ "name": "Ancien", "preset": "empty" }),
+    )
+    .await;
+    let pid = created["project"]["id"].as_str().unwrap().to_string();
+    db.query(
+        "CREATE category:legacy_a CONTENT { projectId: $p, name: 'Ancienne', color: 'red', icon: 'rocket' };
+         CREATE category:legacy_b CONTENT { projectId: $p, name: 'Courte', color: '#ABC', shape: 'rounded' };",
+    )
+    .bind(("p", pid.clone()))
+    .await
+    .unwrap()
+    .check()
+    .unwrap();
+
+    let (_, graph) = send(&app, "GET", &format!("/api/projects/{pid}"), Value::Null).await;
+    let by_name = |name: &str| {
+        graph["categories"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|c| c["name"] == name)
+            .unwrap()
+            .clone()
+    };
+    let old = by_name("Ancienne");
+    assert_eq!(old["color"], "#47c0ef");
+    assert_eq!(old["icon"], "tag");
+    assert_eq!(old["shape"], "sharp");
+    let short = by_name("Courte");
+    assert_eq!(short["color"], "#aabbcc");
+    assert_eq!(short["shape"], "rounded");
+}
+
+// Same case as "snapshots changed projects automatically and keeps only the latest ones"
+#[tokio::test]
+async fn snapshots_changed_projects_automatically_and_keeps_only_the_latest_ones() {
+    use graphax_lib::server::snapshots::{run_auto_snapshots, AUTO_SNAPSHOTS_KEPT};
+
+    let dir = tempfile::tempdir().unwrap();
+    let db = open_db(dir.path()).await.unwrap();
+    let app = router(
+        AppState {
+            db: db.clone(),
+            data_dir: dir.path().to_path_buf(),
+        },
+        PORT,
+    );
+    let (_, created) = send(
+        &app,
+        "POST",
+        "/api/projects",
+        serde_json::json!({ "name": "Instantanés auto" }),
+    )
+    .await;
+    let pid = created["project"]["id"].as_str().unwrap().to_string();
+    let run = || run_auto_snapshots(&db, dir.path());
+
+    assert!(run().await.unwrap().contains(&pid));
+    // Unchanged since: no new snapshot
+    assert!(!run().await.unwrap().contains(&pid));
+    // A change whose date is older than the snapshot file (it landed while the snapshot was
+    // being written) still differs from the revision captured in it: snapshotted again
+    db.query(format!(
+        "UPDATE project:`{pid}` SET updatedAt = '2000-01-01T00:00:00.000Z';"
+    ))
+    .await
+    .unwrap()
+    .check()
+    .unwrap();
+    assert!(run().await.unwrap().contains(&pid));
+    assert!(!run().await.unwrap().contains(&pid));
+    for i in 0..AUTO_SNAPSHOTS_KEPT + 2 {
+        create_node(&app, &pid, &format!("N{i}")).await;
+        run().await.unwrap();
+    }
+    let (_, list) = send(
+        &app,
+        "GET",
+        &format!("/api/projects/{pid}/snapshots"),
+        Value::Null,
+    )
+    .await;
+    let list = list["snapshots"].as_array().unwrap();
+    assert_eq!(list.len(), AUTO_SNAPSHOTS_KEPT);
+    assert_eq!(
+        list[0]["nodeCount"],
+        AUTO_SNAPSHOTS_KEPT + 2,
+        "newest first"
+    );
 }
