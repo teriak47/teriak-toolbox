@@ -1,0 +1,74 @@
+name: Graphax release
+
+# Pushing a tag t47-graphax-board/v<version> (on a main commit with that version in
+# package.json and tool.yaml) builds the desktop installers for Windows, macOS and Linux
+# and attaches them to a draft GitHub release, which a human then publishes.
+# The installers are not signed: Windows and macOS warn on first launch (see the README).
+
+on:
+  push:
+    tags:
+      - 't47-graphax-board/v*'
+
+permissions:
+  contents: write
+
+jobs:
+  installers:
+    name: Graphax installers (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux
+            os: ubuntu-22.04
+            args: ''
+          - name: Windows
+            os: windows-latest
+            args: ''
+          - name: macOS
+            os: macos-latest
+            args: '--target universal-apple-darwin'
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: data/visualization/t47-graphax-board
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Check that the tag matches the tool version
+        shell: bash
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [ "${GITHUB_REF_NAME}" != "t47-graphax-board/v${version}" ]; then
+            echo "Tag ${GITHUB_REF_NAME} does not match package.json version ${version}" >&2
+            exit 1
+          fi
+      - name: System libraries (Linux)
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libayatana-appindicator3-dev patchelf
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.os == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: data/visualization/t47-graphax-board
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - run: npm install --global pnpm@12.6.0
+      - run: pnpm install --frozen-lockfile
+      - uses: tauri-apps/tauri-action@v0
+        with:
+          projectPath: data/visualization/t47-graphax-board
+          tauriScript: pnpm tauri
+          args: ${{ matrix.args }}
+          tagName: ${{ github.ref_name }}
+          releaseName: Graphax v__VERSION__
+          releaseBody: |
+            Graphax desktop app (Windows, macOS, Linux). Installers are not signed: see "Desktop app" in the Graphax README for the first-launch warning.
+          releaseDraft: true
+          prerelease: false

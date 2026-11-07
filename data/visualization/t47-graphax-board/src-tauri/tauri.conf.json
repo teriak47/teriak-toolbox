@@ -31,6 +31,12 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "category": "Productivity",
+    "shortDescription": "Tableau d'enquête et graphe d'analyse local",
+    "longDescription": "Graphax : tableau d'enquête et graphe d'analyse interactif, 100 % local (base SurrealDB embarquée).",
+    "copyright": "Copyright (c) 2026 Teriak47 (Julien Kairet). GPL-3.0.",
+    "publisher": "Teriak47",
+    "license": "GPL-3.0"
   }
 }
