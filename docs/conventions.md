@@ -79,6 +79,8 @@ Use English for identifiers, directories, commits, pull requests, metadata, code
 
 Agent-created commits use the executing agent's identity: `Codex <codex@teriak.local>`, `Claude <claude@teriak.local>`, or `Hermes <hermes@teriak.local>`. Apply it per command, for example `git -c user.name=Codex -c user.email=codex@teriak.local commit -m "docs(repo): document agent Git identities"`, adapting the name and email to the agent. This sets both author and committer without changing global configuration or configuration shared by worktrees. Use the same identity for local merges that create a commit. Preserve the original author when integrating another agent's contribution, and do not rewrite historical commits. GitHub-created commits, including squash merges, may retain the identity of the account performing the operation.
 
+Conversations with agents stay private: never publish a link to an agent session or conversation (such as a `Claude-Session:` trailer or a `claude.ai/code/session_…` URL) in commits, pull requests, issues, comments, releases or any other repository content. An attribution such as `Co-Authored-By` is fine.
+
 Use GitHub Flow: `main` is stable and protected; do not push directly to it. Create a temporary branch per coherent change, commit on that branch, and open a pull request for every change. Review the relevant checks and merge using squash and merge, then delete the temporary branch. There is no permanent `develop` branch.
 
 Use Conventional Commits for working commits and pull request titles. Allowed types: `feat`, `fix`, `docs`, `refactor`, `test`, `perf`, `style`, `build`, `ci`, and `chore`. Use the complete tool ID as the scope, or `repo` for cross-project changes. Use `!` for a breaking change. Examples:
