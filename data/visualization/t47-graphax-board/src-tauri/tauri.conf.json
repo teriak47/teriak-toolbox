@@ -4,23 +4,20 @@
   "version": "../package.json",
   "identifier": "com.teriak47.graphax",
   "build": {
-    "beforeDevCommand": { "script": "pnpm dev", "cwd": "..", "wait": false },
+    "beforeDevCommand": {
+      "script": "pnpm dev:client",
+      "cwd": "..",
+      "wait": false
+    },
     "devUrl": "http://localhost:5173",
-    "beforeBuildCommand": { "script": "pnpm build", "cwd": ".." },
+    "beforeBuildCommand": {
+      "script": "pnpm build",
+      "cwd": ".."
+    },
     "frontendDist": "../dist"
   },
   "app": {
-    "windows": [
-      {
-        "label": "main",
-        "title": "Graphax",
-        "width": 1440,
-        "height": 900,
-        "minWidth": 960,
-        "minHeight": 600,
-        "center": true
-      }
-    ],
+    "windows": [],
     "security": {
       "csp": null
     }

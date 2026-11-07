@@ -7,14 +7,14 @@ use axum::Router;
 use serde_json::{json, Map, Value};
 use surrealdb::types::Value as DbValue;
 
-use crate::server::guards::{category_in_project, nodes_in_project, project_exists, touch_project};
-use crate::server::http::{created, ok, read_body, ApiError, ApiResult};
-use crate::server::model::{map_node, normalize_reliability, sanitize_metadata};
-use crate::server::util::{
+use crate::guards::{category_in_project, nodes_in_project, project_exists, touch_project};
+use crate::http::{created, ok, read_body, ApiError, ApiResult};
+use crate::model::{map_node, normalize_reliability, sanitize_metadata};
+use crate::util::{
     from_db, generate_id, js_number, js_string, json_number, now_iso, opt_string, params,
     record_id, to_db, to_db_object, truthy, Json,
 };
-use crate::server::AppState;
+use crate::AppState;
 
 /// Most records (nodes plus links) one undo can bring back in a single restore
 pub const MAX_RESTORE_RECORDS: usize = 5000;

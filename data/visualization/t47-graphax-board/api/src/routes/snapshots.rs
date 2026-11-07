@@ -6,16 +6,16 @@ use axum::routing::{delete, get, post};
 use axum::Router;
 use serde_json::{json, Value};
 
-use crate::server::bundles::import_project_bundle;
-use crate::server::guards::project_exists;
-use crate::server::http::{created, ok, ApiError, ApiResult};
-use crate::server::model::map_project;
-use crate::server::snapshots::{
+use crate::bundles::import_project_bundle;
+use crate::guards::project_exists;
+use crate::http::{created, ok, ApiError, ApiResult};
+use crate::model::map_project;
+use crate::snapshots::{
     create_snapshot, delete_snapshot, is_project_id, is_snapshot_name, list_snapshots,
     read_snapshot, SnapshotError,
 };
-use crate::server::util::{from_db, js_string, params, record_id};
-use crate::server::AppState;
+use crate::util::{from_db, js_string, params, record_id};
+use crate::AppState;
 
 pub fn router() -> Router<AppState> {
     Router::new()

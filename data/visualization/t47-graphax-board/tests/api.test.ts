@@ -1,34 +1,28 @@
 import assert from 'node:assert/strict';
+import { spawn, type ChildProcess } from 'node:child_process';
 import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
 
-// The database and server settings are read from the environment, so set them first
+// API tests: they start the local API (the `graphax-api` binary of src-tauri, built by
+// `pnpm test`) on a throwaway database, with fictional data, and call it over HTTP.
+// GRAPHAX_API_URL runs them against a server already started instead.
+// Behaviours checked inside the database itself are covered by src-tauri/tests/server.rs.
+
+const toolDir = path.resolve(import.meta.dirname, '..');
+const PORT = 3462;
+const API_URL = process.env.GRAPHAX_API_URL?.replace(/\/$/, '') ?? `http://127.0.0.1:${PORT}`;
+const HOST = new URL(API_URL).host;
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'graphax-test-'));
-process.env.GRAPHAX_DATA_DIR = dataDir;
-process.env.PORT = '3456';
-
-const { app } = await import('../server/app.ts');
-const { closeDb, getDb, recoverLegacyDatabase, surrealKvUrl, toRecordId } = await import('../server/db.ts');
-const { insertProjectGraph } = await import('../server/bulk.ts');
-const { runAutoSnapshots, AUTO_SNAPSHOTS_KEPT } = await import('../server/snapshots.ts');
-
-// GRAPHAX_API_URL runs the HTTP cases against a running server instead (the Rust API of the
-// desktop app, see tests/rust-api.ts); without it, requests go to the Node app in process
-const API_URL = process.env.GRAPHAX_API_URL?.replace(/\/$/, '');
-const HOST = API_URL ? new URL(API_URL).host : '127.0.0.1:3456';
-
-function request(url: string, init: RequestInit): Promise<Response> | Response {
-  return API_URL ? httpRequest(API_URL + url, init) : app.request(url, init);
-}
+let server: ChildProcess | undefined;
 
 // node:http rather than fetch, which replaces the Host header the guard tests set
-function httpRequest(url: string, init: RequestInit): Promise<Response> {
+function request(url: string, init: RequestInit): Promise<Response> {
   return new Promise((resolve, reject) => {
     const req = http.request(
-      url,
+      API_URL + url,
       { method: init.method ?? 'GET', headers: init.headers as Record<string, string> },
       (res) => {
         const chunks: Buffer[] = [];
@@ -83,11 +77,37 @@ async function createNode(projectId: string, title: string, x = 0): Promise<stri
 }
 
 before(async () => {
-  await call('GET', '/api/health');
+  if (!process.env.GRAPHAX_API_URL) {
+    const binary = path.join(toolDir, 'target', 'debug', process.platform === 'win32' ? 'graphax-api.exe' : 'graphax-api');
+    assert.ok(fs.existsSync(binary), 'run `pnpm test`, which builds the API first');
+    server = spawn(binary, [], {
+      env: {
+        ...process.env,
+        PORT: String(PORT),
+        GRAPHAX_DATA_DIR: dataDir,
+        GRAPHAX_DIST_DIR: path.join(dataDir, 'no-interface'),
+        GRAPHAX_AUTO_SNAPSHOT_MINUTES: '0',
+      },
+      stdio: 'ignore',
+    });
+  }
+  for (let i = 0; ; i++) {
+    try {
+      if ((await call('GET', '/api/health')).status === 200) break;
+    } catch {
+      // not listening yet
+    }
+    if (i >= 150) throw new Error('The Graphax API did not start.');
+    await new Promise((r) => setTimeout(r, 100));
+  }
 });
 
 after(async () => {
-  await closeDb();
+  if (server) {
+    const exited = new Promise((r) => server?.once('exit', r));
+    server.kill();
+    await exited;
+  }
   fs.rmSync(dataDir, { recursive: true, force: true });
 });
 
@@ -313,51 +333,15 @@ describe('atomic writes', () => {
     assert.equal(graph.json.edges[0].sourceNodeId, a.id);
   });
 
-  it('stores nothing when one record of a project fails', async () => {
-    const now = new Date().toISOString();
-    const node = {
-      id: 'dupnode',
-      categoryId: null,
-      title: 'Doublon',
-      content: '',
-      positionX: 0,
-      positionY: 0,
-      metadata: {},
-      createdAt: now,
-      updatedAt: now,
-    };
-    await assert.rejects(
-      insertProjectGraph(await getDb(), {
-        project: { id: 'halfproject', name: 'Partiel', description: '', createdAt: now, updatedAt: now },
-        categories: [{ id: 'halfcat', name: 'Cat', color: '#47c0ef', icon: 'tag', shape: 'sharp' }],
-        nodes: [node, node],
-        edges: [],
-      })
-    );
-    assert.equal((await call('GET', '/api/projects/halfproject')).status, 404);
-    const { json } = await call('GET', '/api/projects');
-    assert.ok(!json.projects.some((p: { id: string }) => p.id === 'halfproject'));
-    const [leftovers] = await (await getDb())
-      .query<[unknown[]]>("SELECT * FROM category WHERE projectId = 'halfproject';")
-      .collect();
-    assert.equal(leftovers.length, 0);
-  });
-
   it('deletes a project with all its records', async () => {
     const projectId = await createProject('À supprimer');
     const a = await createNode(projectId, 'A');
     const b = await createNode(projectId, 'B');
     await call('POST', `/api/projects/${projectId}/edges`, { sourceNodeId: a, targetNodeId: b });
     assert.equal((await call('DELETE', `/api/projects/${projectId}`)).status, 200);
-
-    const [entities, relations] = await (await getDb())
-      .query<[unknown[], unknown[]]>(
-        'SELECT * FROM entity WHERE projectId = $p; SELECT * FROM relation WHERE projectId = $p;',
-        { p: projectId }
-      )
-      .collect();
-    assert.equal(entities.length, 0);
-    assert.equal(relations.length, 0);
+    assert.equal((await call('GET', `/api/projects/${projectId}`)).status, 404);
+    const list = (await call('GET', '/api/projects')).json.projects;
+    assert.ok(!list.some((p: { id: string }) => p.id === projectId));
   });
 });
 
@@ -376,12 +360,6 @@ describe('reference checks', () => {
       (await call('POST', '/api/projects/missing/categories', { name: 'X' })).status,
       404
     );
-    const [orphans] = await (await getDb())
-      .query<[unknown[]]>(
-        "SELECT * FROM entity WHERE projectId = 'missing'; SELECT * FROM category WHERE projectId = 'missing';"
-      )
-      .collect();
-    assert.equal(orphans.length, 0);
   });
 
   it('refuses a link to a missing node or to a node of another project', async () => {
@@ -459,10 +437,6 @@ describe('reference checks', () => {
     assert.equal(g1.json.nodes[0].positionY, 12);
     const g2 = await call('GET', `/api/projects/${p2}`);
     assert.equal(g2.json.nodes[0].positionX, 0);
-    const [ghosts] = await (await getDb())
-      .query<[unknown[]]>('SELECT * FROM entity:ghost;')
-      .collect();
-    assert.equal(ghosts.length, 0);
   });
 });
 
@@ -503,25 +477,13 @@ describe('input validation', () => {
     assert.equal(project.status, 201);
   });
 
-  it('appends new categories, and keeps older projects sorted by name', async () => {
+  it('appends new categories at the end', async () => {
     const { json } = await call('POST', '/api/projects', { name: 'Ordre', preset: 'research' });
     const pid = json.project.id;
     await call('POST', `/api/projects/${pid}/categories`, { name: 'Aaa nouvelle' });
     const names = (await call('GET', `/api/projects/${pid}`)).json.categories.map((c: { name: string }) => c.name);
     assert.equal(names[0], 'Concept clé');
     assert.equal(names.at(-1), 'Aaa nouvelle');
-
-    // A project from before positions existed: its categories have none
-    const legacy = await createProject('Ancien projet');
-    await (await getDb()).query(
-      "INSERT INTO category [{ projectId: $p, name: 'Zèbre', color: '#47c0ef', icon: 'tag', shape: 'sharp' }, { projectId: $p, name: 'Bœuf', color: '#47c0ef', icon: 'tag', shape: 'sharp' }];",
-      { p: legacy }
-    ).collect();
-    await call('POST', `/api/projects/${legacy}/categories`, { name: 'Cheval' });
-    const legacyNames = (await call('GET', `/api/projects/${legacy}`)).json.categories.map(
-      (c: { name: string }) => c.name
-    );
-    assert.deepEqual(legacyNames, ['Bœuf', 'Cheval', 'Zèbre']);
   });
 
   it('reorders categories and keeps the order', async () => {
@@ -643,27 +605,6 @@ describe('input validation', () => {
 });
 
 describe('category defaults', () => {
-  it('reads old or invalid category records with the shared defaults', async () => {
-    const projectId = await createProject();
-    await (await getDb())
-      .query(
-        `CREATE category:legacy_a CONTENT { projectId: $p, name: 'Ancienne', color: 'red', icon: 'rocket' };
-        CREATE category:legacy_b CONTENT { projectId: $p, name: 'Courte', color: '#ABC', shape: 'rounded' };`,
-        { p: projectId }
-      )
-      .collect();
-
-    const graph = await call('GET', `/api/projects/${projectId}`);
-    const byName = Object.fromEntries(
-      graph.json.categories.map((c: { name: string }) => [c.name, c])
-    );
-    assert.equal(byName.Ancienne.color, '#47c0ef');
-    assert.equal(byName.Ancienne.icon, 'tag');
-    assert.equal(byName.Ancienne.shape, 'sharp');
-    assert.equal(byName.Courte.color, '#aabbcc');
-    assert.equal(byName.Courte.shape, 'rounded');
-  });
-
   it('gives new and imported categories the same defaults', async () => {
     const projectId = await createProject();
     const created = await call('POST', `/api/projects/${projectId}/categories`, { name: 'Neuve' });
@@ -814,24 +755,6 @@ describe('batch node deletion', () => {
     assert.equal((await call('POST', '/api/projects/nope/nodes/delete', { ids: [c] })).status, 404);
   });
 
-  it('refuses a deletion too large to be undone in one restore', async () => {
-    const { MAX_RESTORE_RECORDS } = await import('../shared/types.ts');
-    const projectId = await createProject('Suppression trop grande');
-    const db = await getDb();
-    const ids = Array.from({ length: MAX_RESTORE_RECORDS }, (_, i) => `big${i}`);
-    await db
-      .query('INSERT INTO entity $rows;', {
-        rows: ids.map((id) => ({ id, projectId, title: 'n', content: '', positionX: 0, positionY: 0, metadata: {} })),
-      })
-      .collect();
-    const hub = await createNode(projectId, 'Hub');
-    await call('POST', `/api/projects/${projectId}/edges`, { sourceNodeId: hub, targetNodeId: ids[0] });
-    const res = await call('POST', `/api/projects/${projectId}/nodes/delete`, { ids: [...ids.slice(0, MAX_RESTORE_RECORDS - 1), hub] });
-    assert.equal(res.status, 400);
-    assert.match(res.json.error, /Trop d’éléments/);
-    const ok = await call('POST', `/api/projects/${projectId}/nodes/delete`, { ids: ids.slice(1, 10) });
-    assert.equal(ok.json.deleted, 9);
-  });
 });
 
 describe('restore (undo of deletions)', () => {
@@ -958,25 +881,6 @@ describe('project snapshots', () => {
     }
   });
 
-  it('snapshots changed projects automatically and keeps only the latest ones', async () => {
-    const projectId = await createProject('Instantanés auto');
-    const db = await getDb();
-    assert.ok((await runAutoSnapshots(db)).includes(projectId));
-    // Unchanged since: no new snapshot
-    assert.ok(!(await runAutoSnapshots(db)).includes(projectId));
-    // A change whose date is older than the snapshot file (it landed while the snapshot was
-    // being written) still differs from the revision captured in it: snapshotted again
-    await db.query('UPDATE $pid SET updatedAt = "2000-01-01T00:00:00.000Z";', { pid: toRecordId('project', projectId) }).collect();
-    assert.ok((await runAutoSnapshots(db)).includes(projectId));
-    assert.ok(!(await runAutoSnapshots(db)).includes(projectId));
-    for (let i = 0; i < AUTO_SNAPSHOTS_KEPT + 2; i++) {
-      await createNode(projectId, `N${i}`, i * 10);
-      await runAutoSnapshots(db);
-    }
-    const list = (await call('GET', `/api/projects/${projectId}/snapshots`)).json.snapshots;
-    assert.equal(list.length, AUTO_SNAPSHOTS_KEPT);
-    assert.equal(list[0].nodeCount, AUTO_SNAPSHOTS_KEPT + 2, 'newest first');
-  });
 });
 
 describe('category merge', () => {
@@ -1204,44 +1108,6 @@ describe('local-only guard', () => {
   it('sends no CORS headers', async () => {
     const res = await request('/api/health', { headers: { host: HOST } });
     assert.equal(res.headers.get('access-control-allow-origin'), null);
-  });
-});
-
-describe('database location', () => {
-  it('stores the database inside the data directory', () => {
-    assert.ok(fs.existsSync(path.join(dataDir, 'graphax.db')));
-    const drive = /^([A-Za-z]):/.exec(process.cwd());
-    if (drive) assert.ok(!fs.existsSync(path.join(process.cwd(), drive[1])));
-  });
-
-  it('keeps drive paths absolute for SurrealKV', () => {
-    assert.equal(surrealKvUrl('C:\\data\\graphax.db'), 'surrealkv:C:/data/graphax.db');
-    assert.equal(surrealKvUrl('/home/u/graphax.db'), 'surrealkv:///home/u/graphax.db');
-  });
-
-  it('copies a database left in the old nested location, without removing it', {
-    skip: process.platform !== 'win32',
-  }, () => {
-    const startDir = fs.mkdtempSync(path.join(os.tmpdir(), 'graphax-legacy-'));
-    const previousCwd = process.cwd();
-    try {
-      process.chdir(startDir);
-      const oldFile = path.join(startDir, 'data', 'graphax.db').replace(/\\/g, '/');
-      const [, drive, rest] = /^([A-Za-z]):\/(.*)$/.exec(oldFile)!;
-      const nested = path.join(startDir, drive, rest);
-      fs.mkdirSync(nested, { recursive: true });
-      fs.writeFileSync(path.join(nested, 'marker'), 'private');
-
-      const target = path.join(startDir, 'new', 'graphax.db');
-      fs.mkdirSync(path.dirname(target), { recursive: true });
-      recoverLegacyDatabase(target);
-
-      assert.equal(fs.readFileSync(path.join(target, 'marker'), 'utf-8'), 'private');
-      assert.ok(fs.existsSync(path.join(nested, 'marker')));
-    } finally {
-      process.chdir(previousCwd);
-      fs.rmSync(startDir, { recursive: true, force: true });
-    }
   });
 });
 

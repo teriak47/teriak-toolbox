@@ -8,19 +8,19 @@ use axum::routing::{get, post};
 use axum::Router;
 use serde_json::{json, Map, Value};
 
-use crate::server::bulk::{insert_project_graph, ProjectGraph};
-use crate::server::bundles::{
+use crate::bulk::{insert_project_graph, ProjectGraph};
+use crate::bundles::{
     build_export_bundle, graph_payload, import_project_bundle, load_project_graph,
 };
-use crate::server::http::{created, ok, read_body, ApiError, ApiResult};
-use crate::server::model::{
+use crate::http::{created, ok, read_body, ApiError, ApiResult};
+use crate::model::{
     map_project, normalize_link_types, normalize_saved_views, rows, sanitize_metadata,
 };
-use crate::server::presets::{load_user_preset, preset_categories, PRESET_NAMES};
-use crate::server::util::{
+use crate::presets::{load_user_preset, preset_categories, PRESET_NAMES};
+use crate::util::{
     from_db, generate_id, js_string, now_iso, opt_string, params, record_id, to_db, Json,
 };
-use crate::server::AppState;
+use crate::AppState;
 
 pub fn router() -> Router<AppState> {
     Router::new()

@@ -9,17 +9,17 @@ use axum::Router;
 use serde_json::{json, Map, Value};
 use surrealdb::types::Value as DbValue;
 
-use crate::server::guards::{project_exists, touch_project};
-use crate::server::http::{created, ok, read_body, ApiError, ApiResult};
-use crate::server::model::{
+use crate::guards::{project_exists, touch_project};
+use crate::http::{created, ok, read_body, ApiError, ApiResult};
+use crate::model::{
     map_category, normalize_category_keys, normalize_color, normalize_key_list, rows,
     sort_category_records, CATEGORY_ICON_NAMES, CATEGORY_SHAPES, DEFAULT_CATEGORY_COLOR,
     DEFAULT_CATEGORY_ICON, DEFAULT_CATEGORY_SHAPE,
 };
-use crate::server::util::{
+use crate::util::{
     extract_id, from_db, generate_id, js_string, opt_string, params, record_id, to_db, Json,
 };
-use crate::server::AppState;
+use crate::AppState;
 
 const MAX_CATEGORY_KEYS: usize = 12;
 
@@ -134,7 +134,7 @@ async fn create(
     let mut content = Map::new();
     content.insert("projectId".into(), json!(project_id));
     if let Some(p) = position {
-        content.insert("position".into(), crate::server::util::json_number(p));
+        content.insert("position".into(), crate::util::json_number(p));
     }
     content.insert("name".into(), json!(name));
     content.insert(
@@ -224,7 +224,7 @@ async fn reorder(
         .iter()
         .enumerate()
         .map(|(position, id)| {
-            crate::server::util::to_db_object(
+            crate::util::to_db_object(
                 Json::new(),
                 vec![
                     ("cid", record_id("category", id)),
@@ -444,7 +444,7 @@ async fn remove(State(state): State<AppState>, Path(id): Path<String>) -> ApiRes
     .await?
     .check()?;
 
-    if crate::server::util::truthy(existing.get("projectId")) {
+    if crate::util::truthy(existing.get("projectId")) {
         touch_project(db, &js_string(existing.get("projectId"), "")).await;
     }
     ok(json!({ "deleted": true }))

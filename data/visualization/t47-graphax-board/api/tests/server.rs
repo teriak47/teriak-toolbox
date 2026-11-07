@@ -6,22 +6,16 @@ use http_body_util::BodyExt;
 use serde_json::Value;
 use tower::ServiceExt;
 
-use graphax_lib::server::{open_db, router, AppState, APP_VERSION};
+use graphax_api::{open_db, router, AppState, Frontend, APP_VERSION};
 
-const PORT: u16 = 3457;
-const HOST: &str = "127.0.0.1:3457";
+const PORT: u16 = 3456;
+const HOST: &str = "127.0.0.1:3456";
 
 async fn app() -> (axum::Router, tempfile::TempDir) {
     let dir = tempfile::tempdir().unwrap();
     let db = open_db(dir.path()).await.unwrap();
     (
-        router(
-            AppState {
-                db,
-                data_dir: dir.path().to_path_buf(),
-            },
-            PORT,
-        ),
+        router(AppState::new(db, dir.path().to_path_buf()), PORT),
         dir,
     )
 }
@@ -148,13 +142,7 @@ async fn send(app: &axum::Router, method: &str, uri: &str, body: Value) -> (Stat
 async fn legacy_categories_without_position_stay_sorted_by_name() {
     let dir = tempfile::tempdir().unwrap();
     let db = open_db(dir.path()).await.unwrap();
-    let app = router(
-        AppState {
-            db: db.clone(),
-            data_dir: dir.path().to_path_buf(),
-        },
-        PORT,
-    );
+    let app = router(AppState::new(db.clone(), dir.path().to_path_buf()), PORT);
 
     let (_, created) = send(
         &app,
@@ -223,13 +211,7 @@ async fn create_node(app: &axum::Router, pid: &str, title: &str) -> String {
 async fn deletes_a_project_with_all_its_records() {
     let dir = tempfile::tempdir().unwrap();
     let db = open_db(dir.path()).await.unwrap();
-    let app = router(
-        AppState {
-            db: db.clone(),
-            data_dir: dir.path().to_path_buf(),
-        },
-        PORT,
-    );
+    let app = router(AppState::new(db.clone(), dir.path().to_path_buf()), PORT);
     let (_, created) = send(
         &app,
         "POST",
@@ -264,13 +246,7 @@ async fn refuses_a_deletion_too_large_to_be_undone() {
     const MAX: usize = 5000;
     let dir = tempfile::tempdir().unwrap();
     let db = open_db(dir.path()).await.unwrap();
-    let app = router(
-        AppState {
-            db: db.clone(),
-            data_dir: dir.path().to_path_buf(),
-        },
-        PORT,
-    );
+    let app = router(AppState::new(db.clone(), dir.path().to_path_buf()), PORT);
     let (_, created) = send(
         &app,
         "POST",
@@ -327,13 +303,7 @@ async fn refuses_a_deletion_too_large_to_be_undone() {
 async fn reads_old_or_invalid_category_records_with_the_shared_defaults() {
     let dir = tempfile::tempdir().unwrap();
     let db = open_db(dir.path()).await.unwrap();
-    let app = router(
-        AppState {
-            db: db.clone(),
-            data_dir: dir.path().to_path_buf(),
-        },
-        PORT,
-    );
+    let app = router(AppState::new(db.clone(), dir.path().to_path_buf()), PORT);
     let (_, created) = send(
         &app,
         "POST",
@@ -374,17 +344,11 @@ async fn reads_old_or_invalid_category_records_with_the_shared_defaults() {
 // Same case as "snapshots changed projects automatically and keeps only the latest ones"
 #[tokio::test]
 async fn snapshots_changed_projects_automatically_and_keeps_only_the_latest_ones() {
-    use graphax_lib::server::snapshots::{run_auto_snapshots, AUTO_SNAPSHOTS_KEPT};
+    use graphax_api::snapshots::{run_auto_snapshots, AUTO_SNAPSHOTS_KEPT};
 
     let dir = tempfile::tempdir().unwrap();
     let db = open_db(dir.path()).await.unwrap();
-    let app = router(
-        AppState {
-            db: db.clone(),
-            data_dir: dir.path().to_path_buf(),
-        },
-        PORT,
-    );
+    let app = router(AppState::new(db.clone(), dir.path().to_path_buf()), PORT);
     let (_, created) = send(
         &app,
         "POST",
@@ -456,7 +420,7 @@ async fn stores_the_database_and_snapshots_inside_the_data_directory() {
 
 #[test]
 fn graphax_data_dir_overrides_the_app_data_folder() {
-    use graphax_lib::server::resolve_data_dir;
+    use graphax_api::resolve_data_dir;
     use std::path::PathBuf;
 
     let default = PathBuf::from("/app/data");
@@ -475,7 +439,7 @@ fn graphax_data_dir_overrides_the_app_data_folder() {
 
 #[test]
 fn reads_the_automatic_snapshot_interval() {
-    use graphax_lib::server::auto_snapshot_interval;
+    use graphax_api::auto_snapshot_interval;
     use std::time::Duration;
 
     assert_eq!(
@@ -506,7 +470,7 @@ async fn stops_cleanly_and_releases_the_database() {
     let server = tokio::spawn({
         let data_dir = data_dir.clone();
         async move {
-            graphax_lib::server::serve(&data_dir, STOP_PORT, async {
+            graphax_api::serve(&data_dir, STOP_PORT, Frontend::None, async {
                 let _ = stop_rx.await;
             })
             .await
@@ -546,4 +510,126 @@ async fn stops_cleanly_and_releases_the_database() {
     let mut res = db.query("SELECT VALUE name FROM project").await.unwrap();
     let names: Vec<String> = res.take(0).unwrap();
     assert_eq!(names, vec!["Avant l'arrêt".to_string()]);
+}
+
+#[test]
+fn finds_the_database_of_older_windows_versions() {
+    use graphax_api::legacy::{legacy_location, recover_legacy_database};
+
+    let found = legacy_location("D:/work/graphax").unwrap();
+    assert_eq!(
+        found.to_string_lossy().replace('\\', "/"),
+        "D:/work/graphax/D/work/graphax/data/graphax.db"
+    );
+    assert!(legacy_location("/home/me/graphax").is_none());
+
+    // Nothing is copied when the database is where it should be, or no old one exists
+    let dir = tempfile::tempdir().unwrap();
+    let target = dir.path().join("new").join("graphax.db");
+    recover_legacy_database(&target, &[dir.path().to_path_buf()]);
+    assert!(!target.exists());
+}
+
+fn frontend_app(
+    dir: &std::path::Path,
+    db: surrealdb::Surreal<surrealdb::engine::local::Db>,
+) -> axum::Router {
+    let dist = dir.join("dist");
+    std::fs::create_dir_all(dist.join("assets")).unwrap();
+    std::fs::write(
+        dist.join("index.html"),
+        "<!doctype html><title>Graphax</title>",
+    )
+    .unwrap();
+    std::fs::write(dist.join("assets").join("app.js"), "console.log(1)").unwrap();
+    std::fs::write(dir.join("secret.txt"), "private").unwrap();
+    let mut state = AppState::new(db, dir.to_path_buf());
+    state.frontend = Frontend::Dir(dist);
+    router(state, PORT)
+}
+
+async fn get_raw(app: &axum::Router, uri: &str) -> (StatusCode, String, String) {
+    let req = Request::get(uri)
+        .header("host", HOST)
+        .body(Body::empty())
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    let status = res.status();
+    let mime = res
+        .headers()
+        .get("content-type")
+        .map(|v| v.to_str().unwrap().to_string())
+        .unwrap_or_default();
+    let bytes = res.into_body().collect().await.unwrap().to_bytes();
+    (status, mime, String::from_utf8_lossy(&bytes).to_string())
+}
+
+// The interface is served next to the API, and any other path gets index.html
+#[tokio::test]
+async fn serves_the_interface_next_to_the_api() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = open_db(dir.path()).await.unwrap();
+    let app = frontend_app(dir.path(), db);
+
+    let (status, mime, body) = get_raw(&app, "/").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(mime.starts_with("text/html"));
+    assert!(body.contains("<title>Graphax</title>"));
+
+    let (_, mime, body) = get_raw(&app, "/assets/app.js").await;
+    assert!(mime.contains("javascript"), "{mime}");
+    assert_eq!(body, "console.log(1)");
+
+    let (status, _, body) = get_raw(&app, "/projets/abc").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body.contains("<title>Graphax</title>"));
+
+    // No file outside the interface folder
+    let (_, _, body) = get_raw(&app, "/../secret.txt").await;
+    assert!(!body.contains("private"));
+    let (_, _, body) = get_raw(&app, "/assets/%2e%2e/%2e%2e/secret.txt").await;
+    assert!(!body.contains("private"));
+
+    // An unknown API route stays a JSON 404
+    let (status, mime, _) = get_raw(&app, "/api/inconnue").await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert!(mime.contains("json"));
+}
+
+// Same case as the former "stores nothing when one record of a project fails": a project
+// written with an invalid record (a node twice) leaves nothing behind
+#[tokio::test]
+async fn stores_nothing_when_one_record_of_a_project_fails() {
+    use graphax_api::bulk::{insert_project_graph, ProjectGraph};
+
+    let dir = tempfile::tempdir().unwrap();
+    let db = open_db(dir.path()).await.unwrap();
+    let app2 = router(AppState::new(db.clone(), dir.path().to_path_buf()), PORT);
+
+    let obj = |v: Value| v.as_object().unwrap().clone();
+    let node = obj(
+        serde_json::json!({ "id": "dupnode", "categoryId": null, "title": "Doublon", "content": "", "positionX": 0, "positionY": 0, "metadata": {}, "createdAt": "2026-01-01T00:00:00.000Z", "updatedAt": "2026-01-01T00:00:00.000Z" }),
+    );
+    let result = insert_project_graph(
+        &db,
+        ProjectGraph {
+            project: obj(serde_json::json!({ "id": "halfproject", "name": "Partiel", "description": "", "createdAt": "2026-01-01T00:00:00.000Z", "updatedAt": "2026-01-01T00:00:00.000Z" })),
+            categories: vec![obj(serde_json::json!({ "id": "halfcat", "name": "Cat", "color": "#47c0ef", "icon": "tag", "shape": "sharp" }))],
+            nodes: vec![node.clone(), node],
+            edges: vec![],
+        },
+    )
+    .await;
+    assert!(result.is_err());
+    let (status, _) = send(&app2, "GET", "/api/projects/halfproject", Value::Null).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(
+        count(
+            &db,
+            "RETURN count(SELECT id FROM category WHERE projectId = $p);",
+            "halfproject"
+        )
+        .await,
+        0
+    );
 }

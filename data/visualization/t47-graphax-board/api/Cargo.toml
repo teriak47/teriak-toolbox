@@ -1,0 +1,33 @@
+[package]
+name = "graphax-api"
+description = "Local API of Graphax, and browser mode"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[lib]
+name = "graphax_api"
+
+[[bin]]
+name = "graphax-api"
+path = "src/main.rs"
+
+[dependencies]
+axum = "0.8"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+fs2 = "0.4"
+getrandom = "0.3"
+mime_guess = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Pinned to the engine of the former Node server (@surrealdb/node-native 3.3.5), so a
+# database it wrote opens as is
+surrealdb = { version = "=3.3.5", default-features = false, features = ["kv-surrealkv"] }
+tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
+unicode-normalization = "0.1"
+
+[dev-dependencies]
+http-body-util = "0.1"
+tempfile = "3"
+tower = { version = "0.5", features = ["util"] }

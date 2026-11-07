@@ -25,7 +25,7 @@ pub async fn open_db(data_dir: &Path) -> surrealdb::Result<Surreal<Db>> {
     db.query(SCHEMA).await?.check()?;
 
     println!(
-        "[Graphax DB Rust] SurrealDB Embedded connecté -> {}",
+        "[Graphax DB] SurrealDB Embedded connecté -> {}",
         db_file.display()
     );
     Ok(db)

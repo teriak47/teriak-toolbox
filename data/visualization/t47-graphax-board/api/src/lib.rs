@@ -1,11 +1,13 @@
-//! Local HTTP API of the desktop app, the Rust counterpart of `server/` (Node + Hono).
-//! Routes are ported here one family at a time; the Node server stays in use until then.
+//! Local HTTP API of Graphax (it replaced the former Node + Hono server). It also serves the
+//! interface: from the app's embedded files in the desktop app, from `dist/` in browser mode.
 
-mod bulk;
+pub mod bulk;
 mod bundles;
 mod db;
+mod frontend;
 mod guards;
 mod http;
+pub mod legacy;
 mod model;
 mod presets;
 mod routes;
@@ -19,8 +21,6 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use axum::extract::{DefaultBodyLimit, State};
-use axum::http::StatusCode;
-use axum::response::IntoResponse;
 use axum::routing::get;
 use axum::{middleware, Json, Router};
 use serde_json::{json, Value};
@@ -33,14 +33,32 @@ pub use db::open_db;
 /// Version of the tool, kept equal to package.json by a test
 pub const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// Port of the Rust API while it runs next to the Node one (3456)
-pub const DEFAULT_PORT: u16 = 3457;
+/// Port of browser mode (`graphax-api`), the one of the former Node server, so the address
+/// and the browser's storage for it stay the same
+pub const BROWSER_PORT: u16 = 3456;
+/// Port of the desktop app, so it can run next to browser mode
+pub const DESKTOP_PORT: u16 = 3457;
+
+pub use frontend::{AssetFn, Frontend};
 
 #[derive(Clone)]
 pub struct AppState {
     pub db: Surreal<Db>,
     /// Holds the database and the project snapshots
     pub data_dir: PathBuf,
+    /// Where the interface comes from
+    pub frontend: Frontend,
+}
+
+impl AppState {
+    /// The API alone, without the interface
+    pub fn new(db: Surreal<Db>, data_dir: PathBuf) -> Self {
+        Self {
+            db,
+            data_dir,
+            frontend: Frontend::None,
+        }
+    }
 }
 
 pub fn router(state: AppState, port: u16) -> Router {
@@ -53,7 +71,7 @@ pub fn router(state: AppState, port: u16) -> Router {
         .merge(routes::presets::router())
         .merge(routes::restore::router())
         .merge(routes::snapshots::router())
-        .fallback(not_ported)
+        .fallback(frontend::serve_frontend)
         .with_state(state)
         // Bodies are read and limited by `request_size_limit`, which answers in JSON
         .layer(DefaultBodyLimit::disable())
@@ -72,15 +90,6 @@ async fn health(State(state): State<AppState>) -> Json<Value> {
         "version": APP_VERSION,
         "engine": "surrealdb-embedded-surrealkv",
     }))
-}
-
-// While the migration is under way, a route missing here answers 501 rather than 404,
-// so that a test expecting a 404 cannot pass only because the route is not ported yet
-async fn not_ported() -> impl IntoResponse {
-    (
-        StatusCode::NOT_IMPLEMENTED,
-        Json(json!({ "error": "Route pas encore portée dans l'API Rust." })),
-    )
 }
 
 /// Folder of the database and snapshots: GRAPHAX_DATA_DIR when set (as for the Node
@@ -154,37 +163,75 @@ async fn wait_until_closed(db_file: &Path, timeout: Duration) -> bool {
     }
 }
 
-/// Opens the database in `data_dir`, serves the API on 127.0.0.1 only until `shutdown`
-/// completes, then lets the requests under way finish and closes the database
-pub async fn serve(
+/// The API bound to its port, ready to serve
+pub struct Server {
+    listener: tokio::net::TcpListener,
+    state: AppState,
+    port: u16,
+}
+
+/// Opens the database in `data_dir` and binds 127.0.0.1:`port`; an error when the database
+/// is in use or the port is taken
+pub async fn bind(
     data_dir: &Path,
     port: u16,
-    shutdown: impl Future<Output = ()> + Send + 'static,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    frontend: Frontend,
+) -> Result<Server, Box<dyn std::error::Error + Send + Sync>> {
     let db = open_db(data_dir).await?;
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    println!("[Graphax API Rust] Serveur local prêt sur http://{addr}");
-
-    let snapshot_task = spawn_auto_snapshots(db.clone(), data_dir.to_path_buf());
+    println!("[Graphax API] Serveur local prêt sur http://{addr}");
     let state = AppState {
         db,
         data_dir: data_dir.to_path_buf(),
+        frontend,
     };
-    let served = axum::serve(listener, router(state, port))
-        .with_graceful_shutdown(shutdown)
-        .await;
+    Ok(Server {
+        listener,
+        state,
+        port,
+    })
+}
 
-    if let Some(task) = snapshot_task {
-        task.abort();
-        let _ = task.await;
+impl Server {
+    /// Serves until `shutdown` completes, then lets the requests under way finish and
+    /// closes the database
+    pub async fn run(
+        self,
+        shutdown: impl Future<Output = ()> + Send + 'static,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let Server {
+            listener,
+            state,
+            port,
+        } = self;
+        let data_dir = state.data_dir.clone();
+        let snapshot_task = spawn_auto_snapshots(state.db.clone(), data_dir.clone());
+        let served = axum::serve(listener, router(state, port))
+            .with_graceful_shutdown(shutdown)
+            .await;
+
+        if let Some(task) = snapshot_task {
+            task.abort();
+            let _ = task.await;
+        }
+        // The router, and with it the last database handle, is dropped at this point
+        if wait_until_closed(&data_dir.join("graphax.db"), Duration::from_secs(5)).await {
+            println!("[Graphax DB] Connexion SurrealDB fermée proprement.");
+        } else {
+            eprintln!("[Graphax DB] La base ne s'est pas fermée à temps.");
+        }
+        served?;
+        Ok(())
     }
-    // The router, and with it the last database handle, is dropped at this point
-    if wait_until_closed(&data_dir.join("graphax.db"), Duration::from_secs(5)).await {
-        println!("[Graphax DB Rust] Connexion SurrealDB fermée proprement.");
-    } else {
-        eprintln!("[Graphax DB Rust] La base ne s'est pas fermée à temps.");
-    }
-    served?;
-    Ok(())
+}
+
+/// `bind` then `run`
+pub async fn serve(
+    data_dir: &Path,
+    port: u16,
+    frontend: Frontend,
+    shutdown: impl Future<Output = ()> + Send + 'static,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    bind(data_dir, port, frontend).await?.run(shutdown).await
 }

@@ -14,20 +14,20 @@ use surrealdb::engine::local::Db;
 use surrealdb::types::Value as DbValue;
 use surrealdb::Surreal;
 
-use crate::server::guards::{project_exists, touch_project};
-use crate::server::http::{ok, read_body, ApiError, ApiResult};
-use crate::server::model::{
+use crate::guards::{project_exists, touch_project};
+use crate::http::{ok, read_body, ApiError, ApiResult};
+use crate::model::{
     category_icon, category_shape, map_category, map_edge, map_node, normalize_category_keys,
     normalize_color, normalize_handle, normalize_reliability, rows, sanitize_metadata,
     sort_category_records, DEFAULT_CATEGORY_COLOR,
 };
-use crate::server::routes::nodes::MAX_RESTORE_RECORDS;
-use crate::server::snapshots::is_project_id as is_record_id;
-use crate::server::util::{
+use crate::routes::nodes::MAX_RESTORE_RECORDS;
+use crate::snapshots::is_project_id as is_record_id;
+use crate::util::{
     extract_id, from_db, js_number, js_string, json_number, now_iso, opt_string, params, record_id,
     to_db, to_db_object, Json,
 };
-use crate::server::AppState;
+use crate::AppState;
 
 pub fn router() -> Router<AppState> {
     Router::new().route("/api/projects/{id}/restore", post(restore))

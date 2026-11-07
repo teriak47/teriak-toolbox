@@ -8,13 +8,13 @@ use axum::Router;
 use serde_json::{json, Value};
 use surrealdb::types::Value as DbValue;
 
-use crate::server::guards::{nodes_in_project, project_exists, touch_project};
-use crate::server::http::{created, ok, read_body, ApiError, ApiResult};
-use crate::server::model::{map_edge, normalize_color, normalize_handle};
-use crate::server::util::{
+use crate::guards::{nodes_in_project, project_exists, touch_project};
+use crate::http::{created, ok, read_body, ApiError, ApiResult};
+use crate::model::{map_edge, normalize_color, normalize_handle};
+use crate::util::{
     from_db, generate_id, js_string, now_iso, opt_string, params, record_id, to_db, truthy, Json,
 };
-use crate::server::AppState;
+use crate::AppState;
 
 const INVALID_COLOR: &str = "Couleur de lien invalide : format #rrggbb attendu.";
 

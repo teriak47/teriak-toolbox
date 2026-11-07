@@ -7,14 +7,12 @@ use axum::routing::{delete, get, post};
 use axum::Router;
 use serde_json::{json, Value};
 
-use crate::server::guards::project_exists;
-use crate::server::http::{created, ok, read_body, ApiError, ApiResult};
-use crate::server::model::{map_category, rows, sort_category_records};
-use crate::server::presets::{load_user_preset, map_preset};
-use crate::server::util::{
-    from_db, generate_id, js_slice, now_iso, opt_string, params, record_id, to_db,
-};
-use crate::server::AppState;
+use crate::guards::project_exists;
+use crate::http::{created, ok, read_body, ApiError, ApiResult};
+use crate::model::{map_category, rows, sort_category_records};
+use crate::presets::{load_user_preset, map_preset};
+use crate::util::{from_db, generate_id, js_slice, now_iso, opt_string, params, record_id, to_db};
+use crate::AppState;
 
 const MAX_PRESET_NAME_LENGTH: usize = 80;
 
