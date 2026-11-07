@@ -472,3 +472,78 @@ fn graphax_data_dir_overrides_the_app_data_folder() {
     );
     std::env::remove_var("GRAPHAX_DATA_DIR");
 }
+
+#[test]
+fn reads_the_automatic_snapshot_interval() {
+    use graphax_lib::server::auto_snapshot_interval;
+    use std::time::Duration;
+
+    assert_eq!(
+        auto_snapshot_interval(None),
+        Some(Duration::from_secs(30 * 60))
+    );
+    assert_eq!(
+        auto_snapshot_interval(Some("5")),
+        Some(Duration::from_secs(5 * 60))
+    );
+    assert_eq!(
+        auto_snapshot_interval(Some("0.5")),
+        Some(Duration::from_secs(30))
+    );
+    assert_eq!(auto_snapshot_interval(Some("0")), None);
+    assert_eq!(auto_snapshot_interval(Some("-1")), None);
+    assert_eq!(auto_snapshot_interval(Some("jamais")), None);
+}
+
+// Stopping the server lets it finish and close the database: it opens again at once,
+// with what was written
+#[tokio::test]
+async fn stops_cleanly_and_releases_the_database() {
+    const STOP_PORT: u16 = 3471;
+    let dir = tempfile::tempdir().unwrap();
+    let data_dir = dir.path().to_path_buf();
+    let (stop_tx, stop_rx) = tokio::sync::oneshot::channel::<()>();
+    let server = tokio::spawn({
+        let data_dir = data_dir.clone();
+        async move {
+            graphax_lib::server::serve(&data_dir, STOP_PORT, async {
+                let _ = stop_rx.await;
+            })
+            .await
+            .map_err(|e| e.to_string())
+        }
+    });
+
+    // Waits for the server, then writes a project through it
+    let host = format!("127.0.0.1:{STOP_PORT}");
+    let mut stream = None;
+    for _ in 0..100 {
+        if let Ok(s) = tokio::net::TcpStream::connect(&host).await {
+            stream = Some(s);
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    let mut stream = stream.expect("server did not start");
+    let body = r#"{"name":"Avant l'arrêt"}"#;
+    let request = format!(
+        "POST /api/projects HTTP/1.1\r\nHost: {host}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        body.len()
+    );
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    stream.write_all(request.as_bytes()).await.unwrap();
+    let mut response = String::new();
+    stream.read_to_string(&mut response).await.unwrap();
+    assert!(response.starts_with("HTTP/1.1 201"), "{response}");
+
+    stop_tx.send(()).unwrap();
+    server.await.unwrap().unwrap();
+
+    // No retry: the lock is already released
+    let db = open_db(&data_dir)
+        .await
+        .expect("database still locked after stop");
+    let mut res = db.query("SELECT VALUE name FROM project").await.unwrap();
+    let names: Vec<String> = res.take(0).unwrap();
+    assert_eq!(names, vec!["Avant l'arrêt".to_string()]);
+}

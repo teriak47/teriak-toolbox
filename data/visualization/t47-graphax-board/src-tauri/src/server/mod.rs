@@ -13,8 +13,10 @@ mod security;
 pub mod snapshots;
 mod util;
 
+use std::future::Future;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use axum::extract::{DefaultBodyLimit, State};
 use axum::http::StatusCode;
@@ -24,6 +26,7 @@ use axum::{middleware, Json, Router};
 use serde_json::{json, Value};
 use surrealdb::engine::local::Db;
 use surrealdb::Surreal;
+use tokio::task::JoinHandle;
 
 pub use db::open_db;
 
@@ -89,19 +92,99 @@ pub fn resolve_data_dir(default: PathBuf) -> PathBuf {
     }
 }
 
-/// Opens the database in `data_dir` and serves the API on 127.0.0.1 only
+/// Interval of the automatic snapshots from GRAPHAX_AUTO_SNAPSHOT_MINUTES (30 when unset);
+/// 0, a negative value or anything that is not a number turns them off
+pub fn auto_snapshot_interval(value: Option<&str>) -> Option<Duration> {
+    let minutes: f64 = match value {
+        None => 30.0,
+        Some(v) => v.trim().parse().ok()?,
+    };
+    (minutes.is_finite() && minutes > 0.0).then(|| Duration::from_secs_f64(minutes * 60.0))
+}
+
+// Automatic snapshots of changed projects: a first pass shortly after start, then at the
+// chosen interval
+fn spawn_auto_snapshots(db: Surreal<Db>, data_dir: PathBuf) -> Option<JoinHandle<()>> {
+    let interval = auto_snapshot_interval(
+        std::env::var("GRAPHAX_AUTO_SNAPSHOT_MINUTES")
+            .ok()
+            .as_deref(),
+    )?;
+    Some(tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_secs(60)).await;
+        loop {
+            match snapshots::run_auto_snapshots(&db, &data_dir).await {
+                Ok(done) if !done.is_empty() => {
+                    println!(
+                        "[Graphax] Instantanés automatiques : {} projet(s).",
+                        done.len()
+                    )
+                }
+                Ok(_) => {}
+                Err(err) => eprintln!("[Graphax] Instantanés automatiques impossibles : {err}"),
+            }
+            tokio::time::sleep(interval).await;
+        }
+    }))
+}
+
+/// Waits until the database file is no longer locked: SurrealDB shuts its storage down in
+/// the background once the last handle is dropped, and quitting before it is done would
+/// cut that short
+async fn wait_until_closed(db_file: &Path, timeout: Duration) -> bool {
+    use fs2::FileExt;
+    let lock = db_file.join("LOCK");
+    let start = std::time::Instant::now();
+    loop {
+        let released = match std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&lock)
+        {
+            Ok(file) => file.try_lock_exclusive().is_ok() && FileExt::unlock(&file).is_ok(),
+            Err(_) => true,
+        };
+        if released {
+            return true;
+        }
+        if start.elapsed() >= timeout {
+            return false;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+}
+
+/// Opens the database in `data_dir`, serves the API on 127.0.0.1 only until `shutdown`
+/// completes, then lets the requests under way finish and closes the database
 pub async fn serve(
     data_dir: &Path,
     port: u16,
+    shutdown: impl Future<Output = ()> + Send + 'static,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let db = open_db(data_dir).await?;
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
     let listener = tokio::net::TcpListener::bind(addr).await?;
     println!("[Graphax API Rust] Serveur local prêt sur http://{addr}");
+
+    let snapshot_task = spawn_auto_snapshots(db.clone(), data_dir.to_path_buf());
     let state = AppState {
         db,
         data_dir: data_dir.to_path_buf(),
     };
-    axum::serve(listener, router(state, port)).await?;
+    let served = axum::serve(listener, router(state, port))
+        .with_graceful_shutdown(shutdown)
+        .await;
+
+    if let Some(task) = snapshot_task {
+        task.abort();
+        let _ = task.await;
+    }
+    // The router, and with it the last database handle, is dropped at this point
+    if wait_until_closed(&data_dir.join("graphax.db"), Duration::from_secs(5)).await {
+        println!("[Graphax DB Rust] Connexion SurrealDB fermée proprement.");
+    } else {
+        eprintln!("[Graphax DB Rust] La base ne s'est pas fermée à temps.");
+    }
+    served?;
     Ok(())
 }

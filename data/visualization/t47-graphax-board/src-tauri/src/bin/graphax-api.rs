@@ -1,7 +1,24 @@
 //! The Rust API alone, without the desktop window, for tests:
 //! GRAPHAX_DATA_DIR (required) holds the database, PORT defaults to 3457.
+//! Ctrl+C or SIGTERM stops it cleanly.
 
 use std::path::PathBuf;
+
+async fn stop_signal() {
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{signal, SignalKind};
+        let mut term = signal(SignalKind::terminate()).expect("SIGTERM handler");
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => {}
+            _ = term.recv() => {}
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = tokio::signal::ctrl_c().await;
+    }
+}
 
 #[tokio::main]
 async fn main() {
@@ -13,7 +30,7 @@ async fn main() {
         .ok()
         .and_then(|p| p.parse().ok())
         .unwrap_or(graphax_lib::server::DEFAULT_PORT);
-    if let Err(err) = graphax_lib::server::serve(&data_dir, port).await {
+    if let Err(err) = graphax_lib::server::serve(&data_dir, port, stop_signal()).await {
         eprintln!("[Graphax API Rust] Démarrage impossible : {err}");
         std::process::exit(1);
     }
