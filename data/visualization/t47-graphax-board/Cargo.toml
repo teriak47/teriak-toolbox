@@ -1,0 +1,16 @@
+# Rust crates of Graphax: the local API and browser mode (api/), and the desktop app
+# (src-tauri/), which embeds the API. One workspace, so they share one build folder.
+[workspace]
+members = ["api", "src-tauri"]
+resolver = "2"
+
+[workspace.package]
+version = "0.4.0"
+authors = ["Teriak47"]
+edition = "2021"
+publish = false
+
+# Dependencies (SurrealDB above all) without debug info: debug builds stay a few GB
+# instead of tens, and compile faster; Graphax's own code keeps it
+[profile.dev.package."*"]
+debug = false

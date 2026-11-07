@@ -1,0 +1,635 @@
+//! Rust API checks, mirroring the health and local-only cases of tests/api.test.ts
+
+use axum::body::Body;
+use axum::http::{Request, StatusCode};
+use http_body_util::BodyExt;
+use serde_json::Value;
+use tower::ServiceExt;
+
+use graphax_api::{open_db, router, AppState, Frontend, APP_VERSION};
+
+const PORT: u16 = 3456;
+const HOST: &str = "127.0.0.1:3456";
+
+async fn app() -> (axum::Router, tempfile::TempDir) {
+    let dir = tempfile::tempdir().unwrap();
+    let db = open_db(dir.path()).await.unwrap();
+    (
+        router(AppState::new(db, dir.path().to_path_buf()), PORT),
+        dir,
+    )
+}
+
+async fn call(app: &axum::Router, headers: &[(&str, &str)]) -> (StatusCode, Value) {
+    let mut req = Request::get("/api/health");
+    for (name, value) in headers {
+        req = req.header(*name, *value);
+    }
+    let res = app
+        .clone()
+        .oneshot(req.body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    let status = res.status();
+    let bytes = res.into_body().collect().await.unwrap().to_bytes();
+    (
+        status,
+        serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+    )
+}
+
+#[tokio::test]
+async fn health_reports_version_and_engine() {
+    let (app, _dir) = app().await;
+    let (status, json) = call(&app, &[("host", HOST)]).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["ok"], true);
+    assert_eq!(json["version"], APP_VERSION);
+    assert_eq!(json["engine"], "surrealdb-embedded-surrealkv");
+}
+
+#[test]
+fn version_matches_package_json() {
+    let raw =
+        std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../package.json")).unwrap();
+    let package: Value = serde_json::from_str(&raw).unwrap();
+    assert_eq!(package["version"], APP_VERSION);
+}
+
+#[tokio::test]
+async fn rejects_unknown_host() {
+    let (app, _dir) = app().await;
+    let (status, json) = call(&app, &[("host", "evil.example:3457")]).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_eq!(json["error"], "Hôte non autorisé.");
+}
+
+#[tokio::test]
+async fn rejects_foreign_origin() {
+    let (app, _dir) = app().await;
+    let (status, json) = call(&app, &[("host", HOST), ("origin", "https://evil.example")]).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_eq!(json["error"], "Origine non autorisée.");
+}
+
+#[tokio::test]
+async fn rejects_cross_site_request_without_origin() {
+    let (app, _dir) = app().await;
+    let (status, json) = call(&app, &[("host", HOST), ("sec-fetch-site", "cross-site")]).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_eq!(json["error"], "Requête inter-sites non autorisée.");
+}
+
+#[tokio::test]
+async fn accepts_dev_client_origin() {
+    let (app, _dir) = app().await;
+    let (status, _) = call(&app, &[("host", HOST), ("origin", "http://localhost:5173")]).await;
+    assert_eq!(status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn reopens_existing_database() {
+    let dir = tempfile::tempdir().unwrap();
+    {
+        let db = open_db(dir.path()).await.unwrap();
+        db.query("CREATE project:demo SET name = 'Projet fictif'")
+            .await
+            .unwrap()
+            .check()
+            .unwrap();
+    }
+    // The engine releases the file lock in the background once the last handle is dropped
+    let mut attempt = 0;
+    let db = loop {
+        match open_db(dir.path()).await {
+            Ok(db) => break db,
+            Err(err) if attempt < 40 => {
+                attempt += 1;
+                assert!(err.to_string().contains("locked"), "{err}");
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            }
+            Err(err) => panic!("{err}"),
+        }
+    };
+    let mut res = db
+        .query("SELECT VALUE name FROM project:demo")
+        .await
+        .unwrap();
+    let names: Vec<String> = res.take(0).unwrap();
+    assert_eq!(names, vec!["Projet fictif".to_string()]);
+}
+
+async fn send(app: &axum::Router, method: &str, uri: &str, body: Value) -> (StatusCode, Value) {
+    let req = Request::builder()
+        .method(method)
+        .uri(uri)
+        .header("host", HOST)
+        .header("content-type", "application/json")
+        .body(Body::from(body.to_string()))
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    let status = res.status();
+    let bytes = res.into_body().collect().await.unwrap().to_bytes();
+    (
+        status,
+        serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+    )
+}
+
+// Same case as "appends new categories, and keeps older projects sorted by name" in
+// tests/api.test.ts, whose second half writes to the Node database directly
+#[tokio::test]
+async fn legacy_categories_without_position_stay_sorted_by_name() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = open_db(dir.path()).await.unwrap();
+    let app = router(AppState::new(db.clone(), dir.path().to_path_buf()), PORT);
+
+    let (_, created) = send(
+        &app,
+        "POST",
+        "/api/projects",
+        serde_json::json!({ "name": "Ancien projet", "preset": "empty" }),
+    )
+    .await;
+    let pid = created["project"]["id"].as_str().unwrap().to_string();
+    db.query("INSERT INTO category [{ projectId: $p, name: 'Zèbre', color: '#47c0ef', icon: 'tag', shape: 'sharp' }, { projectId: $p, name: 'Bœuf', color: '#47c0ef', icon: 'tag', shape: 'sharp' }];")
+        .bind(("p", pid.clone()))
+        .await
+        .unwrap()
+        .check()
+        .unwrap();
+
+    let (status, _) = send(
+        &app,
+        "POST",
+        &format!("/api/projects/{pid}/categories"),
+        serde_json::json!({ "name": "Cheval" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let (_, graph) = send(&app, "GET", &format!("/api/projects/{pid}"), Value::Null).await;
+    let names: Vec<&str> = graph["categories"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(names, ["Bœuf", "Cheval", "Zèbre"]);
+}
+
+async fn count(
+    db: &surrealdb::Surreal<surrealdb::engine::local::Db>,
+    query: &str,
+    pid: &str,
+) -> i64 {
+    let mut res = db
+        .query(query)
+        .bind(("p", pid.to_string()))
+        .await
+        .unwrap()
+        .check()
+        .unwrap();
+    let n: Option<i64> = res.take(0).unwrap();
+    n.unwrap_or(0)
+}
+
+async fn create_node(app: &axum::Router, pid: &str, title: &str) -> String {
+    let (status, json) = send(
+        app,
+        "POST",
+        &format!("/api/projects/{pid}/nodes"),
+        serde_json::json!({ "title": title }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    json["node"]["id"].as_str().unwrap().to_string()
+}
+
+// Same case as "deletes a project with all its records" in tests/api.test.ts, whose final
+// check reads the Node database
+#[tokio::test]
+async fn deletes_a_project_with_all_its_records() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = open_db(dir.path()).await.unwrap();
+    let app = router(AppState::new(db.clone(), dir.path().to_path_buf()), PORT);
+    let (_, created) = send(
+        &app,
+        "POST",
+        "/api/projects",
+        serde_json::json!({ "name": "À supprimer" }),
+    )
+    .await;
+    let pid = created["project"]["id"].as_str().unwrap().to_string();
+    let a = create_node(&app, &pid, "A").await;
+    let b = create_node(&app, &pid, "B").await;
+    let (status, _) = send(
+        &app,
+        "POST",
+        &format!("/api/projects/{pid}/edges"),
+        serde_json::json!({ "sourceNodeId": a, "targetNodeId": b }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+
+    let (status, _) = send(&app, "DELETE", &format!("/api/projects/{pid}"), Value::Null).await;
+    assert_eq!(status, StatusCode::OK);
+    for table in ["entity", "relation", "category"] {
+        let q = format!("RETURN count(SELECT id FROM {table} WHERE projectId = $p);");
+        assert_eq!(count(&db, &q, &pid).await, 0, "{table}");
+    }
+}
+
+// Same case as "refuses a deletion too large to be undone in one restore", which inserts
+// its nodes in the Node database
+#[tokio::test]
+async fn refuses_a_deletion_too_large_to_be_undone() {
+    const MAX: usize = 5000;
+    let dir = tempfile::tempdir().unwrap();
+    let db = open_db(dir.path()).await.unwrap();
+    let app = router(AppState::new(db.clone(), dir.path().to_path_buf()), PORT);
+    let (_, created) = send(
+        &app,
+        "POST",
+        "/api/projects",
+        serde_json::json!({ "name": "Suppression trop grande" }),
+    )
+    .await;
+    let pid = created["project"]["id"].as_str().unwrap().to_string();
+    let ids: Vec<String> = (0..MAX).map(|i| format!("big{i}")).collect();
+    let rows: Vec<Value> = ids
+        .iter()
+        .map(|id| serde_json::json!({ "id": id, "projectId": pid, "title": "n", "content": "", "positionX": 0, "positionY": 0, "metadata": {} }))
+        .collect();
+    db.query("INSERT INTO entity $rows;")
+        .bind(("rows", Value::Array(rows)))
+        .await
+        .unwrap()
+        .check()
+        .unwrap();
+    let hub = create_node(&app, &pid, "Hub").await;
+    let (status, _) = send(
+        &app,
+        "POST",
+        &format!("/api/projects/{pid}/edges"),
+        serde_json::json!({ "sourceNodeId": hub, "targetNodeId": ids[0] }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+
+    let mut too_many: Vec<String> = ids[..MAX - 1].to_vec();
+    too_many.push(hub);
+    let (status, json) = send(
+        &app,
+        "POST",
+        &format!("/api/projects/{pid}/nodes/delete"),
+        serde_json::json!({ "ids": too_many }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(json["error"].as_str().unwrap().contains("Trop d’éléments"));
+    let (_, json) = send(
+        &app,
+        "POST",
+        &format!("/api/projects/{pid}/nodes/delete"),
+        serde_json::json!({ "ids": &ids[1..10] }),
+    )
+    .await;
+    assert_eq!(json["deleted"], 9);
+}
+
+// Same case as "reads old or invalid category records with the shared defaults", which
+// writes its records to the Node database
+#[tokio::test]
+async fn reads_old_or_invalid_category_records_with_the_shared_defaults() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = open_db(dir.path()).await.unwrap();
+    let app = router(AppState::new(db.clone(), dir.path().to_path_buf()), PORT);
+    let (_, created) = send(
+        &app,
+        "POST",
+        "/api/projects",
+        serde_json::json!({ "name": "Ancien", "preset": "empty" }),
+    )
+    .await;
+    let pid = created["project"]["id"].as_str().unwrap().to_string();
+    db.query(
+        "CREATE category:legacy_a CONTENT { projectId: $p, name: 'Ancienne', color: 'red', icon: 'rocket' };
+         CREATE category:legacy_b CONTENT { projectId: $p, name: 'Courte', color: '#ABC', shape: 'rounded' };",
+    )
+    .bind(("p", pid.clone()))
+    .await
+    .unwrap()
+    .check()
+    .unwrap();
+
+    let (_, graph) = send(&app, "GET", &format!("/api/projects/{pid}"), Value::Null).await;
+    let by_name = |name: &str| {
+        graph["categories"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|c| c["name"] == name)
+            .unwrap()
+            .clone()
+    };
+    let old = by_name("Ancienne");
+    assert_eq!(old["color"], "#47c0ef");
+    assert_eq!(old["icon"], "tag");
+    assert_eq!(old["shape"], "sharp");
+    let short = by_name("Courte");
+    assert_eq!(short["color"], "#aabbcc");
+    assert_eq!(short["shape"], "rounded");
+}
+
+// Same case as "snapshots changed projects automatically and keeps only the latest ones"
+#[tokio::test]
+async fn snapshots_changed_projects_automatically_and_keeps_only_the_latest_ones() {
+    use graphax_api::snapshots::{run_auto_snapshots, AUTO_SNAPSHOTS_KEPT};
+
+    let dir = tempfile::tempdir().unwrap();
+    let db = open_db(dir.path()).await.unwrap();
+    let app = router(AppState::new(db.clone(), dir.path().to_path_buf()), PORT);
+    let (_, created) = send(
+        &app,
+        "POST",
+        "/api/projects",
+        serde_json::json!({ "name": "Instantanés auto" }),
+    )
+    .await;
+    let pid = created["project"]["id"].as_str().unwrap().to_string();
+    let run = || run_auto_snapshots(&db, dir.path());
+
+    assert!(run().await.unwrap().contains(&pid));
+    // Unchanged since: no new snapshot
+    assert!(!run().await.unwrap().contains(&pid));
+    // A change whose date is older than the snapshot file (it landed while the snapshot was
+    // being written) still differs from the revision captured in it: snapshotted again
+    db.query(format!(
+        "UPDATE project:`{pid}` SET updatedAt = '2000-01-01T00:00:00.000Z';"
+    ))
+    .await
+    .unwrap()
+    .check()
+    .unwrap();
+    assert!(run().await.unwrap().contains(&pid));
+    assert!(!run().await.unwrap().contains(&pid));
+    for i in 0..AUTO_SNAPSHOTS_KEPT + 2 {
+        create_node(&app, &pid, &format!("N{i}")).await;
+        run().await.unwrap();
+    }
+    let (_, list) = send(
+        &app,
+        "GET",
+        &format!("/api/projects/{pid}/snapshots"),
+        Value::Null,
+    )
+    .await;
+    let list = list["snapshots"].as_array().unwrap();
+    assert_eq!(list.len(), AUTO_SNAPSHOTS_KEPT);
+    assert_eq!(
+        list[0]["nodeCount"],
+        AUTO_SNAPSHOTS_KEPT + 2,
+        "newest first"
+    );
+}
+
+// Counterpart of "stores the database inside the data directory" in tests/api.test.ts
+#[tokio::test]
+async fn stores_the_database_and_snapshots_inside_the_data_directory() {
+    let (app, dir) = app().await;
+    assert!(dir.path().join("graphax.db").exists());
+    let (_, created) = send(
+        &app,
+        "POST",
+        "/api/projects",
+        serde_json::json!({ "name": "Instantané" }),
+    )
+    .await;
+    let pid = created["project"]["id"].as_str().unwrap().to_string();
+    let (status, json) = send(
+        &app,
+        "POST",
+        &format!("/api/projects/{pid}/snapshots"),
+        Value::Null,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let name = json["snapshot"]["name"].as_str().unwrap();
+    assert!(dir.path().join("snapshots").join(&pid).join(name).exists());
+}
+
+#[test]
+fn graphax_data_dir_overrides_the_app_data_folder() {
+    use graphax_api::resolve_data_dir;
+    use std::path::PathBuf;
+
+    let default = PathBuf::from("/app/data");
+    // Only this test touches the variable
+    std::env::remove_var("GRAPHAX_DATA_DIR");
+    assert_eq!(resolve_data_dir(default.clone()), default);
+    std::env::set_var("GRAPHAX_DATA_DIR", "  ");
+    assert_eq!(resolve_data_dir(default.clone()), default);
+    std::env::set_var("GRAPHAX_DATA_DIR", " /elsewhere ");
+    assert_eq!(
+        resolve_data_dir(default.clone()),
+        PathBuf::from("/elsewhere")
+    );
+    std::env::remove_var("GRAPHAX_DATA_DIR");
+}
+
+#[test]
+fn reads_the_automatic_snapshot_interval() {
+    use graphax_api::auto_snapshot_interval;
+    use std::time::Duration;
+
+    assert_eq!(
+        auto_snapshot_interval(None),
+        Some(Duration::from_secs(30 * 60))
+    );
+    assert_eq!(
+        auto_snapshot_interval(Some("5")),
+        Some(Duration::from_secs(5 * 60))
+    );
+    assert_eq!(
+        auto_snapshot_interval(Some("0.5")),
+        Some(Duration::from_secs(30))
+    );
+    assert_eq!(auto_snapshot_interval(Some("0")), None);
+    assert_eq!(auto_snapshot_interval(Some("-1")), None);
+    assert_eq!(auto_snapshot_interval(Some("jamais")), None);
+}
+
+// Stopping the server lets it finish and close the database: it opens again at once,
+// with what was written
+#[tokio::test]
+async fn stops_cleanly_and_releases_the_database() {
+    const STOP_PORT: u16 = 3471;
+    let dir = tempfile::tempdir().unwrap();
+    let data_dir = dir.path().to_path_buf();
+    let (stop_tx, stop_rx) = tokio::sync::oneshot::channel::<()>();
+    let server = tokio::spawn({
+        let data_dir = data_dir.clone();
+        async move {
+            graphax_api::serve(&data_dir, STOP_PORT, Frontend::None, async {
+                let _ = stop_rx.await;
+            })
+            .await
+            .map_err(|e| e.to_string())
+        }
+    });
+
+    // Waits for the server, then writes a project through it
+    let host = format!("127.0.0.1:{STOP_PORT}");
+    let mut stream = None;
+    for _ in 0..100 {
+        if let Ok(s) = tokio::net::TcpStream::connect(&host).await {
+            stream = Some(s);
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    let mut stream = stream.expect("server did not start");
+    let body = r#"{"name":"Avant l'arrêt"}"#;
+    let request = format!(
+        "POST /api/projects HTTP/1.1\r\nHost: {host}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        body.len()
+    );
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    stream.write_all(request.as_bytes()).await.unwrap();
+    let mut response = String::new();
+    stream.read_to_string(&mut response).await.unwrap();
+    assert!(response.starts_with("HTTP/1.1 201"), "{response}");
+
+    stop_tx.send(()).unwrap();
+    server.await.unwrap().unwrap();
+
+    // No retry: the lock is already released
+    let db = open_db(&data_dir)
+        .await
+        .expect("database still locked after stop");
+    let mut res = db.query("SELECT VALUE name FROM project").await.unwrap();
+    let names: Vec<String> = res.take(0).unwrap();
+    assert_eq!(names, vec!["Avant l'arrêt".to_string()]);
+}
+
+#[test]
+fn finds_the_database_of_older_windows_versions() {
+    use graphax_api::legacy::{legacy_location, recover_legacy_database};
+
+    let found = legacy_location("D:/work/graphax").unwrap();
+    assert_eq!(
+        found.to_string_lossy().replace('\\', "/"),
+        "D:/work/graphax/D/work/graphax/data/graphax.db"
+    );
+    assert!(legacy_location("/home/me/graphax").is_none());
+
+    // Nothing is copied when the database is where it should be, or no old one exists
+    let dir = tempfile::tempdir().unwrap();
+    let target = dir.path().join("new").join("graphax.db");
+    recover_legacy_database(&target, &[dir.path().to_path_buf()]);
+    assert!(!target.exists());
+}
+
+fn frontend_app(
+    dir: &std::path::Path,
+    db: surrealdb::Surreal<surrealdb::engine::local::Db>,
+) -> axum::Router {
+    let dist = dir.join("dist");
+    std::fs::create_dir_all(dist.join("assets")).unwrap();
+    std::fs::write(
+        dist.join("index.html"),
+        "<!doctype html><title>Graphax</title>",
+    )
+    .unwrap();
+    std::fs::write(dist.join("assets").join("app.js"), "console.log(1)").unwrap();
+    std::fs::write(dir.join("secret.txt"), "private").unwrap();
+    let mut state = AppState::new(db, dir.to_path_buf());
+    state.frontend = Frontend::Dir(dist);
+    router(state, PORT)
+}
+
+async fn get_raw(app: &axum::Router, uri: &str) -> (StatusCode, String, String) {
+    let req = Request::get(uri)
+        .header("host", HOST)
+        .body(Body::empty())
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    let status = res.status();
+    let mime = res
+        .headers()
+        .get("content-type")
+        .map(|v| v.to_str().unwrap().to_string())
+        .unwrap_or_default();
+    let bytes = res.into_body().collect().await.unwrap().to_bytes();
+    (status, mime, String::from_utf8_lossy(&bytes).to_string())
+}
+
+// The interface is served next to the API, and any other path gets index.html
+#[tokio::test]
+async fn serves_the_interface_next_to_the_api() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = open_db(dir.path()).await.unwrap();
+    let app = frontend_app(dir.path(), db);
+
+    let (status, mime, body) = get_raw(&app, "/").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(mime.starts_with("text/html"));
+    assert!(body.contains("<title>Graphax</title>"));
+
+    let (_, mime, body) = get_raw(&app, "/assets/app.js").await;
+    assert!(mime.contains("javascript"), "{mime}");
+    assert_eq!(body, "console.log(1)");
+
+    let (status, _, body) = get_raw(&app, "/projets/abc").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body.contains("<title>Graphax</title>"));
+
+    // No file outside the interface folder
+    let (_, _, body) = get_raw(&app, "/../secret.txt").await;
+    assert!(!body.contains("private"));
+    let (_, _, body) = get_raw(&app, "/assets/%2e%2e/%2e%2e/secret.txt").await;
+    assert!(!body.contains("private"));
+
+    // An unknown API route stays a JSON 404
+    let (status, mime, _) = get_raw(&app, "/api/inconnue").await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert!(mime.contains("json"));
+}
+
+// Same case as the former "stores nothing when one record of a project fails": a project
+// written with an invalid record (a node twice) leaves nothing behind
+#[tokio::test]
+async fn stores_nothing_when_one_record_of_a_project_fails() {
+    use graphax_api::bulk::{insert_project_graph, ProjectGraph};
+
+    let dir = tempfile::tempdir().unwrap();
+    let db = open_db(dir.path()).await.unwrap();
+    let app2 = router(AppState::new(db.clone(), dir.path().to_path_buf()), PORT);
+
+    let obj = |v: Value| v.as_object().unwrap().clone();
+    let node = obj(
+        serde_json::json!({ "id": "dupnode", "categoryId": null, "title": "Doublon", "content": "", "positionX": 0, "positionY": 0, "metadata": {}, "createdAt": "2026-01-01T00:00:00.000Z", "updatedAt": "2026-01-01T00:00:00.000Z" }),
+    );
+    let result = insert_project_graph(
+        &db,
+        ProjectGraph {
+            project: obj(serde_json::json!({ "id": "halfproject", "name": "Partiel", "description": "", "createdAt": "2026-01-01T00:00:00.000Z", "updatedAt": "2026-01-01T00:00:00.000Z" })),
+            categories: vec![obj(serde_json::json!({ "id": "halfcat", "name": "Cat", "color": "#47c0ef", "icon": "tag", "shape": "sharp" }))],
+            nodes: vec![node.clone(), node],
+            edges: vec![],
+        },
+    )
+    .await;
+    assert!(result.is_err());
+    let (status, _) = send(&app2, "GET", "/api/projects/halfproject", Value::Null).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(
+        count(
+            &db,
+            "RETURN count(SELECT id FROM category WHERE projectId = $p);",
+            "halfproject"
+        )
+        .await,
+        0
+    );
+}

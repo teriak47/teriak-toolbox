@@ -12,36 +12,45 @@ Application locale d'investigation, d'OSINT/Cyber, d'analyse de lore et de reche
 
 - **Frontend :** React 19 + TypeScript + Vite 8 + Tailwind CSS v4
 - **Moteur de Graphe :** canevas SVG développé pour Graphax. `src/components/GraphCanvas.tsx` porte son état, sa caméra et sa physique, et `src/components/canvas/` ses éléments (nœuds, liens, dock, mini-map, confirmation de suppression, menu de catégorie) — cartes d'indices personnalisées, liens tirés depuis le cadre d'un nœud, édition directe des labels sur les flèches, mini-map, simulation de forces optionnelle et mise en page hiérarchique (`@dagrejs/dagre`). Au-delà de 1 000 nœuds, la simulation de forces passe à une approximation de Barnes-Hut pour que les grands graphes restent fluides.
-- **Backend Local :** Node.js + Hono (`http://127.0.0.1:3456`)
-- **Base de Données 100% Locale :** **SurrealDB Embedded** (`@surrealdb/node` et son moteur natif `@surrealdb/node-native`, stockage persistant sur disque `surrealkv://` dans `./data/graphax.db`, relations graphe natives `RELATE`)
+- **API locale :** Rust + axum (`api/`), uniquement sur `127.0.0.1`. Elle sert aussi l'interface.
+- **Base de Données 100% Locale :** **SurrealDB Embedded** 3.3 (crate Rust, stockage SurrealKV sur disque, relations graphe natives `RELATE`). Les bases écrites par les versions précédentes de Graphax s'ouvrent telles quelles.
+- **Appli de bureau :** Tauri 2 (`src-tauri/`), qui réunit l'interface et l'API dans un seul programme.
 
-## Démarrage Rapide
+## Appli de bureau
 
-Prérequis : Node.js 22.18 ou plus récent et pnpm. Le transfert a été compilé avec Node.js 22 et pnpm 12.
+Téléchargez l'installeur de votre système dans les [Releases GitHub](https://github.com/teriak47/teriak-toolbox/releases) du dépôt (`Graphax_<version>_x64-setup.exe` ou `.msi` sous Windows, `.dmg` sous macOS, `.deb`, `.rpm` ou `.AppImage` sous Linux), installez-le et ouvrez Graphax depuis vos applications. Rien d'autre n'est nécessaire.
+
+Les installeurs ne sont pas signés : le premier lancement affiche un avertissement.
+
+- **Windows :** « Windows a protégé votre ordinateur » → *Informations complémentaires* → *Exécuter quand même*.
+- **macOS :** clic droit sur Graphax dans Applications → *Ouvrir* → *Ouvrir* (ou *Réglages Système* → *Confidentialité et sécurité* → *Ouvrir quand même*).
+- **Linux :** pas d'avertissement ; l'appli a besoin de WebKitGTK (`libwebkit2gtk-4.1`), que les paquets `.deb` et `.rpm` installent.
+
+L'appli range ses données dans son propre dossier : `%APPDATA%\com.teriak47.graphax` sous Windows, `~/Library/Application Support/com.teriak47.graphax` sous macOS, `~/.local/share/com.teriak47.graphax` sous Linux (`GRAPHAX_DATA_DIR` permet d'en choisir un autre). Pour reprendre les projets du mode navigateur, exportez chacun en JSON (« Exporter ») puis ouvrez-le avec « Importer .json » dans l'appli. Rouvrir Graphax quand il est déjà ouvert ramène sa fenêtre au premier plan. Fermer la fenêtre attend que la base soit fermée proprement.
+
+## Mode navigateur et développement
+
+Graphax peut aussi tourner dans un navigateur, depuis un clone du dépôt. Il faut Rust ([rustup](https://rustup.rs)) pour l'API locale, et Node.js 22.18 ou plus récent avec pnpm 12 pour l'interface. Depuis ce dossier :
 
 ```bash
 pnpm install --frozen-lockfile
-
-# Mode développement (lance l'API SurrealDB locale + l'interface Vite sur http://localhost:5173)
-pnpm dev
-
-# Tests automatisés de l'API (base temporaire, données fictives)
-pnpm test
-
-# Tests de l'interface dans un vrai navigateur (après pnpm build ; Chromium de Playwright requis :
-# pnpm exec playwright install chromium)
-pnpm test:e2e
-
-# Build de production + lancement serveur unifié (http://127.0.0.1:3456)
 pnpm build
-pnpm start
+pnpm start      # API et interface sur http://127.0.0.1:3456
 ```
+
+Le mode navigateur garde ses données dans `data/` de ce dossier, comme les versions précédentes : leurs projets s'ouvrent tels quels. `pnpm dev` lance l'API et le serveur de développement Vite (http://localhost:5173).
+
+L'appli de bureau se construit à partir des mêmes sources : `pnpm dev:desktop` la lance en développement et `pnpm build:desktop` fabrique les installeurs du système courant. Sous Linux, il faut les bibliothèques de développement WebKitGTK (voir les [prérequis Tauri](https://v2.tauri.app/start/prerequisites/)).
+
+Tests : `pnpm test` lance les tests de l'API en HTTP contre l'API locale (base temporaire, données fictives) et les tests unitaires de l'interface ; `cargo test -p graphax-api` lance les tests propres à l'API ; `pnpm build` puis `pnpm test:e2e` lance les tests de l'interface dans un vrai navigateur (Chromium de Playwright requis une fois : `pnpm exec playwright install chromium`). La CI les lance tous et vérifie que l'appli de bureau se compile.
+
+Versions publiées : pousser un tag `t47-graphax-board/v<version>` (sur un commit de `main` qui porte cette version) fabrique les installeurs Windows, macOS et Linux et les joint à une Release GitHub en brouillon, publiée à la main.
 
 ## Design et version
 
 L'interface suit le design system SECTION 21 des projets Teriak47 : surfaces sombres bistre, un seul accent bleu froid, angles droits avec coupes à 21°, liens en segments droits, fentes d'œil pour les états et signature de pied. Chakra Petch et Fragment Mono (OFL-1.1, fournies par `@fontsource`) sont chargées localement : rien n'est téléchargé. Les tokens sont dans `src/ds/`. Les couleurs et formes de catégories des projets existants sont conservées ; les anciennes formes arrondies sont dessinées en carrés. Les nœuds peuvent être carrés, à coin coupé, hexagonaux, en losange, octogonaux ou ronds, et les liens s'arrêtent sur chaque contour.
 
-La version affichée dans le pied de page vient de `package.json`, qui doit correspondre à `tool.yaml` (vérifié par `pnpm test`). `/api/health` la renvoie aussi.
+La version affichée dans le pied de page vient de `package.json`, qui doit correspondre à `tool.yaml` (vérifié par `pnpm test`) et aux crates Rust de `Cargo.toml` (vérifié par `cargo test`). `/api/health` la renvoie aussi.
 
 ## Raccourcis & Interactions sur le Canevas
 
@@ -69,17 +78,17 @@ La version affichée dans le pied de page vient de `package.json`, qui doit corr
 
 ## Protection de l'API locale
 
-L'API n'écoute que sur `127.0.0.1`, n'envoie aucun en-tête CORS et refuse les requêtes dont l'en-tête `Host` ou `Origin` n'est pas l'application elle-même ou le serveur de développement Vite (`localhost:5173`). Les autres sites ne peuvent donc ni lire ni modifier les données locales, y compris par DNS rebinding. D'autres origines peuvent être autorisées avec `GRAPHAX_ALLOWED_ORIGINS` (séparées par des virgules). Il n'y a pas d'authentification utilisateur : toute personne ayant accès à votre session locale peut utiliser l'API. Les adresses de la démonstration sont fictives.
+L'API n'écoute que sur `127.0.0.1`, n'envoie aucun en-tête CORS et refuse les requêtes dont l'en-tête `Host` ou `Origin` n'est pas l'application elle-même (port 3456 en mode navigateur, 3457 dans l'appli de bureau) ou le serveur de développement Vite (`localhost:5173`). Les autres sites ne peuvent donc ni lire ni modifier les données locales, y compris par DNS rebinding. D'autres origines peuvent être autorisées avec `GRAPHAX_ALLOWED_ORIGINS` (séparées par des virgules). Il n'y a pas d'authentification utilisateur : toute personne ayant accès à votre session locale peut utiliser l'API. Les adresses de la démonstration sont fictives.
 
 ## Données locales
 
-Les données sont stockées dans `data/` à la racine de l'outil, quel que soit le dossier depuis lequel le serveur est lancé ; `GRAPHAX_DATA_DIR` permet de choisir un autre emplacement. Ce dossier est exclu de Git et ne doit pas être publié.
+Graphax ne fonctionne pas en ouvrant `index.html` directement : il a besoin de son API locale. En mode navigateur, les données sont stockées dans `data/` à la racine de l'outil, quel que soit le dossier depuis lequel l'API est lancée ; `GRAPHAX_DATA_DIR` permet de choisir un autre emplacement. Ce dossier est exclu de Git et ne doit pas être publié. L'appli de bureau utilise son propre dossier (voir « Appli de bureau »).
 
-Instantanés : toutes les 30 minutes, le serveur enregistre chaque projet modifié dans `data/snapshots/<id du projet>/` et garde les 10 derniers (`GRAPHAX_AUTO_SNAPSHOT_MINUTES` règle l'intervalle, `0` les désactive). Le bouton « Instantanés » d'un projet en prend un à la demande, en restaure un comme nouveau projet (le projet courant n'est pas modifié) ou en supprime un. Les fichiers ont le format d'export : on peut aussi les importer depuis la liste des projets, même après la suppression du projet. Ils restent dans le même dossier `data/` : gardez une copie ailleurs pour les projets importants.
+Instantanés : toutes les 30 minutes, Graphax enregistre chaque projet modifié dans `snapshots/<id du projet>/` de son dossier de données et garde les 10 derniers (`GRAPHAX_AUTO_SNAPSHOT_MINUTES` règle l'intervalle, `0` les désactive). Le bouton « Instantanés » d'un projet en prend un à la demande, en restaure un comme nouveau projet (le projet courant n'est pas modifié) ou en supprime un. Les fichiers ont le format d'export : on peut aussi les importer depuis la liste des projets, même après la suppression du projet. Ils restent dans le même dossier de données : gardez une copie ailleurs pour les projets importants.
 
 Les corrections, optimisations et ajouts prévus sont listés dans la [feuille de route](docs/ROADMAP.md) (en anglais).
 
-Sous Windows, d'anciennes versions créaient la base dans un dossier imbriqué du type `<dossier de lancement>/D/…/data/graphax.db`. Si aucune base n'existe à l'emplacement attendu, Graphax copie celle qu'il y trouve et l'indique dans le journal ; l'original n'est pas modifié.
+En mode navigateur sous Windows, d'anciennes versions créaient la base dans un dossier imbriqué du type `<dossier de lancement>/D/…/data/graphax.db`. Si aucune base n'existe à l'emplacement attendu, Graphax copie celle qu'il y trouve et l'indique dans le journal ; l'original n'est pas modifié.
 
 ## Licence
 

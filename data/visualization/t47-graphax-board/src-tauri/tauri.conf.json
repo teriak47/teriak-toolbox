@@ -1,0 +1,42 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Graphax",
+  "version": "../package.json",
+  "identifier": "com.teriak47.graphax",
+  "build": {
+    "beforeDevCommand": {
+      "script": "pnpm dev:client",
+      "cwd": "..",
+      "wait": false
+    },
+    "devUrl": "http://localhost:5173",
+    "beforeBuildCommand": {
+      "script": "pnpm build",
+      "cwd": ".."
+    },
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "category": "Productivity",
+    "shortDescription": "Tableau d'enquête et graphe d'analyse local",
+    "longDescription": "Graphax : tableau d'enquête et graphe d'analyse interactif, 100 % local (base SurrealDB embarquée).",
+    "copyright": "Copyright (c) 2026 Teriak47 (Julien Kairet). GPL-3.0.",
+    "publisher": "Teriak47",
+    "license": "GPL-3.0"
+  }
+}

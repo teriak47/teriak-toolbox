@@ -66,7 +66,9 @@ const undoButton = () => page.getByRole('button', { name: 'Annuler', exact: true
 before(async () => {
   assert.ok(fs.existsSync(path.join(toolDir, 'dist', 'index.html')), 'run `pnpm build` before the e2e tests');
   dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'graphax-e2e-'));
-  server = spawn(process.execPath, ['server/index.ts'], {
+  // The local API (built by `pnpm test:e2e`) serves the built interface from dist/
+  const binary = path.join(toolDir, 'target', 'debug', process.platform === 'win32' ? 'graphax-api.exe' : 'graphax-api');
+  server = spawn(binary, [], {
     cwd: toolDir,
     env: { ...process.env, PORT: String(PORT), GRAPHAX_DATA_DIR: dataDir, GRAPHAX_AUTO_SNAPSHOT_MINUTES: '0' },
     stdio: 'ignore',

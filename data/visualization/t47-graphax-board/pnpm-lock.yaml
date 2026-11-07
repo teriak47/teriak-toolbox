@@ -17,21 +17,9 @@ importers:
       '@fontsource/fragment-mono':
         specifier: ^5.3.0
         version: 5.3.0
-      '@hono/node-server':
-        specifier: ^2.1.5
-        version: 2.1.5(hono@4.13.14)
-      '@surrealdb/node':
-        specifier: ^3.1.0
-        version: 3.1.0(@surrealdb/node-native@3.3.5)(surrealdb@2.2.0(tslib@2.9.1)(typescript@5.9.3))
-      '@surrealdb/node-native':
-        specifier: ^3.3.5
-        version: 3.3.5
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
-      hono:
-        specifier: ^4.13.14
-        version: 4.13.14
       lucide-react:
         specifier: ^1.66.0
         version: 1.66.0(@types/react@19.3.0)(react@19.3.1)
@@ -47,9 +35,6 @@ importers:
       remark-gfm:
         specifier: ^4.0.1
         version: 4.0.1(supports-color@10.2.2)
-      surrealdb:
-        specifier: ^2.2.0
-        version: 2.2.0(tslib@2.9.1)(typescript@5.9.3)
       tailwind-merge:
         specifier: ^3.7.0
         version: 3.7.0
@@ -57,6 +42,9 @@ importers:
       '@tailwindcss/vite':
         specifier: ^4.0.0
         version: 4.3.3(vite@8.3.5(@types/node@22.20.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15))
+      '@tauri-apps/cli':
+        specifier: ^2.12.4
+        version: 2.12.4
       '@types/node':
         specifier: ^22.0.0
         version: 22.20.5
@@ -255,12 +243,6 @@ packages:
   '@fontsource/fragment-mono@5.3.0':
     resolution: {integrity: sha512-vpOLZhWq7Z6wUPo1qMl16Y4yjQJiN0d9TXX2oUtiYXmqUrXU23Wuto73Knyak+osdlIuHz46srpBZb2pfhHCIA==}
 
-  '@hono/node-server@2.1.5':
-    resolution: {integrity: sha512-MgP/I06GdvsilDspMk/qmRzpk8LOUStP6jFAbSRi40W09DhoyUn+Mj7eyKICPqeYKybOjVFLVIAQzvu1bfIa7Q==}
-    engines: {node: '>=20'}
-    peerDependencies:
-      hono: ^4 || ^5.0.0-0
-
   '@jridgewell/gen-mapping@0.3.13':
     resolution: {integrity: sha512-2kkt/7niJ6MgEPxF0bYdQ6etZaA+fQvDcLKckhy1yIQOzaoKjBBjSj63/aLVjYE3qhRt5dvM+uUyfCg6UKCBbA==}
 
@@ -379,69 +361,6 @@ packages:
   '@rolldown/pluginutils@1.0.1':
     resolution: {integrity: sha512-2j9bGt5Jh8hj+vPtgzPtl72j0yRxHAyumoo6TNfAjsLB04UtpSvPbPcDcBMxz7n+9CYB0c1GxQFxYRg2jimqGw==}
 
-  '@surrealdb/cbor@2.0.0-alpha.4':
-    resolution: {integrity: sha512-l/hNZ3ZCOJq8rzwx1y5ZV/8b2bYCWdhGqRVY33Pu50NAHyAW5qLsMn3ZBkZow77mAKwNCsbDsRGnyYEuU95mjw==}
-    engines: {node: '>=18.0.0'}
-
-  '@surrealdb/node-native-darwin-arm64@3.3.5':
-    resolution: {integrity: sha512-ZLRF6QhDrZhGbxl92TlU15/VQ3UQpXeyUdyiKswOsdPXAcQ1CgC0c+HrRTjB8J7oNXS8JWbVeysQjc9f92BKKA==}
-    cpu: [arm64]
-    os: [darwin]
-
-  '@surrealdb/node-native-darwin-x64@3.3.5':
-    resolution: {integrity: sha512-7RNEMwdt3m6CD+GJ3me5I8x099mCko2dnFH9xOKvkAAkHi3sybe+GdyHr8cDfLysKKg/ZJJQUxP53d63lQPIpQ==}
-    cpu: [x64]
-    os: [darwin]
-
-  '@surrealdb/node-native-linux-arm64-gnu@3.3.5':
-    resolution: {integrity: sha512-gR27n6R7cPuR6FX1Iv4xw5e2+jtoEHpvmucxHnJA5+bMHkEVs6PiUzjuk/LPBvNdTpLPxBDxCWTSXUPf1aeHDQ==}
-    cpu: [arm64]
-    os: [linux]
-    libc: [glibc]
-
-  '@surrealdb/node-native-linux-arm64-musl@3.3.5':
-    resolution: {integrity: sha512-YLjCOXHWRMaKugtgxsmu44kTb5fgSBVUxW1Vh4+5WFzMBJJ9NuoucxzWyzTS3HHMkKX7KGeJgk44A7Dvd61Fbw==}
-    cpu: [arm64]
-    os: [linux]
-    libc: [musl]
-
-  '@surrealdb/node-native-linux-x64-gnu@3.3.5':
-    resolution: {integrity: sha512-UpTNil89dCCRhp8wK7FHTxyixQc16n3GbQeQOigzFWmbsdEWTraU5raSxQeJEiIJCuTjEABQyrhPXTUjZ8pxhA==}
-    cpu: [x64]
-    os: [linux]
-    libc: [glibc]
-
-  '@surrealdb/node-native-linux-x64-musl@3.3.5':
-    resolution: {integrity: sha512-AbXX4t7VK/jn58uECFb3oCk62OrarRK+NPUGdpTCUE0bM3u94wE5qkf78u4uRxBA3UxNyc2a0Y8cPK/FsCC8pQ==}
-    cpu: [x64]
-    os: [linux]
-    libc: [musl]
-
-  '@surrealdb/node-native-win32-arm64-msvc@3.3.5':
-    resolution: {integrity: sha512-Cr+MZg0ojs3E07db7V6n3wC2qU3bN00kxt+e2H/Psvl/xqX9UO1KyD9zw9URJIzAsB+JGxT8ZPC64tXYkOSaKQ==}
-    cpu: [arm64]
-    os: [win32]
-
-  '@surrealdb/node-native-win32-x64-msvc@3.3.5':
-    resolution: {integrity: sha512-9zG7ZaGUCj7NOUxXyljsleycdxppfrZr083B4xekr8AJ7u8UdqiLgZjptnLHkWsXa3mIgRACvVG7z4fJmToo7w==}
-    cpu: [x64]
-    os: [win32]
-
-  '@surrealdb/node-native@3.3.5':
-    resolution: {integrity: sha512-vDu+uXD+kh/a+mAgpczPiD8WzwIum+uxQGo8iRVZiVlyV4DW6a6iUgW9BlbhFnDlF465mnjYWdOHUlEJVO09Qw==}
-
-  '@surrealdb/node@3.1.0':
-    resolution: {integrity: sha512-q2dVTXU3D6dWyeg/SlOh95iQTaMcDBrNnfPIM9fS0hqlyYepf1Sg74h/3d1dboY88skZXsfuhBzFxC+dVX/Dyw==}
-    peerDependencies:
-      '@surrealdb/node-native': ^3.3.0-beta.3
-      surrealdb: ^2.0.1
-
-  '@surrealdb/sqon@0.2.0':
-    resolution: {integrity: sha512-G+dXp5HLyDkz2s+W0jSAGBuHLCfwD2WXy8QRLxSQm0kd4VznqV83CB5wxvNX00CcFdjJt41JwAyJw1re4mOLzQ==}
-    peerDependencies:
-      tslib: ^2.6.3
-      typescript: ^5.0.0
-
   '@tailwindcss/node@4.3.3':
     resolution: {integrity: sha512-/T8IKEsf9VTU6tLjgC7+sv2mOPtQxzE2jMw7u4Tt40Tx+QSZxpzh95/H6cMKoja9XuW7iMdLJYBB0o9G1CaAgg==}
 
@@ -535,6 +454,82 @@ packages:
     resolution: {integrity: sha512-yYU8cogLeSh/ms2jh8Fj7jaba/EWa7Ja6GoUqYZaraEuCI5YS6ms6ObZgjjedm+jm6XZjdNRWBpPP6Z86oOxcw==}
     peerDependencies:
       vite: ^5.2.0 || ^6 || ^7 || ^8
+
+  '@tauri-apps/cli-darwin-arm64@2.12.4':
+    resolution: {integrity: sha512-OxqKSckIkoJ6vX2AjifIJpTasFC0Hbdoo7gEiCmAjauABO3U8m2MRsLWe+QTiBwDx1mIrvgA+rvI7tvDnbnHVg==}
+    engines: {node: '>= 10'}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@tauri-apps/cli-darwin-x64@2.12.4':
+    resolution: {integrity: sha512-fz76/77wMMJOaaUN6n3CybRG0P/MTEjjqYk81mGPyhi9m6Ue5T+LWBnJP/AkPooNatBPI2vtulGqomyMJ44lCQ==}
+    engines: {node: '>= 10'}
+    cpu: [x64]
+    os: [darwin]
+
+  '@tauri-apps/cli-linux-arm-gnueabihf@2.12.4':
+    resolution: {integrity: sha512-K0w8Bof6Lt8QKLAYhRy0yy36ZH5iA/35VuSOvnxyjvCUZ+A3JKsUTlALviH/sVgAlisaPzzmeJSH8XOn4Q2HBA==}
+    engines: {node: '>= 10'}
+    cpu: [arm]
+    os: [linux]
+
+  '@tauri-apps/cli-linux-arm64-gnu@2.12.4':
+    resolution: {integrity: sha512-j5rOnjmRUwWrm1oosf0zBYl4D+fqydgUROFCk0hvKZxvbTT8SOERes0QB7rBV/XWNy+kM6pCKzb3oSm2sRglzg==}
+    engines: {node: '>= 10'}
+    cpu: [arm64]
+    os: [linux]
+    libc: [glibc]
+
+  '@tauri-apps/cli-linux-arm64-musl@2.12.4':
+    resolution: {integrity: sha512-aOue3Fy6Jb7+oWcfAVUsVHfeTybSCt2CZoU06aO4jv4d2Ks/KnaTPwMAK3CLEduGOvBLY1lbBBrIyomqLLH5Sg==}
+    engines: {node: '>= 10'}
+    cpu: [arm64]
+    os: [linux]
+    libc: [musl]
+
+  '@tauri-apps/cli-linux-riscv64-gnu@2.12.4':
+    resolution: {integrity: sha512-Fx6GShY/RvST+t6LMlTHAwd66+1tEaAAGrnU7cysVfaiRP1BKng5Vl6rVmO6rSLOA1Sp1dRzNYM4f0OWQGb7qA==}
+    engines: {node: '>= 10'}
+    cpu: [riscv64]
+    os: [linux]
+    libc: [glibc]
+
+  '@tauri-apps/cli-linux-x64-gnu@2.12.4':
+    resolution: {integrity: sha512-tNzZSa79Z1nRpHxEpQ38lsAFpKlFlYvoXzjTV+lRRn/zSf3wrdUC3wnLcq2XEadchPu4ttK0zivhYzr+XGD19Q==}
+    engines: {node: '>= 10'}
+    cpu: [x64]
+    os: [linux]
+    libc: [glibc]
+
+  '@tauri-apps/cli-linux-x64-musl@2.12.4':
+    resolution: {integrity: sha512-jmZ1pr0xEqUhuEusWtt9Yt+GF6lCnGHUmIL+KIknpbjK/XQ2qkhDBhaxK/JMHM2A8dAacVXCxXJk2EXpwhQUfA==}
+    engines: {node: '>= 10'}
+    cpu: [x64]
+    os: [linux]
+    libc: [musl]
+
+  '@tauri-apps/cli-win32-arm64-msvc@2.12.4':
+    resolution: {integrity: sha512-fGo8pgEHZxdSYgZ/J98m1usJ7NHKmKbq7k6uT0x1rpOq6Bg2YVzzpaAblWk710f5LHYBJIL5QIFS5IrD+4gmTg==}
+    engines: {node: '>= 10'}
+    cpu: [arm64]
+    os: [win32]
+
+  '@tauri-apps/cli-win32-ia32-msvc@2.12.4':
+    resolution: {integrity: sha512-ezl8sQIcjYsye3TUnTH5VcWmWzccZASlQm7hlZt0dYyj1XD0qpVW47u2xYVrIKui0F8uQv/7QGZixdWiClBsbg==}
+    engines: {node: '>= 10'}
+    cpu: [ia32]
+    os: [win32]
+
+  '@tauri-apps/cli-win32-x64-msvc@2.12.4':
+    resolution: {integrity: sha512-DJhDeCqjLDNMWYFy7ZS8cfeAHX2RK0RbQMLiA3bMVVkXRDJ4NBYiHriGqsUhsr9iG41aTb+dJGkFPmPw1gWwVw==}
+    engines: {node: '>= 10'}
+    cpu: [x64]
+    os: [win32]
+
+  '@tauri-apps/cli@2.12.4':
+    resolution: {integrity: sha512-JI9bHfudSRJikGOrjbXEm6RjzzvmKuLc+JixB1NE8hNzQkNlCCIC3pTES3uypkR9lxHrsbxzcnSwhI2IxBQphw==}
+    engines: {node: '>= 10'}
+    hasBin: true
 
   '@types/debug@4.1.13':
     resolution: {integrity: sha512-KSVgmQmzMwPlmtljOomayoR89W4FynCAi3E8PPs7vmDVPe84hT+vGPKkJfThkmXs0x0jAaa9U8uW8bbfyS2fWw==}
@@ -718,10 +713,6 @@ packages:
 
   hast-util-whitespace@3.0.0:
     resolution: {integrity: sha512-88JUN06ipLwsnv+dVn+OIYOvAuvBMy/Qoi6O7mQHxdPXpjy+Cd6xRkWwux7DKO+4sYILtLBRIKgsdpS2gQc7qw==}
-
-  hono@4.13.14:
-    resolution: {integrity: sha512-yhRLQ21U6qa9Hsu2N7Qcbh8tE+WKEcoErjIo56LeSGiGXGp9sA7UpE86Ui9uexb61KakiGwuHMn2QdV7w6i6kQ==}
-    engines: {node: '>=16.9.0'}
 
   html-url-attributes@3.0.1:
     resolution: {integrity: sha512-ol6UPyBWqsrO6EJySPz2O7ZSr856WDrEzM5zMqp+FJJLGMW35cLYmmZnl0vztAZxRUoNZJFTCohfjuIJ8I4QBQ==}
@@ -1149,12 +1140,6 @@ packages:
     resolution: {integrity: sha512-SS+jx45GF1QjgEXQx4NJZV9ImqmO2NPz5FNsIHrsDjh2YsHnawpan7SNQ1o8NuhrbHZy9AZhIoCUiCeaW/C80g==}
     engines: {node: '>=18'}
 
-  surrealdb@2.2.0:
-    resolution: {integrity: sha512-DNmL1SRkHJLqvtVJ21HqA0NCE5R5p3Xfpm34JY9HgQPpkoDCi4PVpowKjnEdSlCaiWPiv9UcbNrVsH+IW1UjOQ==}
-    peerDependencies:
-      tslib: ^2.6.3
-      typescript: ^5.0.0 || ^6.0.0
-
   tailwind-merge@3.7.0:
     resolution: {integrity: sha512-XPPUyAc+cvspz3lHTcR/QgPfW2A0lv/xQNIjX3HGhLR+Nq2lHaLq5MtTesHn8GUr3W3DguT2KT5x3NVgRtYwmA==}
 
@@ -1212,10 +1197,6 @@ packages:
 
   unist-util-visit@5.2.0:
     resolution: {integrity: sha512-fpsYs/VVoZxfGY9/j3FQpZmN8wdLJaV1Pt38AaJNZu9uKIHcFU3halCdBveEq1HGKO1OEfJY65w1zvoFV1b3qQ==}
-
-  uuidv7@1.2.1:
-    resolution: {integrity: sha512-4kPkK3/XTQW9Hbm4CaqfICn+kY9LJtDVEOfgsRRra/+n2Ofg4NqzRFceAkxvQ/Ud/6BpHOPzj8cirqM7TzTN5Q==}
-    hasBin: true
 
   vfile-message@4.0.3:
     resolution: {integrity: sha512-QTHzsGd1EhbZs4AsQ20JX1rC3cOlt/IWJruk893DfLRr57lcnOeMaWG4K0JrRta4mIJZKth2Au3mM3u03/JWKw==}
@@ -1375,10 +1356,6 @@ snapshots:
 
   '@fontsource/fragment-mono@5.3.0': {}
 
-  '@hono/node-server@2.1.5(hono@4.13.14)':
-    dependencies:
-      hono: 4.13.14
-
   '@jridgewell/gen-mapping@0.3.13':
     dependencies:
       '@jridgewell/sourcemap-codec': 1.6.0
@@ -1447,55 +1424,6 @@ snapshots:
 
   '@rolldown/pluginutils@1.0.1': {}
 
-  '@surrealdb/cbor@2.0.0-alpha.4': {}
-
-  '@surrealdb/node-native-darwin-arm64@3.3.5':
-    optional: true
-
-  '@surrealdb/node-native-darwin-x64@3.3.5':
-    optional: true
-
-  '@surrealdb/node-native-linux-arm64-gnu@3.3.5':
-    optional: true
-
-  '@surrealdb/node-native-linux-arm64-musl@3.3.5':
-    optional: true
-
-  '@surrealdb/node-native-linux-x64-gnu@3.3.5':
-    optional: true
-
-  '@surrealdb/node-native-linux-x64-musl@3.3.5':
-    optional: true
-
-  '@surrealdb/node-native-win32-arm64-msvc@3.3.5':
-    optional: true
-
-  '@surrealdb/node-native-win32-x64-msvc@3.3.5':
-    optional: true
-
-  '@surrealdb/node-native@3.3.5':
-    optionalDependencies:
-      '@surrealdb/node-native-darwin-arm64': 3.3.5
-      '@surrealdb/node-native-darwin-x64': 3.3.5
-      '@surrealdb/node-native-linux-arm64-gnu': 3.3.5
-      '@surrealdb/node-native-linux-arm64-musl': 3.3.5
-      '@surrealdb/node-native-linux-x64-gnu': 3.3.5
-      '@surrealdb/node-native-linux-x64-musl': 3.3.5
-      '@surrealdb/node-native-win32-arm64-msvc': 3.3.5
-      '@surrealdb/node-native-win32-x64-msvc': 3.3.5
-
-  '@surrealdb/node@3.1.0(@surrealdb/node-native@3.3.5)(surrealdb@2.2.0(tslib@2.9.1)(typescript@5.9.3))':
-    dependencies:
-      '@surrealdb/node-native': 3.3.5
-      surrealdb: 2.2.0(tslib@2.9.1)(typescript@5.9.3)
-
-  '@surrealdb/sqon@0.2.0(tslib@2.9.1)(typescript@5.9.3)':
-    dependencies:
-      '@surrealdb/cbor': 2.0.0-alpha.4
-      tslib: 2.9.1
-      typescript: 5.9.3
-      uuidv7: 1.2.1
-
   '@tailwindcss/node@4.3.3':
     dependencies:
       '@jridgewell/remapping': 2.3.5
@@ -1563,6 +1491,53 @@ snapshots:
       '@tailwindcss/oxide': 4.3.3
       tailwindcss: 4.3.3
       vite: 8.3.5(@types/node@22.20.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)
+
+  '@tauri-apps/cli-darwin-arm64@2.12.4':
+    optional: true
+
+  '@tauri-apps/cli-darwin-x64@2.12.4':
+    optional: true
+
+  '@tauri-apps/cli-linux-arm-gnueabihf@2.12.4':
+    optional: true
+
+  '@tauri-apps/cli-linux-arm64-gnu@2.12.4':
+    optional: true
+
+  '@tauri-apps/cli-linux-arm64-musl@2.12.4':
+    optional: true
+
+  '@tauri-apps/cli-linux-riscv64-gnu@2.12.4':
+    optional: true
+
+  '@tauri-apps/cli-linux-x64-gnu@2.12.4':
+    optional: true
+
+  '@tauri-apps/cli-linux-x64-musl@2.12.4':
+    optional: true
+
+  '@tauri-apps/cli-win32-arm64-msvc@2.12.4':
+    optional: true
+
+  '@tauri-apps/cli-win32-ia32-msvc@2.12.4':
+    optional: true
+
+  '@tauri-apps/cli-win32-x64-msvc@2.12.4':
+    optional: true
+
+  '@tauri-apps/cli@2.12.4':
+    optionalDependencies:
+      '@tauri-apps/cli-darwin-arm64': 2.12.4
+      '@tauri-apps/cli-darwin-x64': 2.12.4
+      '@tauri-apps/cli-linux-arm-gnueabihf': 2.12.4
+      '@tauri-apps/cli-linux-arm64-gnu': 2.12.4
+      '@tauri-apps/cli-linux-arm64-musl': 2.12.4
+      '@tauri-apps/cli-linux-riscv64-gnu': 2.12.4
+      '@tauri-apps/cli-linux-x64-gnu': 2.12.4
+      '@tauri-apps/cli-linux-x64-musl': 2.12.4
+      '@tauri-apps/cli-win32-arm64-msvc': 2.12.4
+      '@tauri-apps/cli-win32-ia32-msvc': 2.12.4
+      '@tauri-apps/cli-win32-x64-msvc': 2.12.4
 
   '@types/debug@4.1.13':
     dependencies:
@@ -1745,8 +1720,6 @@ snapshots:
   hast-util-whitespace@3.0.0:
     dependencies:
       '@types/hast': 3.0.5
-
-  hono@4.13.14: {}
 
   html-url-attributes@3.0.1: {}
 
@@ -2376,12 +2349,6 @@ snapshots:
 
   supports-color@10.2.2: {}
 
-  surrealdb@2.2.0(tslib@2.9.1)(typescript@5.9.3):
-    dependencies:
-      '@surrealdb/sqon': 0.2.0(tslib@2.9.1)(typescript@5.9.3)
-      tslib: 2.9.1
-      typescript: 5.9.3
-
   tailwind-merge@3.7.0: {}
 
   tailwindcss@4.3.3: {}
@@ -2444,8 +2411,6 @@ snapshots:
       '@types/unist': 3.0.3
       unist-util-is: 6.0.1
       unist-util-visit-parents: 6.1.0
-
-  uuidv7@1.2.1: {}
 
   vfile-message@4.0.3:
     dependencies:

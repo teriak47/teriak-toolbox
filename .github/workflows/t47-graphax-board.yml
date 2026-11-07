@@ -30,9 +30,34 @@ jobs:
         with:
           node-version: '22'
       - run: npm install --global pnpm@12.6.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: data/visualization/t47-graphax-board
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
+      # The local API (api/): format, its own tests, then the HTTP tests of tests/api.test.ts
+      - run: cargo fmt --all --check
+      - run: cargo test -p graphax-api --locked
       - run: pnpm test
-      # Browser tests of the workspace (A9), on the build above
+      # Browser tests of the workspace (A9), on the build above, served by the API
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm test:e2e
+
+  desktop:
+    name: Graphax desktop
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: data/visualization/t47-graphax-board
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      # System libraries Tauri needs to compile on Linux
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libayatana-appindicator3-dev
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: data/visualization/t47-graphax-board
+      - run: cargo clippy -p graphax --locked -- -D warnings

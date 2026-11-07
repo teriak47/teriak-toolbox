@@ -1,7 +1,7 @@
 id: t47-graphax-board
 name: Graphax
 description: Create local interactive graph boards for investigation and research.
-version: 0.3.0
+version: 0.4.0
 author: Teriak47
 classification:
   family: data
@@ -14,14 +14,16 @@ classification:
 technologies:
   - react
   - typescript
-  - nodejs
   - vite
+  - rust
+  - axum
+  - tauri
   - surrealdb
 formats:
   - json
 execution:
-  type: browser
-  entrypoint: index.html
+  type: desktop
+  entrypoint: src-tauri/src/main.rs
   dependencies:
-    - Node.js
-    - pnpm
+    - Rust (to build from source)
+    - Node.js and pnpm (to build the interface)
