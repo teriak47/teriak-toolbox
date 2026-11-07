@@ -42,6 +42,7 @@ pub fn router(state: AppState, port: u16) -> Router {
         .route("/api/health", get(health))
         .merge(routes::projects::router())
         .merge(routes::categories::router())
+        .merge(routes::nodes::router())
         .fallback(not_ported)
         .with_state(state)
         // Bodies are read and limited by `request_size_limit`, which answers in JSON

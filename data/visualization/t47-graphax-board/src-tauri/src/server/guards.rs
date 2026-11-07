@@ -18,8 +18,6 @@ pub async fn project_exists(db: &Surreal<Db>, project_id: &str) -> surrealdb::Re
     Ok(!matches!(from_db(res.take(0)?), Value::Null))
 }
 
-// Used by the nodes and edges routes (next steps of the migration)
-#[allow(dead_code)]
 /// Ids, among `node_ids`, of nodes that exist and belong to the project
 pub async fn nodes_in_project(
     db: &Surreal<Db>,
@@ -53,7 +51,6 @@ pub async fn nodes_in_project(
         .collect())
 }
 
-#[allow(dead_code)]
 pub async fn category_in_project(
     db: &Surreal<Db>,
     project_id: &str,

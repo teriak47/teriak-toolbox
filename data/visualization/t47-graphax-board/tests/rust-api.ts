@@ -1,6 +1,9 @@
 // Runs the HTTP cases of tests/api.test.ts against the Rust API of the desktop app
 // (src-tauri), to check that it answers exactly as the Node server. Only the cases of the
-// routes already ported are listed; the list grows with the migration.
+// routes already ported are listed; the list grows with the migration. Cases that need a
+// route not ported yet (such as links) are added with that route, since they would
+// otherwise pass without testing anything; cases that read the Node database directly
+// stay out (some of their HTTP checks still run here, with a Node-only final check).
 
 import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -26,6 +29,15 @@ const PORTED_CASES = [
   'validates category colour, icon and shape',
   'gives new and imported categories the same defaults',
   'refuses to merge categories of two projects',
+  // nodes
+  'refuses nodes and categories in a missing project',
+  'only accepts a category of the same project for a node',
+  'moves only the nodes of the project in a batch',
+  'answers 400, not 500, to malformed JSON or a non-object body',
+  'ignores fields of the wrong type instead of failing',
+  'stores, validates, clears and exports the reliability code',
+  'stores the bare target id on the moved nodes, even when given with its table prefix',
+  'stores views on the project, cleans them, and keeps them on export and import with the new ids',
   // local-only guard and health
   'accepts same-origin and header-less requests',
   'accepts the Vite dev server origin',
