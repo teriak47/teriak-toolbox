@@ -1,0 +1,81 @@
+// Runs the HTTP cases of tests/api.test.ts against the Rust API of the desktop app
+// (src-tauri), to check that it answers exactly as the Node server. Only the cases of the
+// routes already ported are listed; the list grows with the migration.
+
+import { spawn, spawnSync } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+
+const PORTED_CASES = [
+  // projects
+  'creates, renames, lists and deletes a project',
+  'rejects a project without a name',
+  'rejects an invalid bundle',
+  'creates a preset project with its categories',
+  'creates every preset with valid, distinct-coloured categories in order',
+  'creates the demo project in full',
+  'imports categories, keeps node categories and skips dangling links',
+  'limits the request size, with a larger limit for imports',
+  'imports a bundle with invalid entries by skipping or defaulting them',
+  'copies a project with new ids and leaves the original as it is',
+  'names link colours on the project, replaces the whole map and keeps it through export',
+  // local-only guard and health
+  'accepts same-origin and header-less requests',
+  'accepts the Vite dev server origin',
+  'refuses a foreign origin, including simple cross-site writes',
+  'refuses an unexpected Host header (DNS rebinding)',
+  'sends no CORS headers',
+  'reports the version on the health endpoint',
+];
+
+const toolDir = path.resolve(import.meta.dirname, '..');
+const tauriDir = path.join(toolDir, 'src-tauri');
+const port = 3458;
+
+const build = spawnSync('cargo', ['build', '--bin', 'graphax-api'], { cwd: tauriDir, stdio: 'inherit' });
+if (build.status !== 0) process.exit(build.status ?? 1);
+
+const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'graphax-rust-test-'));
+const binary = path.join(tauriDir, 'target', 'debug', process.platform === 'win32' ? 'graphax-api.exe' : 'graphax-api');
+const server = spawn(binary, [], {
+  env: { ...process.env, GRAPHAX_DATA_DIR: dataDir, PORT: String(port) },
+  stdio: 'inherit',
+});
+
+let exitCode = 1;
+try {
+  const url = `http://127.0.0.1:${port}`;
+  for (let i = 0; ; i++) {
+    try {
+      if ((await fetch(`${url}/api/health`)).ok) break;
+    } catch {
+      // not listening yet
+    }
+    if (i >= 100) throw new Error("L'API Rust n'a pas démarré.");
+    await new Promise((r) => setTimeout(r, 100));
+  }
+
+  const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pattern = `^(${PORTED_CASES.map(escape).join('|')})$`;
+  const run = spawnSync(
+    process.execPath,
+    ['--test', '--test-reporter=tap', `--test-name-pattern=${pattern}`, 'tests/api.test.ts'],
+    { cwd: toolDir, env: { ...process.env, GRAPHAX_API_URL: url }, encoding: 'utf-8' }
+  );
+  process.stdout.write(run.stdout);
+  process.stderr.write(run.stderr);
+
+  // A case renamed in api.test.ts would otherwise be skipped silently
+  const passed = Number(/^# pass (\d+)/m.exec(run.stdout)?.[1] ?? 0);
+  if (run.status === 0 && passed === PORTED_CASES.length) {
+    console.log(`\nAPI Rust : ${passed}/${PORTED_CASES.length} cas portés passent.`);
+    exitCode = 0;
+  } else {
+    console.error(`\nAPI Rust : ${passed}/${PORTED_CASES.length} cas portés passent.`);
+  }
+} finally {
+  server.kill();
+  fs.rmSync(dataDir, { recursive: true, force: true });
+}
+process.exit(exitCode);

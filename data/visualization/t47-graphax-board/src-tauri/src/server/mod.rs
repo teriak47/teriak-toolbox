@@ -1,13 +1,22 @@
 //! Local HTTP API of the desktop app, the Rust counterpart of `server/` (Node + Hono).
 //! Routes are ported here one family at a time; the Node server stays in use until then.
 
+mod bulk;
+mod bundles;
 mod db;
+mod http;
+mod model;
+mod presets;
+mod routes;
 mod security;
+mod util;
 
 use std::net::SocketAddr;
 use std::path::Path;
 
-use axum::extract::State;
+use axum::extract::{DefaultBodyLimit, State};
+use axum::http::StatusCode;
+use axum::response::IntoResponse;
 use axum::routing::get;
 use axum::{middleware, Json, Router};
 use serde_json::{json, Value};
@@ -30,7 +39,12 @@ pub struct AppState {
 pub fn router(state: AppState, port: u16) -> Router {
     Router::new()
         .route("/api/health", get(health))
+        .merge(routes::projects::router())
+        .fallback(not_ported)
         .with_state(state)
+        // Bodies are read and limited by `request_size_limit`, which answers in JSON
+        .layer(DefaultBodyLimit::disable())
+        .layer(middleware::from_fn(http::request_size_limit))
         .layer(middleware::from_fn_with_state(
             security::Allowed::new(port),
             security::local_only_guard,
@@ -45,6 +59,15 @@ async fn health(State(state): State<AppState>) -> Json<Value> {
         "version": APP_VERSION,
         "engine": "surrealdb-embedded-surrealkv",
     }))
+}
+
+// While the migration is under way, a route missing here answers 501 rather than 404,
+// so that a test expecting a 404 cannot pass only because the route is not ported yet
+async fn not_ported() -> impl IntoResponse {
+    (
+        StatusCode::NOT_IMPLEMENTED,
+        Json(json!({ "error": "Route pas encore portée dans l'API Rust." })),
+    )
 }
 
 /// Opens the database in `data_dir` and serves the API on 127.0.0.1 only

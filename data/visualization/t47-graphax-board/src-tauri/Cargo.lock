@@ -2121,6 +2121,8 @@ name = "graphax"
 version = "0.3.0"
 dependencies = [
  "axum",
+ "chrono",
+ "getrandom 0.3.4",
  "http-body-util",
  "serde",
  "serde_json",
@@ -2130,6 +2132,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tower",
+ "unicode-normalization",
 ]
 
 [[package]]
