@@ -115,3 +115,61 @@ async fn reopens_existing_database() {
     let names: Vec<String> = res.take(0).unwrap();
     assert_eq!(names, vec!["Projet fictif".to_string()]);
 }
+
+async fn send(app: &axum::Router, method: &str, uri: &str, body: Value) -> (StatusCode, Value) {
+    let req = Request::builder()
+        .method(method)
+        .uri(uri)
+        .header("host", HOST)
+        .header("content-type", "application/json")
+        .body(Body::from(body.to_string()))
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    let status = res.status();
+    let bytes = res.into_body().collect().await.unwrap().to_bytes();
+    (
+        status,
+        serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+    )
+}
+
+// Same case as "appends new categories, and keeps older projects sorted by name" in
+// tests/api.test.ts, whose second half writes to the Node database directly
+#[tokio::test]
+async fn legacy_categories_without_position_stay_sorted_by_name() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = open_db(dir.path()).await.unwrap();
+    let app = router(AppState { db: db.clone() }, PORT);
+
+    let (_, created) = send(
+        &app,
+        "POST",
+        "/api/projects",
+        serde_json::json!({ "name": "Ancien projet", "preset": "empty" }),
+    )
+    .await;
+    let pid = created["project"]["id"].as_str().unwrap().to_string();
+    db.query("INSERT INTO category [{ projectId: $p, name: 'Zèbre', color: '#47c0ef', icon: 'tag', shape: 'sharp' }, { projectId: $p, name: 'Bœuf', color: '#47c0ef', icon: 'tag', shape: 'sharp' }];")
+        .bind(("p", pid.clone()))
+        .await
+        .unwrap()
+        .check()
+        .unwrap();
+
+    let (status, _) = send(
+        &app,
+        "POST",
+        &format!("/api/projects/{pid}/categories"),
+        serde_json::json!({ "name": "Cheval" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let (_, graph) = send(&app, "GET", &format!("/api/projects/{pid}"), Value::Null).await;
+    let names: Vec<&str> = graph["categories"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(names, ["Bœuf", "Cheval", "Zèbre"]);
+}

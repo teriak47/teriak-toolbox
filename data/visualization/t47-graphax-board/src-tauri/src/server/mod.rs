@@ -4,6 +4,7 @@
 mod bulk;
 mod bundles;
 mod db;
+mod guards;
 mod http;
 mod model;
 mod presets;
@@ -40,6 +41,7 @@ pub fn router(state: AppState, port: u16) -> Router {
     Router::new()
         .route("/api/health", get(health))
         .merge(routes::projects::router())
+        .merge(routes::categories::router())
         .fallback(not_ported)
         .with_state(state)
         // Bodies are read and limited by `request_size_limit`, which answers in JSON

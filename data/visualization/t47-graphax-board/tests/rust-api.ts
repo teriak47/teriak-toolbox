@@ -20,6 +20,12 @@ const PORTED_CASES = [
   'imports a bundle with invalid entries by skipping or defaulting them',
   'copies a project with new ids and leaves the original as it is',
   'names link colours on the project, replaces the whole map and keeps it through export',
+  // categories
+  'reorders categories and keeps the order',
+  'stores category default keys and card keys',
+  'validates category colour, icon and shape',
+  'gives new and imported categories the same defaults',
+  'refuses to merge categories of two projects',
   // local-only guard and health
   'accepts same-origin and header-less requests',
   'accepts the Vite dev server origin',
